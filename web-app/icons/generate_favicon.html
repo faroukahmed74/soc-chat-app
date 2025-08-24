@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Generate Favicon</title>
+</head>
+<body>
+    <h1>Favicon Generator</h1>
+    <p>Use this page to generate PNG favicons from the SVG:</p>
+    
+    <!-- 32x32 favicon -->
+    <canvas id="favicon32" width="32" height="32"></canvas>
+    <br>
+    <button onclick="downloadFavicon(32, 'favicon.png')">Download 32x32 favicon.png</button>
+    
+    <br><br>
+    
+    <!-- 192x192 icon -->
+    <canvas id="icon192" width="192" height="192"></canvas>
+    <br>
+    <button onclick="downloadFavicon(192, 'Icon-192.png')">Download 192x192 Icon-192.png</button>
+    
+    <br><br>
+    
+    <!-- 512x512 icon -->
+    <canvas id="icon512" width="512" height="512"></canvas>
+    <br>
+    <button onclick="downloadFavicon(512, 'Icon-512.png')">Download 512x512 Icon-512.png</button>
+    
+    <script>
+        function drawIcon(canvasId, size) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, size, size);
+            
+            // Create gradient background
+            const gradient = ctx.createLinearGradient(0, 0, size, size);
+            gradient.addColorStop(0, '#667eea');
+            gradient.addColorStop(1, '#764ba2');
+            
+            // Draw background circle
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(size/2, size/2, size/2, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Scale factors
+            const scale = size / 512;
+            const centerX = size / 2;
+            const centerY = size / 2;
+            
+            // Draw chat bubble
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.roundRect(
+                centerX - 80 * scale, 
+                centerY - 112 * scale, 
+                160 * scale, 
+                112 * scale, 
+                8 * scale
+            );
+            ctx.fill();
+            
+            // Draw chat bubble tail
+            ctx.beginPath();
+            ctx.moveTo(centerX - 80 * scale, centerY);
+            ctx.lineTo(centerX - 32 * scale, centerY + 64 * scale);
+            ctx.lineTo(centerX - 32 * scale, centerY);
+            ctx.closePath();
+            ctx.fill();
+            
+            // Draw message lines
+            ctx.fillStyle = '#667eea';
+            
+            // Line 1
+            ctx.beginPath();
+            ctx.roundRect(
+                centerX - 72 * scale, 
+                centerY - 96 * scale, 
+                120 * scale, 
+                8 * scale, 
+                4 * scale
+            );
+            ctx.fill();
+            
+            // Line 2
+            ctx.beginPath();
+            ctx.roundRect(
+                centerX - 72 * scale, 
+                centerY - 72 * scale, 
+                96 * scale, 
+                8 * scale, 
+                4 * scale
+            );
+            ctx.fill();
+            
+            // Line 3
+            ctx.beginPath();
+            ctx.roundRect(
+                centerX - 72 * scale, 
+                centerY - 48 * scale, 
+                72 * scale, 
+                8 * scale, 
+                4 * scale
+            );
+            ctx.fill();
+            
+            // Draw connection dots
+            ctx.fillStyle = '#764ba2';
+            
+            // Dot 1
+            ctx.beginPath();
+            ctx.arc(centerX + 128 * scale, centerY - 96 * scale, 8 * scale, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Dot 2
+            ctx.beginPath();
+            ctx.arc(centerX + 128 * scale, centerY - 64 * scale, 8 * scale, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Dot 3
+            ctx.beginPath();
+            ctx.arc(centerX + 128 * scale, centerY - 32 * scale, 8 * scale, 0, 2 * Math.PI);
+            ctx.fill();
+        }
+        
+        function downloadFavicon(size, filename) {
+            const canvas = document.getElementById(size === 32 ? 'favicon32' : size === 192 ? 'icon192' : 'icon512');
+            const link = document.createElement('a');
+            link.download = filename;
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+        }
+        
+        // Draw all icons when page loads
+        window.onload = function() {
+            drawIcon('favicon32', 32);
+            drawIcon('icon192', 192);
+            drawIcon('icon512', 512);
+        };
+        
+        // Add roundRect polyfill for older browsers
+        if (!CanvasRenderingContext2D.prototype.roundRect) {
+            CanvasRenderingContext2D.prototype.roundRect = function(x, y, width, height, radius) {
+                this.beginPath();
+                this.moveTo(x + radius, y);
+                this.lineTo(x + width - radius, y);
+                this.quadraticCurveTo(x + width, y, x + width, y + radius);
+                this.lineTo(x + width, y + height - radius);
+                this.quadraticCurveTo(x + width, y + height, x + width - radius, y + height);
+                this.lineTo(x + radius, y + height);
+                this.quadraticCurveTo(x, y + height, x, y + height - radius);
+                this.lineTo(x, y + radius);
+                this.quadraticCurveTo(x, y, x + radius, y);
+                this.closePath();
+            };
+        }
+    </script>
+</body>
+</html>

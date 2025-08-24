@@ -1,0 +1,28 @@
+<svg width="192" height="192" viewBox="0 0 192 192" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <!-- Background circle -->
+  <circle cx="96" cy="96" r="96" fill="url(#gradient)"/>
+  
+  <!-- Chat bubble background -->
+  <path d="M48 36C48 29.3726 53.3726 24 60 24H108C114.627 24 120 29.3726 120 36V108C120 114.627 114.627 120 108 120H60C53.3726 120 48 114.627 48 108V36Z" fill="white"/>
+  
+  <!-- Chat bubble tail -->
+  <path d="M60 120L84 144L84 120H60Z" fill="white"/>
+  
+  <!-- Message lines -->
+  <rect x="66" y="48" width="60" height="6" rx="3" fill="#667eea"/>
+  <rect x="66" y="66" width="48" height="6" rx="3" fill="#667eea"/>
+  <rect x="66" y="84" width="36" height="6" rx="3" fill="#667eea"/>
+  
+  <!-- Connection dots -->
+  <circle cx="144" cy="48" r="6" fill="#764ba2"/>
+  <circle cx="144" cy="72" r="6" fill="#764ba2"/>
+  <circle cx="144" cy="96" r="6" fill="#764ba2"/>
+  
+  <!-- Gradient definition -->
+  <defs>
+    <linearGradient id="gradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#667eea;stop-opacity:1" />
+      <stop offset="100%" style="stop-color:#764ba2;stop-opacity:1" />
+    </linearGradient>
+  </defs>
+</svg>

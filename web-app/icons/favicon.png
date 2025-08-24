@@ -1,0 +1,36 @@
+# Favicon Generation Instructions
+
+To generate the PNG favicon files, you can:
+
+1. **Use the HTML generator**: Open `generate_favicon.html` in a web browser and click the download buttons
+2. **Use online tools**: Convert the SVG files to PNG using online converters
+3. **Use design software**: Import the SVG files into design software and export as PNG
+
+## Required PNG files:
+
+- `favicon.png` (32x32) - Main favicon for browser tabs
+- `Icon-192.png` (192x192) - PWA icon for mobile devices
+- `Icon-512.png` (512x512) - High-resolution icon for larger displays
+
+## Alternative: Use the SVG files directly
+
+Modern browsers support SVG favicons, so you can also use:
+- `favicon.svg` as the favicon
+- `Icon-192.svg` and `Icon-512.svg` for PWA icons
+
+## Quick generation command (if you have ImageMagick):
+
+```bash
+# Convert SVG to PNG
+convert favicon.svg -resize 32x32 favicon.png
+convert Icon-192.svg -resize 192x192 Icon-192.png
+convert Icon-512.svg -resize 512x512 Icon-512.png
+```
+
+## Logo Design Description:
+
+The SOC Chat App logo features:
+- A chat bubble with message lines
+- Connection dots representing network/communication
+- Blue gradient background (#667eea to #764ba2)
+- Clean, modern design suitable for all platforms
