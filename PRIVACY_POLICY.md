@@ -143,11 +143,11 @@ We may update this Privacy Policy from time to time. We will notify you of any c
 
 If you have any questions about this Privacy Policy or our privacy practices, please contact us:
 
-**Email:** privacy@socchatapp.com  
-**Address:** [Your Company Address]  
-**Phone:** [Your Contact Number]
+**Email:** faroukahmed192@gmail.com  
+**Address:** SOC  
+**Phone:** +201021090253
 
-## 13. California Privacy Rights
+## 13. SOC Privacy Rights
 
 If you are a California resident, you have additional rights under the California Consumer Privacy Act (CCPA), including:
 - Right to know what personal information is collected
