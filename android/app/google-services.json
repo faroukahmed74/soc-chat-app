@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "889400273440",
+    "firebase_url": "https://soc-chat-app-ca57e-default-rtdb.firebaseio.com",
+    "project_id": "soc-chat-app-ca57e",
+    "storage_bucket": "soc-chat-app-ca57e.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:889400273440:android:2da928cdb9eb167b13aa45",
+        "android_client_info": {
+          "package_name": "com.example.socchatapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDf2OUnFBkHgjugfsD1elUe4dQAHb3y0OQ"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,44 @@
+{
+  "name": "soc-chat-app-portable",
+  "version": "1.0.0",
+  "description": "Portable SOC Chat App that can run on any PC",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "build": "pkg . --targets node18-win-x64 --output soc-chat-app.exe",
+    "create-portable": "node create-portable.js"
+  },
+  "bin": {
+    "soc-chat-app-portable": "server.js"
+  },
+  "pkg": {
+    "assets": [
+      "build/web/**/*"
+    ],
+    "targets": [
+      "node18-win-x64"
+    ],
+    "outputPath": "dist"
+  },
+  "dependencies": {
+    "axios": "^1.11.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "firebase-admin": "^13.4.0",
+    "path": "^0.12.7"
+  },
+  "devDependencies": {
+    "pkg": "^5.8.1"
+  },
+  "keywords": [
+    "chat",
+    "portable",
+    "executable"
+  ],
+  "author": "SOC Chat App",
+  "license": "MIT",
+  "directories": {
+    "lib": "lib",
+    "test": "test"
+  }
+}

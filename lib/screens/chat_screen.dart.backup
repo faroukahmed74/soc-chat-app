@@ -1,0 +1,1905 @@
+// =============================================================================
+// CHAT SCREEN
+// =============================================================================
+// This screen displays individual chat conversations between users or groups.
+// It handles message sending, media uploads, real-time updates, and group management.
+// The screen supports both private chats and group chats with different functionality.
+
+import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_storage/firebase_storage.dart';
+
+import 'dart:async';
+import '../services/theme_service.dart';
+import '../widgets/offline_status_widget.dart';
+import '../services/chat_management_service.dart'; // Added import for ChatManagementService
+import '../utils/firestore_index_creator.dart'; // Added import for FirestoreIndexCreator
+import '../services/unified_media_service.dart'; // Added import for media services
+import '../services/secure_media_service.dart'; // Added import for secure media handling
+import '../services/secure_message_service.dart'; // Added import for secure messaging
+import '../services/local_message_storage.dart'; // Added import for local storage
+import '../services/document_service.dart'; // Added import for document handling
+import '../services/logger_service.dart'; // Added import for logging
+import 'dart:typed_data';
+import 'dart:convert';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:path_provider/path_provider.dart';
+import 'dart:io';
+import 'package:http/http.dart' as http;
+
+// =============================================================================
+// CHAT SCREEN WIDGET
+// =============================================================================
+class ChatScreen extends StatefulWidget {
+  final String chatId;
+  final bool isGroupChat;
+  final String chatName;
+  final List<String>? userIds;
+
+  const ChatScreen({
+    super.key,
+    required this.chatId,
+    required this.isGroupChat,
+    required this.chatName,
+    this.userIds,
+  });
+
+  @override
+  State<ChatScreen> createState() => _ChatScreenState();
+}
+
+// =============================================================================
+// CHAT SCREEN STATE
+// =============================================================================
+class _ChatScreenState extends State<ChatScreen> {
+  // =============================================================================
+  // CONTROLLERS & STATE VARIABLES
+  // =============================================================================
+  
+  final _messageController = TextEditingController();
+  final _scrollController = ScrollController();
+  final _searchController = TextEditingController();
+  
+  bool _isTyping = false;
+  Map<String, bool> _typingUsers = {};
+  Timer? _typingTimer;
+  
+  bool _isRecordingVoice = false;
+  Timer? _recordingTimer;
+  int _recordingDuration = 0;
+  
+  bool _isSearching = false;
+  String _searchQuery = '';
+  List<QueryDocumentSnapshot> _searchResults = [];
+  
+  bool _showFilters = false;
+  String _searchMessageType = 'all';
+  String _searchDateRange = 'all';
+  List<DocumentSnapshot> _searchHistory = [];
+  bool _isSearchingHistory = false;
+  
+  final Map<String, Map<String, int>> _messageReactions = {};
+  List<DocumentSnapshot> _pinnedMessages = [];
+  
+  bool _isOnline = true;
+  bool _isSyncing = false;
+  List<Map<String, dynamic>> _offlineMessages = [];
+  
+  bool _isLoadingMoreMessages = false;
+  int _messageLimit = 20; // Reduced from 50 to 20 for better performance
+  bool _hasMoreMessages = true;
+  DocumentSnapshot? _lastMessage;
+  
+  late String _currentUserId;
+  String? _currentUserDisplayName;
+  bool _isLoading = true;
+  String? _error;
+  bool _isAdmin = false;
+  String? _groupKey;
+  bool _isGroupInfoOpen = false;
+  
+  late ThemeService _themeService;
+
+  // Message status tracking
+  final Map<String, String> _messageStatuses = {}; // messageId -> status
+  bool _isUpdatingStatus = false; // Prevent multiple simultaneous status updates
+  
+  // Performance optimization: Cache for message data
+  final Map<String, Map<String, dynamic>> _messageCache = {};
+  final Map<String, bool> _messageReadStatus = {};
+  
+  // Stream subscription for better memory management
+  StreamSubscription<QuerySnapshot>? _messagesSubscription;
+
+  // Message status constants
+  static const String _statusSent = 'sent';
+  static const String _statusDelivered = 'delivered';
+  static const String _statusRead = 'read';
+  static const String _statusFailed = 'failed';
+
+  // =============================================================================
+  // MESSAGE STATUS METHODS
+  // =============================================================================
+  
+  void _updateMessageStatus(String messageId, String status) {
+    // Only update if status actually changed and not already updating
+    if (_messageStatuses[messageId] != status && !_isUpdatingStatus) {
+      _isUpdatingStatus = true;
+      _messageStatuses[messageId] = status;
+      
+      // Use post-frame callback to avoid setState during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {});
+        }
+        _isUpdatingStatus = false;
+      });
+      
+      // Update status in Firestore for real-time sync
+      FirebaseFirestore.instance
+          .collection('chats')
+          .doc(widget.chatId)
+          .collection('messages')
+          .doc(messageId)
+          .update({'status': status})
+          .catchError((e) {
+        Log.e('Error updating message status', 'CHAT_SCREEN', e);
+        _isUpdatingStatus = false;
+      });
+    }
+  }
+
+  void _markMessageAsDelivered(String messageId) {
+    _updateMessageStatus(messageId, _statusDelivered);
+  }
+
+  void _markMessageAsRead(String messageId) {
+    _updateMessageStatus(messageId, _statusRead);
+  }
+
+  void _markMessageAsFailed(String messageId) {
+    _updateMessageStatus(messageId, _statusFailed);
+  }
+
+  String _getMessageStatus(String messageId) {
+    return _messageStatuses[messageId] ?? _statusSent;
+  }
+
+  // Check if message has been read by current user
+  bool _isMessageReadByCurrentUser(Map<String, dynamic> data) {
+    final readBy = data['readBy'] as List<dynamic>?;
+    return readBy?.contains(_currentUserId) ?? false;
+  }
+
+  // Get the most appropriate status for display
+  String _getDisplayStatus(String messageId, Map<String, dynamic> data) {
+    final currentStatus = _getMessageStatus(messageId);
+    
+    // If message is from current user, show delivery status
+    if (data['senderId'] == _currentUserId) {
+      return currentStatus;
+    }
+    
+    // If message is from other user, check if current user has read it
+    if (_isMessageReadByCurrentUser(data)) {
+      return _statusRead;
+    }
+    
+    return _statusDelivered;
+  }
+
+  // Mark messages as read when they are viewed
+  void _markMessagesAsRead(List<QueryDocumentSnapshot> messages) {
+    // Use post-frame callback to avoid calling during build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      
+      for (final message in messages) {
+        final data = message.data() as Map<String, dynamic>;
+        final senderId = data['senderId'] ?? '';
+        
+        // Only mark messages from other users as read
+        if (senderId != _currentUserId) {
+          _markMessageAsRead(message.id);
+          
+          // Send read acknowledgment to the sender
+          _sendReadAcknowledgment(message.id, senderId);
+        }
+      }
+    });
+  }
+
+  // Send read acknowledgment to message sender
+  void _sendReadAcknowledgment(String messageId, String senderId) {
+    try {
+      FirebaseFirestore.instance
+          .collection('chats')
+          .doc(widget.chatId)
+          .collection('messages')
+          .doc(messageId)
+          .update({
+        'readBy': FieldValue.arrayUnion([_currentUserId]),
+        'readAt': FieldValue.serverTimestamp(),
+      });
+    } catch (e) {
+              Log.e('Error sending read acknowledgment', 'CHAT_SCREEN', e);
+    }
+  }
+
+  Widget _buildMessageStatusIcon(String status, bool isCurrentUser) {
+    if (!isCurrentUser) return const SizedBox.shrink();
+    
+    IconData icon;
+    Color color;
+    
+    switch (status) {
+      case _statusSent:
+        icon = Icons.check;
+        color = Colors.grey;
+        break;
+      case _statusDelivered:
+        icon = Icons.done_all;
+        color = Colors.grey;
+        break;
+      case _statusRead:
+        icon = Icons.done_all;
+        color = Colors.blue;
+        break;
+      case _statusFailed:
+        icon = Icons.error;
+        color = Colors.red;
+        break;
+      default:
+        icon = Icons.schedule;
+        color = Colors.grey;
+    }
+    
+    return Icon(
+      icon,
+      size: 16,
+      color: color,
+    );
+  }
+
+  // Simulate message delivery for testing
+  void _simulateMessageDelivery(String messageId) {
+    Timer(const Duration(seconds: 1), () {
+      _markMessageAsDelivered(messageId);
+      
+      // Simulate read status after another delay
+      Timer(const Duration(seconds: 2), () {
+        _markMessageAsRead(messageId);
+      });
+    });
+  }
+
+  // =============================================================================
+  // INITIALIZATION & CLEANUP
+  // =============================================================================
+  
+  @override
+  void initState() {
+    super.initState();
+    
+    _themeService = ThemeService.instance;
+    _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    
+    // Initialize chat data
+    _initializeChat();
+    
+    // Add scroll listener for pagination
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _messageController.dispose();
+    _scrollController.dispose();
+    _searchController.dispose();
+    _typingTimer?.cancel();
+    _recordingTimer?.cancel();
+    _messagesSubscription?.cancel();
+    super.dispose();
+  }
+
+  // =============================================================================
+  // CHAT INITIALIZATION
+  // =============================================================================
+  
+  Future<void> _initializeChat() async {
+    try {
+      // Get current user info in background
+      _loadCurrentUserInfo();
+      
+      // Check if user is admin for group chats in background
+      if (widget.isGroupChat && widget.userIds != null) {
+        _loadGroupInfo();
+      }
+
+      // Start listening to messages with optimized stream immediately
+      _startMessageStream();
+    } catch (e) {
+      Log.e('Error initializing chat', 'CHAT_SCREEN', e);
+      // Don't show error to user, just log it
+    }
+  }
+
+  /// Load current user info in background
+  Future<void> _loadCurrentUserInfo() async {
+    try {
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(_currentUserId)
+          .get();
+      
+      if (userDoc.exists && mounted) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        setState(() {
+          _currentUserDisplayName = userData['displayName'] ?? 'User';
+        });
+      }
+    } catch (e) {
+      Log.e('Error loading current user info', 'CHAT_SCREEN', e);
+    }
+  }
+
+  /// Load group info in background
+  Future<void> _loadGroupInfo() async {
+    try {
+      final groupDoc = await FirebaseFirestore.instance
+          .collection('groups')
+          .doc(widget.chatId)
+          .get();
+      
+      if (groupDoc.exists && mounted) {
+        final groupData = groupDoc.data() as Map<String, dynamic>;
+        setState(() {
+          _isAdmin = groupData['adminIds']?.contains(_currentUserId) ?? false;
+          _groupKey = groupData['groupKey'];
+        });
+      }
+    } catch (e) {
+      Log.e('Error loading group info', 'CHAT_SCREEN', e);
+    }
+  }
+
+  // =============================================================================
+  // OPTIMIZED MESSAGE STREAM
+  // =============================================================================
+  
+  void _startMessageStream() {
+    // Cancel existing subscription
+    _messagesSubscription?.cancel();
+    
+    // Create optimized query
+    final query = FirebaseFirestore.instance
+        .collection('chats')
+        .doc(widget.chatId)
+        .collection('messages')
+        .orderBy('timestamp', descending: true)
+        .limit(_messageLimit);
+    
+    // Listen to messages with error handling
+    _messagesSubscription = query.snapshots().listen(
+      (snapshot) {
+        if (mounted) {
+          setState(() {
+            // Update last message for pagination
+            if (snapshot.docs.isNotEmpty) {
+              _lastMessage = snapshot.docs.last;
+            }
+            
+            // Check if we have more messages
+            _hasMoreMessages = snapshot.docs.length >= _messageLimit;
+          });
+          
+          // Mark messages as read in background
+          if (snapshot.docs.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _markMessagesAsRead(snapshot.docs);
+            });
+          }
+        }
+      },
+      onError: (error) {
+        Log.e('Error in message stream', 'CHAT_SCREEN', error);
+        // Don't show error to user immediately, just log it
+        // User can retry if needed
+      },
+    );
+  }
+
+  // =============================================================================
+  // PAGINATION HANDLING
+  // =============================================================================
+  
+  void _onScroll() {
+    if (_scrollController.position.pixels >= 
+        _scrollController.position.maxScrollExtent - 200) {
+      _loadMoreMessages();
+    }
+  }
+
+  // =============================================================================
+  // USER DISPLAY NAME FETCHING
+  // =============================================================================
+  
+  Future<String> _getUserDisplayName(String userId) async {
+    try {
+      // Check cache first
+      if (_messageCache.containsKey(userId)) {
+        return _messageCache[userId]!['displayName'] ?? 'Unknown User';
+      }
+      
+      // Fetch from Firestore
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .get();
+      
+      if (userDoc.exists) {
+        final userData = userDoc.data() as Map<String, dynamic>;
+        final displayName = userData['displayName'] ?? 'Unknown User';
+        
+        // Cache the result
+        _messageCache[userId] = {'displayName': displayName};
+        return displayName;
+      }
+      
+      return 'Unknown User';
+    } catch (e) {
+      Log.e('Error fetching user display name', 'CHAT_SCREEN', e);
+      return 'Unknown User';
+    }
+  }
+
+  // =============================================================================
+  // MESSAGE HANDLING METHODS
+  // =============================================================================
+  
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMoreMessages) return;
+    
+    setState(() {
+      _isLoadingMoreMessages = true;
+    });
+    
+    try {
+      setState(() {
+        _messageLimit += 20;
+      });
+    } catch (e) {
+      Log.e('Error loading more messages', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to load more messages: $e')),
+      );
+    } finally {
+      setState(() {
+        _isLoadingMoreMessages = false;
+      });
+    }
+  }
+
+  // =============================================================================
+  // MEDIA HANDLING METHODS
+  // =============================================================================
+  
+  Future<void> _pickImageFromGallery() async {
+    try {
+      Log.i('Picking image from gallery', 'CHAT_SCREEN');
+      final imageBytes = await UnifiedMediaService.pickImageFromGallery(context);
+      if (imageBytes != null) {
+                  Log.i('Image picked successfully, size: ${imageBytes.length} bytes', 'CHAT_SCREEN');
+        await _sendMediaMessage('image', imageBytes, 'image/jpeg');
+      } else {
+        Log.i('No image selected', 'CHAT_SCREEN');
+      }
+    } catch (e) {
+              Log.e('Error picking image from gallery', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick image: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickImageFromCamera() async {
+    try {
+      Log.i('Taking photo with camera', 'CHAT_SCREEN');
+      final imageBytes = await UnifiedMediaService.pickImageFromCamera(context);
+      if (imageBytes != null) {
+                  Log.i('Photo taken successfully, size: ${imageBytes.length} bytes', 'CHAT_SCREEN');
+        await _sendMediaMessage('image', imageBytes, 'image/jpeg');
+      } else {
+        Log.i('No photo taken', 'CHAT_SCREEN');
+      }
+    } catch (e) {
+              Log.e('Error taking photo', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to take photo: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickDocument() async {
+    try {
+      Log.i('Picking document', 'CHAT_SCREEN');
+      final documentData = await UnifiedMediaService.pickDocument(context);
+      if (documentData != null) {
+        final bytes = documentData['bytes'] as Uint8List;
+        final fileName = documentData['fileName'] as String;
+        final extension = documentData['extension'] as String?;
+        final fileSize = documentData['fileSize'] as int;
+        final mimeType = documentData['mimeType'] as String;
+        final fileType = DocumentService.getFileType(extension);
+        
+                  Log.i('Document picked successfully, size: $fileSize bytes, mimeType: $mimeType, fileType: $fileType, fileName: $fileName', 'CHAT_SCREEN');
+        
+        await _sendMediaMessage('document', bytes, mimeType, 
+          fileType: fileType, 
+          fileName: fileName, 
+          fileSize: fileSize, 
+          extension: extension);
+      } else {
+        Log.i('No document selected', 'CHAT_SCREEN');
+      }
+    } catch (e) {
+              Log.e('Error picking document', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick document: $e')),
+      );
+    }
+  }
+
+  String _detectMimeType(Uint8List bytes) {
+    // Simple MIME type detection based on file signatures
+    if (bytes.length >= 4) {
+      // PDF signature: %PDF
+      if (bytes[0] == 0x25 && bytes[1] == 0x50 && bytes[2] == 0x44 && bytes[3] == 0x46) {
+        return 'application/pdf';
+      }
+      // Word document signature: D0 CF 11 E0 A1 B1 1A E1
+      if (bytes[0] == 0xD0 && bytes[1] == 0xCF && bytes[2] == 0x11 && bytes[3] == 0xE0) {
+        return 'application/msword';
+      }
+      // Excel signature: D0 CF 11 E0 A1 B1 1A E1 (same as Word, but we'll differentiate)
+      if (bytes[0] == 0xD0 && bytes[1] == 0xCF && bytes[2] == 0x11 && bytes[3] == 0xE0) {
+        return 'application/vnd.ms-excel';
+      }
+      // PowerPoint signature: D0 CF 11 E0 A1 B1 1A E1 (same as Word, but we'll differentiate)
+      if (bytes[0] == 0xD0 && bytes[1] == 0xCF && bytes[2] == 0x11 && bytes[3] == 0xE0) {
+        return 'application/vnd.ms-powerpoint';
+      }
+    }
+    return 'application/octet-stream';
+  }
+
+  String _getFileTypeFromMimeType(String mimeType) {
+    switch (mimeType) {
+      case 'application/pdf':
+        return 'PDF Document';
+      case 'application/msword':
+        return 'Word Document';
+      case 'application/vnd.ms-excel':
+        return 'Excel Spreadsheet';
+      case 'application/vnd.ms-powerpoint':
+        return 'PowerPoint Presentation';
+      default:
+        return 'Document';
+    }
+  }
+
+  Future<void> _toggleVoiceRecording() async {
+    if (_isRecordingVoice) {
+      await _stopVoiceRecording();
+    } else {
+      await _startVoiceRecording();
+    }
+  }
+
+  Future<void> _startVoiceRecording() async {
+    try {
+      final result = await UnifiedMediaService.startVoiceRecording(context);
+      if (result != null && result['status'] == 'recording') {
+        setState(() {
+          _isRecordingVoice = true;
+        });
+        
+        // Start recording timer
+        _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+          setState(() {
+            _recordingDuration++;
+          });
+        });
+      }
+    } catch (e) {
+      Log.e('Error starting recording', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to start recording: $e')),
+      );
+    }
+  }
+
+  Future<void> _stopVoiceRecording() async {
+    try {
+      Log.i('Stopping voice recording', 'CHAT_SCREEN');
+      final result = await UnifiedMediaService.stopVoiceRecording();
+      if (result != null && result['status'] == 'stopped' && result['audioBytes'] != null) {
+        final audioBytes = result['audioBytes'] as Uint8List;
+        Log.i('Voice recording stopped, size: ${audioBytes.length} bytes', 'CHAT_SCREEN');
+        await _sendMediaMessage('audio', audioBytes, 'audio/wav');
+      } else {
+        Log.w('No audio data recorded', 'CHAT_SCREEN');
+      }
+      
+      // Stop recording timer
+      _recordingTimer?.cancel();
+      setState(() {
+        _isRecordingVoice = false;
+        _recordingDuration = 0;
+      });
+    } catch (e) {
+              Log.e('Error stopping voice recording', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to stop recording: $e')),
+      );
+    }
+  }
+
+  Future<void> _sendMediaMessage(String type, Uint8List mediaBytes, String mimeType, {String? fileType, String? fileName, int? fileSize, String? extension}) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('User not authenticated')),
+        );
+        return;
+      }
+
+      Log.i('Sending $type message, size: ${mediaBytes.length} bytes, mimeType: $mimeType', 'CHAT_SCREEN');
+
+      // Use provided file size or calculate for documents
+      String? finalFileSize = fileSize != null ? DocumentService.formatFileSize(fileSize) : 
+                              (type == 'document' ? _formatFileSize(mediaBytes.length) : null);
+
+      // Use provided filename or generate one
+      final finalFileName = fileName ?? '${type}_${DateTime.now().millisecondsSinceEpoch}.${_getFileExtension(mimeType)}';
+
+      // Upload media to Firebase Storage (not Firestore)
+      final mediaUrl = await SecureMediaService.uploadMediaToStorage(
+        mediaBytes,
+        finalFileName,
+        mimeType,
+        widget.chatId,
+      );
+
+              Log.i('Media uploaded to storage: $mediaUrl', 'CHAT_SCREEN');
+
+      // Get recipient IDs for this chat
+      final recipientIds = await _getRecipientIds();
+
+      // Send secure message using the new service
+      final messageId = await SecureMessageService.sendSecureMessage(
+        chatId: widget.chatId,
+        text: type == 'image' ? '📷 Image' : 
+              type == 'audio' ? '🎵 Voice Message' : 
+              type == 'document' ? '$finalFileName|${DocumentService.getFileType(extension)}|${finalFileSize ?? 'Unknown'}' : 'Media',
+        senderId: currentUser.uid,
+        senderName: _currentUserDisplayName ?? 'Unknown User',
+        recipientIds: recipientIds,
+        mediaUrl: mediaUrl,
+        mediaType: type,
+      );
+
+      if (messageId != null) {
+        // Store message locally before potential deletion
+        await _storeMessageLocally(messageId, type, mediaUrl, mimeType, fileType, finalFileSize, extension);
+        
+        // Mark message as sent initially
+        _updateMessageStatus(messageId, _statusSent);
+        
+        // Simulate delivery and read status
+        _simulateMessageDelivery(messageId);
+        
+        // Scroll to bottom to show new message
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+        
+        Log.i('Secure media message sent successfully: $messageId', 'CHAT_SCREEN');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send secure media message')),
+        );
+      }
+    } catch (e) {
+              Log.e('Error sending secure media message', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send media message: $e')),
+      );
+    }
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) {
+      return '${bytes} B';
+    } else if (bytes < 1024 * 1024) {
+      return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    } else if (bytes < 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    } else {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+  }
+
+  // Decode base64 string back to Uint8List for image display
+  Future<Uint8List> _decodeBase64Image(String base64String) async {
+    try {
+      return base64Decode(base64String);
+    } catch (e) {
+              Log.e('Error decoding base64 image', 'CHAT_SCREEN', e);
+      rethrow;
+    }
+  }
+
+  // Get file extension from MIME type
+  String _getFileExtension(String mimeType) {
+    switch (mimeType) {
+      case 'image/jpeg':
+      case 'image/jpg':
+        return 'jpg';
+      case 'image/png':
+        return 'png';
+      case 'image/gif':
+        return 'gif';
+      case 'application/pdf':
+        return 'pdf';
+      case 'application/msword':
+        return 'doc';
+      case 'application/vnd.ms-excel':
+        return 'xls';
+      case 'application/vnd.ms-powerpoint':
+        return 'ppt';
+      case 'audio/wav':
+      case 'audio/mp3':
+        return 'mp3';
+      default:
+        return 'bin';
+    }
+  }
+
+  // Get recipient IDs for this chat
+  Future<List<String>> _getRecipientIds() async {
+    try {
+      if (widget.isGroupChat) {
+        // For group chats, get all member IDs except current user
+        final chatDoc = await FirebaseFirestore.instance
+            .collection('chats')
+            .doc(widget.chatId)
+            .get();
+        
+        if (chatDoc.exists) {
+          final chatData = chatDoc.data()!;
+          final members = List<String>.from(chatData['members'] ?? []);
+          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+          
+          if (currentUserId != null) {
+            members.remove(currentUserId);
+          }
+          
+          return members;
+        }
+      } else {
+        // For one-to-one chats, get the other user's ID
+        if (widget.userIds != null && widget.userIds!.isNotEmpty) {
+          final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+          return widget.userIds!.where((id) => id != currentUserId).toList();
+        }
+      }
+      
+      return [];
+    } catch (e) {
+              Log.e('Error getting recipient IDs', 'CHAT_SCREEN', e);
+      return [];
+    }
+  }
+
+  // Store message locally before potential deletion
+  Future<void> _storeMessageLocally(
+    String messageId,
+    String type,
+    String mediaUrl,
+    String mimeType,
+    String? fileType,
+    String? fileSize,
+    String? extension,
+  ) async {
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) return;
+
+      final messageData = {
+        'messageId': messageId,
+        'type': type,
+        'mediaUrl': mediaUrl,
+        'mimeType': mimeType,
+        'fileType': fileType,
+        'fileSize': fileSize,
+        'extension': extension,
+        'senderId': currentUser.uid,
+        'senderName': _currentUserDisplayName ?? 'Unknown User',
+        'timestamp': DateTime.now().toIso8601String(),
+        'chatId': widget.chatId,
+        'isGroupChat': widget.isGroupChat,
+      };
+
+      await LocalMessageStorage.storeMessageLocally(
+        messageId: messageId,
+        chatId: widget.chatId,
+        messageData: messageData,
+        userId: currentUser.uid,
+      );
+
+              Log.i('Message stored locally: $messageId', 'CHAT_SCREEN');
+    } catch (e) {
+              Log.e('Error storing message locally', 'CHAT_SCREEN', e);
+    }
+  }
+
+  void _sendMessage([String? text]) async {
+    final messageText = text ?? _messageController.text.trim();
+    if (messageText.isEmpty) return;
+    
+          Log.i('Sending message: $messageText', 'CHAT_SCREEN');
+    
+    try {
+      final currentUser = FirebaseAuth.instance.currentUser;
+      if (currentUser == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('User not authenticated')),
+        );
+        return;
+      }
+
+      // Send message using the service
+      final messageId = await ChatManagementService.sendMessage(
+        chatId: widget.chatId,
+        text: messageText,
+        senderId: currentUser.uid,
+        senderName: _currentUserDisplayName ?? 'Unknown User',
+      );
+
+      if (messageId != null) {
+        // Clear the text controller
+    _messageController.clear();
+        
+        // Mark message as sent initially
+        _updateMessageStatus(messageId, _statusSent);
+        
+        // Simulate delivery and read status
+        _simulateMessageDelivery(messageId);
+        
+        // Scroll to bottom to show new message
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
+        
+        Log.i('Message sent successfully: $messageId', 'CHAT_SCREEN');
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to send message')),
+        );
+      }
+    } catch (e) {
+              Log.e('Error sending message', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to send message: $e')),
+      );
+    }
+  }
+
+  // =============================================================================
+  // AI ASSISTANT METHODS
+  // =============================================================================
+  
+  void _openAIAssistant() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('AI Chat Assistant'),
+        content: const Text('Smart Reply'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => _showSmartReplySuggestions(),
+            child: const Text('Smart Reply'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSmartReplySuggestions() {
+    Navigator.pop(context);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Smart Reply Suggestions'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              _buildReplySuggestion('Hello! How are you?'),
+              _buildReplySuggestion('Thanks for the message!'),
+              _buildReplySuggestion('I\'ll get back to you soon.'),
+              _buildReplySuggestion('That sounds great!'),
+              _buildReplySuggestion('I agree with you.'),
+              _buildReplySuggestion('Let me think about that.'),
+              _buildReplySuggestion('Can you explain more?'),
+              _buildReplySuggestion('I\'m busy right now.'),
+              _buildReplySuggestion('See you later!'),
+              _buildReplySuggestion('Have a great day!'),
+              _buildReplySuggestion('Thanks for sharing!'),
+              _buildReplySuggestion('I\'ll check and let you know.'),
+              _buildReplySuggestion('That\'s interesting!'),
+              _buildReplySuggestion('I need more information.'),
+              _buildReplySuggestion('Let\'s discuss this later.'),
+              _buildReplySuggestion('I appreciate your message.'),
+              _buildReplySuggestion('Can we talk about this?'),
+              _buildReplySuggestion('I\'m here to help.'),
+              _buildReplySuggestion('That makes sense.'),
+              _buildReplySuggestion('I\'ll keep you updated.'),
+              _buildReplySuggestion('Thanks for understanding.'),
+              _buildReplySuggestion('Let\'s work on this together.'),
+              _buildReplySuggestion('I\'m looking forward to it.'),
+              _buildReplySuggestion('That\'s a good point.'),
+              _buildReplySuggestion('I\'ll take care of it.'),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReplySuggestion(String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: ElevatedButton(
+        onPressed: () {
+          Navigator.pop(context);
+          _sendMessage(text);
+        },
+        style: ElevatedButton.styleFrom(
+          minimumSize: const Size(double.infinity, 40),
+        ),
+        child: Text(text),
+      ),
+    );
+  }
+
+  // =============================================================================
+  // UI HELPER METHODS
+  // =============================================================================
+  
+  void _showGroupInfo() {
+    setState(() {
+      _isGroupInfoOpen = true;
+    });
+  }
+
+  void _showOfflineStatus() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Offline Status'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Status: ${_isOnline ? "Online" : "Offline"}'),
+            Text('Syncing: ${_isSyncing ? "Yes" : "No"}'),
+            Text('Offline Messages: ${_offlineMessages.length}'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSearchFilters() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Search Filters'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            DropdownButtonFormField<String>(
+              value: _searchMessageType,
+              decoration: const InputDecoration(labelText: 'Message Type'),
+              items: const [
+                DropdownMenuItem(value: 'all', child: Text('All Messages')),
+                DropdownMenuItem(value: 'text', child: Text('Text Only')),
+                DropdownMenuItem(value: 'image', child: Text('Images Only')),
+                DropdownMenuItem(value: 'document', child: Text('Documents Only')),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _searchMessageType = value ?? 'all';
+                });
+              },
+            ),
+            const SizedBox(height: 16),
+            DropdownButtonFormField<String>(
+              value: _searchDateRange,
+              decoration: const InputDecoration(labelText: 'Date Range'),
+              items: const [
+                DropdownMenuItem(value: 'all', child: Text('All Time')),
+                DropdownMenuItem(value: 'today', child: Text('Today')),
+                DropdownMenuItem(value: 'week', child: Text('This Week')),
+                DropdownMenuItem(value: 'month', child: Text('This Month')),
+              ],
+              onChanged: (value) {
+                setState(() {
+                  _searchDateRange = value ?? 'all';
+                });
+              },
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _searchMessages(_searchController.text);
+            },
+            child: const Text('Apply'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =============================================================================
+  // SEARCH METHODS
+  // =============================================================================
+  
+  void _saveSearchQuery() {
+    final query = _searchController.text.trim();
+    if (query.isNotEmpty && !_searchHistory.contains(query)) {
+      setState(() {
+        _searchHistory.insert(0, query);
+        if (_searchHistory.length > 10) {
+          _searchHistory = _searchHistory.take(10).toList();
+        }
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Search query saved to history'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    }
+  }
+  
+  void _removeSearchHistory(String query) {
+    setState(() {
+      _searchHistory.remove(query);
+    });
+  }
+  
+  Future<void> _searchMessages(String query) async {
+    if (query.trim().isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _searchQuery = '';
+      });
+      return;
+    }
+    
+    try {
+      setState(() {
+        _isSearchingHistory = true;
+      });
+      
+      Query searchQuery = FirebaseFirestore.instance
+          .collection('chats')
+          .doc(widget.chatId)
+          .collection('messages')
+          .where('text', isGreaterThanOrEqualTo: query)
+          .where('text', isLessThan: query + '\uf8ff');
+      
+      if (_searchMessageType != 'all') {
+        searchQuery = searchQuery.where('type', isEqualTo: _searchMessageType);
+      }
+      
+      if (_searchDateRange != 'all') {
+        final now = DateTime.now();
+        DateTime startDate;
+        
+        switch (_searchDateRange) {
+          case 'today':
+            startDate = DateTime(now.year, now.month, now.day);
+            break;
+          case 'week':
+            startDate = now.subtract(Duration(days: now.weekday - 1));
+            break;
+          case 'month':
+            startDate = DateTime(now.year, now.month, 1);
+            break;
+          default:
+            startDate = DateTime(1970);
+        }
+        
+        searchQuery = searchQuery.where('timestamp', isGreaterThanOrEqualTo: Timestamp.fromDate(startDate));
+      }
+      
+      final snapshot = await searchQuery.limit(50).get();
+      
+      setState(() {
+        _searchResults = snapshot.docs;
+        _searchQuery = query;
+        _isSearchingHistory = false;
+      });
+      
+      if (query.trim().isNotEmpty && !_searchHistory.contains(query.trim())) {
+        setState(() {
+          _searchHistory.insert(0, query.trim());
+          if (_searchHistory.length > 10) {
+            _searchHistory = _searchHistory.take(10).toList();
+          }
+        });
+      }
+      
+    } catch (e) {
+      setState(() {
+        _isSearchingHistory = false;
+      });
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error searching messages: $e')),
+        );
+      }
+    }
+  }
+
+  // =============================================================================
+  // BUILD METHOD
+  // =============================================================================
+  
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.chatName),
+        backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            onPressed: () => _themeService.toggleTheme(),
+            icon: Icon(
+              _themeService.isDarkMode ? Icons.light_mode : Icons.dark_mode,
+              color: Colors.white,
+            ),
+          ),
+          if (widget.isGroupChat) ...[
+            IconButton(
+              onPressed: _showGroupInfo,
+              icon: const Icon(Icons.info_outline),
+            ),
+          ],
+        ],
+      ),
+      body: Column(
+        children: [
+          // Search bar
+          if (_isSearching) ...[
+            Container(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _searchController,
+                    decoration: InputDecoration(
+                      hintText: 'Search messages...',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: IconButton(
+                        onPressed: () {
+                          setState(() {
+                            _isSearching = false;
+                            _searchQuery = '';
+                            _searchResults = [];
+                          });
+                        },
+                        icon: const Icon(Icons.close),
+                      ),
+                    ),
+                    onSubmitted: _searchMessages,
+                  ),
+                ],
+              ),
+            ),
+          ],
+          
+          // Messages area - No loading indicator, just show content
+          Expanded(
+            child: StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('chats')
+                  .doc(widget.chatId)
+                  .collection('messages')
+                  .orderBy('timestamp', descending: true)
+                  .limit(_messageLimit)
+                  .snapshots(),
+              builder: (context, snapshot) {
+                // Handle errors gracefully without showing loading
+                if (snapshot.hasError) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const Icon(Icons.error_outline, size: 64, color: Colors.orange),
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Error loading messages',
+                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 8),
+                        Text('Error: ${snapshot.error}'),
+                        const SizedBox(height: 16),
+                        ElevatedButton(
+                          onPressed: _retryLoading,
+                          child: const Text('Retry'),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                
+                // Get messages - show empty state if no messages, otherwise show content
+                final messages = snapshot.data?.docs ?? [];
+                
+                // Mark messages as read in background without blocking UI
+                if (messages.isNotEmpty) {
+                  WidgetsBinding.instance.addPostFrameCallback((_) {
+                    _markMessagesAsRead(messages);
+                  });
+                }
+                
+                if (messages.isEmpty) {
+                  // Show empty state without loading indicator
+                  return const Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.chat_bubble_outline, size: 64, color: Colors.grey),
+                        SizedBox(height: 16),
+                        Text(
+                          'No messages yet',
+                          style: TextStyle(fontSize: 18, color: Colors.grey),
+                        ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Start the conversation!',
+                          style: TextStyle(fontSize: 14, color: Colors.grey),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                
+                // Show messages with load more functionality
+                return ListView.builder(
+                  reverse: true,
+                  controller: _scrollController,
+                  itemCount: messages.length + (_hasMoreMessages ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index == messages.length) {
+                      // Load more indicator - only show when actually loading
+                      return _buildLoadMoreIndicator();
+                    }
+                    
+                    final message = messages[index];
+                    return _buildMessageBubble(message);
+                  },
+                );
+              },
+            ),
+          ),
+          
+          // Input area
+          Container(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                // Media attachment row
+                Row(
+                  children: [
+                    IconButton(
+                      onPressed: () => _pickImageFromGallery(),
+                      icon: const Icon(Icons.photo_library, color: Colors.blue),
+                      tooltip: 'Add Photo',
+                    ),
+                    IconButton(
+                      onPressed: () => _pickImageFromCamera(),
+                      icon: const Icon(Icons.camera_alt, color: Colors.green),
+                      tooltip: 'Take Photo',
+                    ),
+                    IconButton(
+                      onPressed: () => _pickDocument(),
+                      icon: const Icon(Icons.attach_file, color: Colors.orange),
+                      tooltip: 'Attach File',
+                    ),
+                    IconButton(
+                      onPressed: () => _toggleVoiceRecording(),
+                      icon: Icon(
+                        _isRecordingVoice ? Icons.stop : Icons.mic,
+                        color: _isRecordingVoice ? Colors.red : Colors.purple,
+                      ),
+                      tooltip: _isRecordingVoice ? 'Stop Recording' : 'Voice Message',
+                    ),
+                    const Spacer(),
+                    if (_isRecordingVoice) ...[
+                      Text('Recording... ${_recordingDuration}s'),
+                      const SizedBox(width: 8),
+                    ],
+                  ],
+                ),
+                
+                // Message input row
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: _messageController,
+                        decoration: const InputDecoration(
+                          hintText: 'Type a message...',
+                          border: OutlineInputBorder(),
+                        ),
+                        onSubmitted: (value) {
+                          if (value.trim().isNotEmpty) {
+                            _sendMessage();
+                          }
+                        },
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    ValueListenableBuilder<TextEditingValue>(
+                      valueListenable: _messageController,
+                      builder: (context, value, child) {
+                        final hasText = value.text.trim().isNotEmpty;
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: hasText 
+                                ? Theme.of(context).colorScheme.primary
+                                : Colors.grey.shade300,
+                            shape: BoxShape.circle,
+                          ),
+                          child: IconButton(
+                            onPressed: hasText ? _sendMessage : null,
+                            icon: Icon(
+                              Icons.send,
+                              color: hasText ? Colors.white : Colors.grey.shade600,
+                              size: 20,
+                            ),
+                            tooltip: hasText ? 'Send Message' : 'Type a message to send',
+                            style: IconButton.styleFrom(
+                              padding: const EdgeInsets.all(12),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =============================================================================
+  // BACKGROUND LOADING METHODS
+  // =============================================================================
+  
+  /// Retry loading messages without showing loading state
+  void _retryLoading() {
+    // Silently retry by refreshing the stream
+    _startMessageStream();
+  }
+
+  /// Load more messages in background without blocking UI
+  Future<void> _loadMoreMessages() async {
+    if (_isLoadingMoreMessages || !_hasMoreMessages || _lastMessage == null) {
+      return;
+    }
+
+    // Set loading state without showing indicator
+    setState(() {
+      _isLoadingMoreMessages = true;
+    });
+
+    try {
+      final query = FirebaseFirestore.instance
+          .collection('chats')
+          .doc(widget.chatId)
+          .collection('messages')
+          .orderBy('timestamp', descending: true)
+          .startAfterDocument(_lastMessage!)
+          .limit(_messageLimit);
+
+      final snapshot = await query.get();
+      
+      if (mounted) {
+        setState(() {
+          _hasMoreMessages = snapshot.docs.length >= _messageLimit;
+          if (snapshot.docs.length > 0) {
+            _lastMessage = snapshot.docs.last;
+          }
+          _isLoadingMoreMessages = false;
+        });
+      }
+    } catch (e) {
+      Log.e('Error loading more messages', 'CHAT_SCREEN', e);
+      if (mounted) {
+        setState(() {
+          _isLoadingMoreMessages = false;
+        });
+        // Show error only if it's a critical failure
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load more messages'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    }
+  }
+
+  // =============================================================================
+  // MESSAGE BUILDING
+  // =============================================================================
+  
+  Widget _buildLoadMoreIndicator() {
+    // Only show when actually loading, otherwise show load more button
+    if (_isLoadingMoreMessages) {
+      return Container(
+        padding: const EdgeInsets.all(16),
+        child: const Center(
+          child: SizedBox(
+            width: 20,
+            height: 20,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        ),
+      );
+    }
+    
+    return Container(
+      padding: const EdgeInsets.all(16),
+      child: Center(
+        child: TextButton(
+          onPressed: _loadMoreMessages,
+          child: const Text('Load More Messages'),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageBubble(DocumentSnapshot messageDoc) {
+    final data = messageDoc.data() as Map<String, dynamic>;
+    final text = data['text'] ?? '';
+    final senderId = data['senderId'] ?? '';
+    final senderName = data['senderName'] ?? 'Unknown User';
+    final timestamp = data['timestamp'] as Timestamp?;
+    final messageType = data['type'] ?? 'text';
+    final isCurrentUser = senderId == _currentUserId;
+    
+    return Container(
+      margin: EdgeInsets.only(
+        left: isCurrentUser ? 50 : 8,
+        right: isCurrentUser ? 8 : 50,
+        bottom: 8,
+      ),
+      child: Row(
+        mainAxisAlignment: isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!isCurrentUser) ...[
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.grey.shade300,
+              child: Text(
+                _getInitials(senderName),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: isCurrentUser 
+                    ? Theme.of(context).colorScheme.primary
+                    : Colors.grey.shade200,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!isCurrentUser) ...[
+                    Text(
+                      senderName,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isCurrentUser ? Colors.white : Colors.black87,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                  ],
+                  // Display different content based on message type
+                  _buildMessageContent(data, messageType, isCurrentUser),
+                  if (timestamp != null) ...[
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _formatTime(timestamp),
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: isCurrentUser ? Colors.white70 : Colors.black54,
+                          ),
+                        ),
+                        if (isCurrentUser) ...[
+                          const SizedBox(width: 4),
+                          _buildMessageStatusIcon(_getMessageStatus(messageDoc.id), isCurrentUser),
+                        ],
+                      ],
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          if (isCurrentUser) ...[
+            const SizedBox(width: 8),
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: Colors.grey.shade300,
+              child: Text(
+                _getInitials(_currentUserDisplayName ?? 'User'),
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildMessageContent(Map<String, dynamic> data, String messageType, bool isCurrentUser) {
+    switch (messageType) {
+      case 'image':
+        return _buildImageContent(data, isCurrentUser);
+      case 'audio':
+        return _buildAudioContent(data, isCurrentUser);
+      case 'document':
+        return _buildDocumentContent(data, isCurrentUser);
+      case 'text':
+      default:
+        return Text(
+          data['text'] ?? '',
+          style: TextStyle(
+            color: isCurrentUser ? Colors.white : Colors.black87,
+          ),
+        );
+    }
+  }
+
+  Widget _buildImageContent(Map<String, dynamic> data, bool isCurrentUser) {
+    final mediaUrl = data['mediaUrl'] as String?;
+    final text = data['text'] ?? '📷 Image';
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        if (mediaUrl != null && mediaUrl.isNotEmpty) ...[
+          Container(
+            constraints: const BoxConstraints(
+              maxWidth: 200,
+              maxHeight: 200,
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                mediaUrl,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return Container(
+                    width: 200,
+                    height: 150,
+                    color: Colors.grey.shade300,
+                    child: Center(
+                      child: CircularProgressIndicator(
+                        value: loadingProgress.expectedTotalBytes != null
+                            ? loadingProgress.cumulativeBytesLoaded / 
+                              loadingProgress.expectedTotalBytes!
+                            : null,
+                      ),
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: 200,
+                    height: 150,
+                    color: Colors.grey.shade300,
+                    child: const Icon(Icons.broken_image, size: 50),
+                  );
+                },
+              ),
+            ),
+          ),
+          const SizedBox(height: 8),
+        ],
+        Text(
+          text,
+          style: TextStyle(
+            color: isCurrentUser ? Colors.white : Colors.black87,
+            fontSize: 12,
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAudioContent(Map<String, dynamic> data, bool isCurrentUser) {
+    final mediaUrl = data['mediaUrl'] as String?;
+    final text = data['text'] ?? '🎵 Voice Message';
+    
+    return GestureDetector(
+      onTap: () => _playVoiceMessage(mediaUrl),
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isCurrentUser ? Colors.blue.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isCurrentUser ? Colors.blue : Colors.grey,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.play_circle_filled,
+              color: isCurrentUser ? Colors.white : Colors.black87,
+              size: 32,
+            ),
+            const SizedBox(width: 12),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  text,
+                  style: TextStyle(
+                    color: isCurrentUser ? Colors.white : Colors.black87,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Tap to play',
+                  style: TextStyle(
+                    color: isCurrentUser ? Colors.white70 : Colors.black54,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDocumentContent(Map<String, dynamic> data, bool isCurrentUser) {
+    final text = data['text'] ?? '📎 Document';
+    final mimeType = data['mimeType'] ?? 'application/octet-stream';
+    final mediaUrl = data['mediaUrl'];
+    
+    // Extract file information from the text
+    String fileName = text;
+    String? extension;
+    String fileType = 'Document';
+    String fileSize = '0 B';
+    
+    if (text.contains('|')) {
+      final parts = text.split('|');
+      if (parts.length >= 3) {
+        fileName = parts[0];
+        fileType = parts[1];
+        fileSize = parts[2];
+        
+        if (fileName.contains('.')) {
+          extension = fileName.split('.').last.toLowerCase();
+        }
+      }
+    } else if (text.contains('.')) {
+      extension = text.split('.').last.toLowerCase();
+      fileType = DocumentService.getFileType(extension);
+      
+      if (data['fileSize'] != null && data['fileSize'] != '0 B') {
+        fileSize = data['fileSize'];
+      }
+    }
+    
+    final fileIcon = DocumentService.getFileIcon(extension);
+    final fileColor = Color(DocumentService.getFileColor(extension));
+    
+    return GestureDetector(
+      onTap: () {
+        if (mediaUrl != null) {
+          _openDocument(mediaUrl, fileName);
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isCurrentUser ? Colors.blue.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: fileColor.withOpacity(0.3),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              fileIcon,
+              style: TextStyle(fontSize: 32),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    fileName,
+                    style: TextStyle(
+                      color: isCurrentUser ? Colors.white : Colors.black87,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    fileType,
+                    style: TextStyle(
+                      color: isCurrentUser ? Colors.white70 : Colors.black54,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    fileSize,
+                    style: TextStyle(
+                      color: isCurrentUser ? Colors.white60 : Colors.black45,
+                      fontSize: 10,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Tap to open',
+                    style: TextStyle(
+                      color: fileColor,
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Icon(
+              Icons.open_in_new,
+              color: fileColor,
+              size: 20,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // =============================================================================
+  // UTILITY METHODS
+  // =============================================================================
+  
+  String _getInitials(String name) {
+    if (name.isEmpty) return 'U';
+    return name[0].toUpperCase();
+  }
+
+  String _formatTime(Timestamp timestamp) {
+    try {
+      final messageTime = timestamp.toDate();
+      return '${messageTime.hour.toString().padLeft(2, '0')}:${messageTime.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return '--:--';
+    }
+  }
+
+  Future<void> _playVoiceMessage(String? mediaUrl) async {
+    if (mediaUrl == null) return;
+    
+    try {
+      // TODO: Implement voice message playback
+      // This is a placeholder for the voice message playback functionality
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Voice message playback not yet implemented')),
+      );
+    } catch (e) {
+      Log.e('Error playing voice message', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error playing voice message: $e')),
+      );
+    }
+  }
+
+  Future<void> _openDocument(String mediaUrl, String fileName) async {
+    try {
+      final success = await DocumentService.openDocument(mediaUrl, fileName);
+      if (!success) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not open document. Please check if you have the appropriate app installed.')),
+        );
+      }
+    } catch (e) {
+      Log.e('Error opening document', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error opening document: $e')),
+      );
+    }
+  }
+} 

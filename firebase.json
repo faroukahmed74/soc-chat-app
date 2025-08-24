@@ -1,0 +1,46 @@
+{
+  "flutter": {
+    "platforms": {
+      "android": {
+        "default": {
+          "projectId": "soc-chat-app-ca57e",
+          "appId": "1:889400273440:android:2da928cdb9eb167b13aa45",
+          "fileOutput": "android/app/google-services.json"
+        }
+      },
+      "ios": {
+        "default": {
+          "projectId": "soc-chat-app-ca57e",
+          "appId": "1:889400273440:ios:9a39afa854b3e88e13aa45",
+          "uploadDebugSymbols": false,
+          "fileOutput": "ios/Runner/GoogleService-Info.plist"
+        }
+      },
+      "macos": {
+        "default": {
+          "projectId": "soc-chat-app-ca57e",
+          "appId": "1:889400273440:ios:9a39afa854b3e88e13aa45",
+          "uploadDebugSymbols": false,
+          "fileOutput": "macos/Runner/GoogleService-Info.plist"
+        }
+      },
+      "dart": {
+        "lib/firebase_options.dart": {
+          "projectId": "soc-chat-app-ca57e",
+          "configurations": {
+            "android": "1:889400273440:android:2da928cdb9eb167b13aa45",
+            "ios": "1:889400273440:ios:9a39afa854b3e88e13aa45",
+            "macos": "1:889400273440:ios:9a39afa854b3e88e13aa45",
+            "web": "1:889400273440:web:319b144169e0312713aa45",
+            "windows": "1:889400273440:web:1985b5ebdf118e3e13aa45"
+          }
+        }
+      }
+    }
+  },
+  "firestore": {
+    "database": "(default)",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  }
+}

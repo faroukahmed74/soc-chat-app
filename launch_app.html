@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SOC Chat App Launcher</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            padding: 50px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: 0;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+        .container {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 40px;
+            border-radius: 20px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+        }
+        h1 {
+            margin-bottom: 20px;
+            font-size: 2.5em;
+        }
+        .launch-btn {
+            background: #4CAF50;
+            color: white;
+            padding: 15px 30px;
+            border: none;
+            border-radius: 25px;
+            font-size: 1.2em;
+            cursor: pointer;
+            margin: 20px;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .launch-btn:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+        }
+        .info {
+            margin-top: 30px;
+            font-size: 0.9em;
+            opacity: 0.8;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🚀 SOC Chat App</h1>
+        <p>Click the button below to launch your chat application</p>
+        
+        <a href="build/web/index.html" class="launch-btn" onclick="launchApp()">
+            Launch App
+        </a>
+        
+        <div class="info">
+            <p><strong>Local Network Access:</strong> http://10.120.9.88:8080</p>
+            <p><strong>Local Access:</strong> http://localhost:8080</p>
+        </div>
+    </div>
+
+    <script>
+        function launchApp() {
+            // Try to open the app in a new window
+            try {
+                window.open('build/web/index.html', '_blank');
+            } catch (e) {
+                // Fallback to current window
+                window.location.href = 'build/web/index.html';
+            }
+        }
+        
+        // Auto-launch after 3 seconds
+        setTimeout(() => {
+            launchApp();
+        }, 3000);
+    </script>
+</body>
+</html>
