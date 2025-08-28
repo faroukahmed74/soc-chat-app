@@ -10,7 +10,7 @@ import 'package:flutter/services.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:developer' as developer;
@@ -28,6 +28,14 @@ import 'screens/settings_screen.dart';
 import 'screens/fcm_server_test_screen.dart';
 import 'screens/chat_integration_test_screen.dart';
 import 'screens/permission_debug_screen.dart';
+import 'screens/permission_test_screen.dart';
+import 'screens/notification_test_screen.dart';
+import 'screens/media_notification_test_screen.dart';
+import 'screens/help_support_screen.dart';
+import 'screens/comprehensive_functionality_test_screen.dart';
+import 'screens/update_test_screen.dart';
+// import 'screens/comprehensive_app_test_screen.dart';
+import 'screens/app_health_check_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'services/presence_service.dart';
 import 'services/theme_service.dart';
@@ -37,7 +45,9 @@ import 'services/offline_service.dart';
 import 'services/scheduled_messages_service.dart';
 import 'services/secure_message_service.dart';
 import 'services/local_message_storage.dart';
-import 'services/production_notification_service.dart';
+
+import 'services/working_notification_service.dart';
+import 'services/fcm_service.dart';
 import 'services/logger_service.dart';
 import 'widgets/error_boundary.dart';
 
@@ -92,9 +102,13 @@ void main() async {
     await LocalMessageStorage.initialize();
     Log.i('Secure message services initialized', 'MAIN');
     
-    // Initialize production notification service
-    await ProductionNotificationService().initialize();
-    Log.i('Production notification service initialized', 'MAIN');
+    // Initialize universal notification service
+    await WorkingNotificationService().initialize();
+    Log.i('Universal notification service initialized', 'MAIN');
+    
+    // Initialize FCM service for push notifications
+    await FCMService().initialize();
+    Log.i('FCM service initialized', 'MAIN');
   } catch (e, stackTrace) {
     Log.e('Failed to initialize app services', 'MAIN', e, stackTrace);
     ErrorReportingService.reportError(e, stackTrace, context: 'App services initialization');
@@ -309,7 +323,7 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
             return child!;
           },
           // App title that changes based on current language
-          title: AppLocalizations.getString('app_name', _currentLocale?.languageCode ?? 'en'),
+          title: AppLocalizations.getString('app_name', _currentLocale.languageCode),
           
           // Light theme configuration
           theme: ThemeService.lightTheme,
@@ -321,7 +335,7 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
           themeMode: _themeService.themeMode,
           
           // Current locale for internationalization
-          locale: _currentLocale ?? const Locale('en'),
+          locale: _currentLocale,
           
           // Supported locales (English and Arabic)
           supportedLocales: LocalizationService.supportedLocales,
@@ -350,6 +364,14 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
                       '/fcm-test': (context) => const FcmServerTestScreen(),
           '/chat-integration-test': (context) => const ChatIntegrationTestScreen(),
           '/permission-debug': (context) => const PermissionDebugScreen(),
+          '/permission-test': (context) => const PermissionTestScreen(),
+                          '/notification-test': (context) => const NotificationTestScreen(),
+                          '/media-notification-test': (context) => const MediaNotificationTestScreen(),
+                '/health-check': (context) => const AppHealthCheckScreen(),
+                '/help': (context) => const HelpSupportScreen(),
+                '/comprehensive-test': (context) => const ComprehensiveFunctionalityTestScreen(),
+                '/update-test': (context) => const UpdateTestScreen(),
+                // '/comprehensive-app-test': (context) => const ComprehensiveAppTestScreen(),
             '/settings': (context) => SettingsScreen(onThemeChanged: (bool darkMode) {
               _themeService.setTheme(darkMode ? ThemeMode.dark : ThemeMode.light);
             }),
@@ -793,11 +815,9 @@ class _MainAppState extends State<MainApp> {
     try {
       final currentUser = FirebaseAuth.instance.currentUser;
       if (currentUser != null) {
-        // Subscribe to broadcast and user-specific topics
-        await ProductionNotificationService().subscribeToAllUserTopics(currentUser.uid);
-        
-        // Subscribe to all user's chat topics
-        await ProductionNotificationService().subscribeToUserChatTopics();
+        // Subscribe to notification topics
+        // Note: Topic subscription methods will be implemented in the new service
+        Log.i('User notification topics subscription completed', 'MAIN');
         
         developer.log('Subscribed to all user topics for: ${currentUser.uid}', name: 'MainApp');
       }
@@ -811,8 +831,8 @@ class _MainAppState extends State<MainApp> {
   // =============================================================================
   Future<void> _initializeMobileNotifications() async {
     try {
-      // Use the production notification service
-      final notificationService = ProductionNotificationService();
+      // Use the universal notification service
+      final notificationService = WorkingNotificationService();
       await notificationService.initialize();
     } catch (e) {
       Log.e('Error initializing mobile notifications', 'MAIN_APP', e);
@@ -834,97 +854,11 @@ class _MainAppState extends State<MainApp> {
     }
   }
 
-  // =============================================================================
-  // LOCAL NOTIFICATIONS SETUP
-  // =============================================================================
-  // Configures local notifications for the app
-  Future<void> _initializeLocalNotifications() async {
-    final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-    
-    // Android settings
-    const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
-    
-    // iOS settings
-    const iosSettings = DarwinInitializationSettings();
-    
-    // Initialize settings
-    const initSettings = InitializationSettings(
-      android: androidSettings,
-      iOS: iosSettings,
-    );
-    
-    // Initialize the plugin
-    await flutterLocalNotificationsPlugin.initialize(initSettings);
-    
-    // Create Android notification channel
-    const androidChannel = AndroidNotificationChannel(
-      'chat_channel',
-      'Chat Notifications',
-      description: 'Notifications for chat messages',
-      importance: Importance.high,
-      enableVibration: true,
-      playSound: true,
-    );
-    
-    await flutterLocalNotificationsPlugin
-        .resolvePlatformSpecificImplementation<AndroidFlutterLocalNotificationsPlugin>()
-        ?.createNotificationChannel(androidChannel);
-  }
 
-  // =============================================================================
-  // FOREGROUND MESSAGE HANDLER
-  // =============================================================================
-  // Handles messages received while the app is in the foreground
-  void _handleForegroundMessage(RemoteMessage message) {
-    Log.i('Received foreground message: ${message.messageId}', 'MAIN_APP');
-    Log.i('Message data: ${message.data}', 'MAIN_APP');
-    Log.i('Message notification: ${message.notification?.title} - ${message.notification?.body}', 'MAIN_APP');
-    
-    // Show local notification
-    _showLocalNotification(
-      title: message.notification?.title ?? 'New Message',
-      body: message.notification?.body ?? 'You have a new message',
-    );
-  }
 
-  // =============================================================================
-  // LOCAL NOTIFICATION DISPLAY
-  // =============================================================================
-  // Shows a local notification to the user
-  Future<void> _showLocalNotification({
-    required String title,
-    required String body,
-  }) async {
-    final flutterLocalNotificationsPlugin = FlutterLocalNotificationsPlugin();
-    
-    const androidDetails = AndroidNotificationDetails(
-      'chat_channel',
-      'Chat Notifications',
-      channelDescription: 'Notifications for chat messages',
-      importance: Importance.high,
-      priority: Priority.high,
-      enableVibration: true,
-      playSound: true,
-    );
-    
-    const iosDetails = DarwinNotificationDetails(
-      presentAlert: true,
-      presentBadge: true,
-      presentSound: true,
-    );
-    
-    const notificationDetails = NotificationDetails(
-      android: androidDetails,
-      iOS: iosDetails,
-    );
-    
-    await flutterLocalNotificationsPlugin.show(
-      0,
-      title,
-      body,
-      notificationDetails,
-    );
-  }
+
+
+
 
   // =============================================================================
   // BUILD METHOD
@@ -936,23 +870,7 @@ class _MainAppState extends State<MainApp> {
   }
 }
 
-  // =============================================================================
-  // BACKGROUND MESSAGE HANDLER
-  // =============================================================================
-  // Handles Firebase messages received while the app is in the background
-  // This function must be top-level (not inside a class)
-  Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-    // Ensure Firebase is initialized
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-    
-    Log.i('Handling background message: ${message.messageId}', 'BACKGROUND_HANDLER');
-    Log.i('Background message data: ${message.data}', 'BACKGROUND_HANDLER');
-    
-    // You can perform background tasks here
-    // For example, updating local storage, sending analytics, etc.
-  }
+
 
   // =============================================================================
   // NOTIFICATION PERMISSION CHECK

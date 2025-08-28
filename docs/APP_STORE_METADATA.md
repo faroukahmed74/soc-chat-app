@@ -7,7 +7,7 @@
 
 ### Basic Details
 - **App Name:** SOC Chat App
-- **Bundle ID:** com.example.socChatApp
+- **Bundle ID:** com.faroukahmed74.socchatapp
 - **Category:** Social Networking
 - **Subcategory:** Communication
 - **Age Rating:** 12+ (Teen)
@@ -114,7 +114,7 @@ chat, messaging, group chat, secure messaging, social networking, communication,
 
 ### App Information
 - **Primary Language:** English
-- **Bundle ID:** com.example.socChatApp
+- **Bundle ID:** com.faroukahmed74.socchatapp
 - **SKU:** soc-chat-app-001
 - **User Access:** Full Access
 

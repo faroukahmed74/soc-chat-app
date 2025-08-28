@@ -1,386 +1,517 @@
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import '../services/production_notification_service.dart';
-import '../services/logger_service.dart'; // Added import for logging
-import 'package:flutter/foundation.dart';
 
+import 'dart:convert';
+import '../services/universal_notification_service.dart';
+import '../services/logger_service.dart';
+
+/// Comprehensive notification testing screen
+/// Helps debug notification issues on Android, iOS, and Web
 class NotificationTestScreen extends StatefulWidget {
-  const NotificationTestScreen({super.key});
+  const NotificationTestScreen({Key? key}) : super(key: key);
 
   @override
   State<NotificationTestScreen> createState() => _NotificationTestScreenState();
 }
 
 class _NotificationTestScreenState extends State<NotificationTestScreen> {
-  final ProductionNotificationService _notificationService = ProductionNotificationService();
+  final UniversalNotificationService _notificationService = UniversalNotificationService();
+  
+  Map<String, dynamic> _notificationStatus = {};
   bool _isLoading = false;
-  String _statusMessage = '';
-  String _fcmToken = '';
-  String _permissionStatus = 'Unknown';
-  List<Map<String, dynamic>> _users = [];
+  bool _isInitializing = false;
+  bool _isRequestingPermission = false;
+  bool _isSendingNotification = false;
 
   @override
   void initState() {
     super.initState();
-    _loadNotificationInfo();
-    _loadUsers();
+    _loadNotificationStatus();
   }
 
-  Future<void> _loadNotificationInfo() async {
-    setState(() => _isLoading = true);
-    
-    try {
-      // Get FCM token
-      final token = await _notificationService.getFcmToken();
-      setState(() => _fcmToken = token ?? 'No token available');
+  /// Load current notification status
+  Future<void> _loadNotificationStatus() async {
+    setState(() {
+      _isLoading = true;
+    });
 
-      // Get permission status
-      final status = await _notificationService.getNotificationPermissionStatus();
-      setState(() => _permissionStatus = status.toString().split('.').last);
+    try {
+      final status = await _notificationService.getNotificationStatus();
+      setState(() {
+        _notificationStatus = status;
+        _isLoading = false;
+      });
+    } catch (e) {
+      Log.e('Error loading notification status', 'NOTIFICATION_TEST', e);
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  /// Initialize notification service
+  Future<void> _initializeNotificationService() async {
+    setState(() {
+      _isInitializing = true;
+    });
+
+    try {
+      await _notificationService.initialize();
       
-    } catch (e) {
-      setState(() => _statusMessage = 'Error loading info: $e');
-    } finally {
-      setState(() => _isLoading = false);
-    }
-  }
-
-  Future<void> _loadUsers() async {
-    try {
-      final snapshot = await FirebaseFirestore.instance.collection('users').get();
-      final users = snapshot.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'name': data['displayName'] ?? data['email'] ?? 'Unknown User',
-          'email': data['email'] ?? 'No email',
-          'platform': data['platform'] ?? 'Unknown',
-          'hasFcmToken': data['fcmToken'] != null,
-        };
-      }).toList();
+      // Reload status after initialization
+      await _loadNotificationStatus();
       
-      setState(() => _users = users);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Notification service initialized successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      Log.e('Error loading users', 'NOTIFICATION_TEST', e);
+      Log.e('Error initializing notification service', 'NOTIFICATION_TEST', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error initializing: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isInitializing = false;
+      });
     }
   }
 
-  Future<void> _testLocalNotification() async {
-    setState(() => _isLoading = true);
-    
+  /// Request notification permission
+  Future<void> _requestNotificationPermission() async {
+    setState(() {
+      _isRequestingPermission = true;
+    });
+
     try {
-      await _notificationService.sendTestNotification();
-      setState(() => _statusMessage = '✅ Local test notification sent successfully!');
+      final hasPermission = await _notificationService.requestPermission();
+      
+      // Reload status after permission request
+      await _loadNotificationStatus();
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(hasPermission 
+            ? 'Notification permission granted!' 
+            : 'Notification permission denied'),
+          backgroundColor: hasPermission ? Colors.green : Colors.orange,
+        ),
+      );
     } catch (e) {
-      setState(() => _statusMessage = '❌ Error sending local notification: $e');
+      Log.e('Error requesting notification permission', 'NOTIFICATION_TEST', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error requesting permission: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isRequestingPermission = false;
+      });
     }
   }
 
-  Future<void> _testNotificationToAllUsers() async {
-    setState(() => _isLoading = true);
-    
+  /// Send test notification
+  Future<void> _sendTestNotification() async {
+    setState(() {
+      _isSendingNotification = true;
+    });
+
     try {
-      // Send test notification to all users via Firestore
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser != null) {
-        final testNotification = {
-          'type': 'test_notification',
-          'title': '🧪 Test Notification',
-          'body': 'This is a test notification sent to all users!',
-          'senderId': currentUser.uid,
-          'senderName': currentUser.displayName ?? currentUser.email ?? 'Admin',
-          'timestamp': FieldValue.serverTimestamp(),
-          'platform': kIsWeb ? 'web' : (defaultTargetPlatform == TargetPlatform.iOS ? 'ios' : 'android'),
-        };
-
-        // Add to each user's notifications collection
-        int successCount = 0;
-        for (final user in _users) {
-          try {
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(user['id'])
-                .collection('notifications')
-                .add(testNotification);
-            successCount++;
-          } catch (e) {
-            Log.e('Failed to send notification to user ${user['id']}', 'NOTIFICATION_TEST', e);
-          }
-        }
-
-        setState(() => _statusMessage = '✅ Test notification sent to $successCount users!');
-      }
+      await _notificationService.sendLocalNotification(
+        title: '🧪 Test Notification',
+        body: 'This is a test notification from the notification test screen!',
+        payload: jsonEncode({
+          'type': 'test',
+          'timestamp': DateTime.now().toIso8601String(),
+          'source': 'notification_test_screen',
+        }),
+        channelId: UniversalNotificationService.systemChannelId,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Test notification sent successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      setState(() => _statusMessage = '❌ Error sending test notifications: $e');
+      Log.e('Error sending test notification', 'NOTIFICATION_TEST', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error sending notification: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isSendingNotification = false;
+      });
     }
   }
 
-  Future<void> _requestPermission() async {
-    setState(() => _isLoading = true);
-    
+  /// Send test chat notification
+  Future<void> _sendTestChatNotification() async {
+    setState(() {
+      _isSendingNotification = true;
+    });
+
     try {
-      final granted = await _notificationService.requestNotificationPermission();
-      if (granted) {
-        setState(() => _statusMessage = '✅ Notification permission granted!');
-        await _loadNotificationInfo(); // Refresh info
-      } else {
-        setState(() => _statusMessage = '❌ Notification permission denied');
-      }
+      await _notificationService.sendLocalNotification(
+        title: '💬 New Message',
+        body: 'You have a new message from John Doe',
+        payload: jsonEncode({
+          'type': 'chat',
+          'chatId': 'test_chat_123',
+          'senderId': 'john_doe_456',
+          'senderName': 'John Doe',
+          'timestamp': DateTime.now().toIso8601String(),
+        }),
+        channelId: UniversalNotificationService.chatChannelId,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Test chat notification sent successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      setState(() => _statusMessage = '❌ Error requesting permission: $e');
+      Log.e('Error sending test chat notification', 'NOTIFICATION_TEST', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error sending chat notification: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isSendingNotification = false;
+      });
     }
   }
 
-  Future<void> _subscribeToTopic() async {
-    setState(() => _isLoading = true);
-    
+  /// Send test broadcast notification
+  Future<void> _sendTestBroadcastNotification() async {
+    setState(() {
+      _isSendingNotification = true;
+    });
+
     try {
-      await _notificationService.subscribeToTopic('test_topic');
-      setState(() => _statusMessage = '✅ Subscribed to test_topic!');
+      await _notificationService.sendLocalNotification(
+        title: '📢 Admin Broadcast',
+        body: 'Important announcement: System maintenance scheduled for tonight',
+        payload: jsonEncode({
+          'type': 'broadcast',
+          'adminId': 'admin_789',
+          'priority': 'high',
+          'timestamp': DateTime.now().toIso8601String(),
+        }),
+        channelId: UniversalNotificationService.broadcastChannelId,
+      );
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Test broadcast notification sent successfully!'),
+          backgroundColor: Colors.green,
+        ),
+      );
     } catch (e) {
-      setState(() => _statusMessage = '❌ Error subscribing to topic: $e');
+      Log.e('Error sending test broadcast notification', 'NOTIFICATION_TEST', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error sending broadcast notification: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
     } finally {
-      setState(() => _isLoading = false);
+      setState(() {
+        _isSendingNotification = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final platform = kIsWeb ? 'Web' : (defaultTargetPlatform == TargetPlatform.iOS ? 'iOS' : 'Android');
-    
     return Scaffold(
       appBar: AppBar(
         title: const Text('Notification Test'),
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            onPressed: _loadNotificationStatus,
+            icon: const Icon(Icons.refresh),
+          ),
+        ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Platform Info Card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Platform Information',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 16),
-                    _buildInfoRow('Platform', platform),
-                    _buildInfoRow('Permission Status', _permissionStatus),
-                    _buildInfoRow('FCM Token', _fcmToken.isNotEmpty ? '${_fcmToken.substring(0, 30)}...' : 'No token'),
-                  ],
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Test Actions Card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Test Actions',
-                      style: Theme.of(context).textTheme.titleLarge,
-                    ),
-                    const SizedBox(height: 16),
-                    
-                    // Local Test Notification
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoading ? null : _testLocalNotification,
-                        icon: const Icon(Icons.notifications),
-                        label: const Text('Send Local Test Notification'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.all(16),
-                        ),
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 8),
-                    
-                    // Test to All Users
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoading ? null : _testNotificationToAllUsers,
-                        icon: const Icon(Icons.send),
-                        label: const Text('Send Test to All Users'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.all(16),
-                        ),
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 8),
-                    
-                    // Request Permission
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoading ? null : _requestPermission,
-                        icon: const Icon(Icons.security),
-                        label: const Text('Request Notification Permission'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.all(16),
-                        ),
-                      ),
-                    ),
-                    
-                    const SizedBox(height: 8),
-                    
-                    // Subscribe to Topic
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: _isLoading ? null : _subscribeToTopic,
-                        icon: const Icon(Icons.topic),
-                        label: const Text('Subscribe to Test Topic'),
-                        style: ElevatedButton.styleFrom(
-                          padding: const EdgeInsets.all(16),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Status Message
-            if (_statusMessage.isNotEmpty) ...[
-              Card(
-                color: _statusMessage.contains('✅') ? Colors.green.shade50 : Colors.red.shade50,
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _statusMessage.contains('✅') ? Icons.check_circle : Icons.error,
-                        color: _statusMessage.contains('✅') ? Colors.green : Colors.red,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          _statusMessage,
-                          style: TextStyle(
-                            color: _statusMessage.contains('✅') ? Colors.green.shade800 : Colors.red.shade800,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Service Status
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Service Status',
+                            style: Theme.of(context).textTheme.titleLarge,
                           ),
-                        ),
+                          const SizedBox(height: 16),
+                          _buildStatusRow('Initialized', _notificationStatus['isInitialized'] ?? false),
+                          _buildStatusRow('Permission Granted', _notificationStatus['hasPermission'] ?? false),
+                          _buildStatusRow('Platform', _notificationStatus['platform'] ?? 'Unknown'),
+                          if (_notificationStatus['androidVersion'] != null)
+                            _buildStatusRow('Android Version', _notificationStatus['androidVersion']),
+                          if (_notificationStatus['fcmToken'] != null)
+                            _buildStatusRow('FCM Token', _notificationStatus['fcmToken']),
+                          _buildStatusRow('Timestamp', _notificationStatus['timestamp'] ?? 'Unknown'),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-            ],
-            
-            // Users List Card
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Users & FCM Status (${_users.length})',
-                      style: Theme.of(context).textTheme.titleLarge,
                     ),
-                    const SizedBox(height: 16),
-                    
-                    if (_users.isEmpty)
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.all(16),
-                          child: CircularProgressIndicator(),
-                        ),
-                      )
-                    else
-                      ListView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: _users.length,
-                        itemBuilder: (context, index) {
-                          final user = _users[index];
-                          return ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: user['hasFcmToken'] ? Colors.green : Colors.grey,
-                              child: Icon(
-                                user['hasFcmToken'] ? Icons.notifications_active : Icons.notifications_off,
-                                color: Colors.white,
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Control Buttons
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Service Controls',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Initialize Service Button
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _isInitializing ? null : _initializeNotificationService,
+                              icon: _isInitializing 
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.power_settings_new),
+                              label: Text(_isInitializing ? 'Initializing...' : 'Initialize Service'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.blue,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(16),
                               ),
                             ),
-                            title: Text(user['name']),
-                            subtitle: Text(user['email']),
-                            trailing: Chip(
-                              label: Text(user['platform']),
-                              backgroundColor: _getPlatformColor(user['platform']),
+                          ),
+                          
+                          const SizedBox(height: 8),
+                          
+                          // Request Permission Button
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _isRequestingPermission ? null : _requestNotificationPermission,
+                              icon: _isRequestingPermission 
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.security),
+                              label: Text(_isRequestingPermission ? 'Requesting...' : 'Request Permission'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(16),
+                              ),
                             ),
-                          );
-                        },
+                          ),
+                        ],
                       ),
-                  ],
-                ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Test Notifications
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Test Notifications',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 16),
+                          
+                          // Test System Notification
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _isSendingNotification ? null : _sendTestNotification,
+                              icon: _isSendingNotification 
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.notifications),
+                              label: const Text('Send Test Notification'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.green,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(16),
+                              ),
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 8),
+                          
+                          // Test Chat Notification
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _isSendingNotification ? null : _sendTestChatNotification,
+                              icon: _isSendingNotification 
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.chat),
+                              label: const Text('Send Test Chat Notification'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.purple,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(16),
+                              ),
+                            ),
+                          ),
+                          
+                          const SizedBox(height: 8),
+                          
+                          // Test Broadcast Notification
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton.icon(
+                              onPressed: _isSendingNotification ? null : _sendTestBroadcastNotification,
+                              icon: _isSendingNotification 
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                    )
+                                  : const Icon(Icons.broadcast_on_personal),
+                              label: const Text('Send Test Broadcast Notification'),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.red,
+                                foregroundColor: Colors.white,
+                                padding: const EdgeInsets.all(16),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // Debug Information
+                  if (_notificationStatus['error'] != null)
+                    Card(
+                      color: Colors.red.shade50,
+                      child: Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              'Error Information',
+                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                color: Colors.red.shade800,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            Text(
+                              _notificationStatus['error'],
+                              style: TextStyle(color: Colors.red.shade700),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Instructions
+                  Card(
+                    child: Padding(
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Testing Instructions',
+                            style: Theme.of(context).textTheme.titleLarge,
+                          ),
+                          const SizedBox(height: 8),
+                          const Text(
+                            '1. Initialize the notification service first\n'
+                            '2. Request notification permission if needed\n'
+                            '3. Send test notifications to verify functionality\n'
+                            '4. Check device notification settings if issues persist\n'
+                            '5. For Android 13+, ensure notification permission is granted',
+                            style: TextStyle(fontSize: 14),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ],
-        ),
-      ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value) {
+  /// Build status row
+  Widget _buildStatusRow(String label, dynamic value) {
+    final isBool = value is bool;
+    final color = isBool ? (value ? Colors.green : Colors.red) : Colors.grey.shade700;
+    final icon = isBool ? (value ? Icons.check_circle : Icons.cancel) : Icons.info;
+    
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(
-            width: 120,
-            child: Text(
-              '$label:',
-              style: const TextStyle(fontWeight: FontWeight.bold),
-            ),
+          Icon(icon, color: color, size: 20),
+          const SizedBox(width: 8),
+          Text(
+            '$label: ',
+            style: const TextStyle(fontWeight: FontWeight.bold),
           ),
-          Expanded(
-            child: Text(
-              value,
-              style: const TextStyle(fontFamily: 'monospace'),
-            ),
+          Text(
+            value.toString(),
+            style: TextStyle(color: color),
           ),
         ],
       ),
     );
-  }
-
-  Color _getPlatformColor(String platform) {
-    switch (platform.toLowerCase()) {
-      case 'android':
-        return Colors.green.shade100;
-      case 'ios':
-        return Colors.blue.shade100;
-      case 'web':
-        return Colors.orange.shade100;
-      default:
-        return Colors.grey.shade100;
-    }
   }
 }

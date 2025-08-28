@@ -8,9 +8,9 @@
   "client": [
     {
       "client_info": {
-        "mobilesdk_app_id": "1:889400273440:android:2da928cdb9eb167b13aa45",
+        "mobilesdk_app_id": "1:889400273440:android:062d33f7427a1d7013aa45",
         "android_client_info": {
-          "package_name": "com.example.socchatapp"
+          "package_name": "com.faroukahmed74.socchatapp"
         }
       },
       "oauth_client": [],

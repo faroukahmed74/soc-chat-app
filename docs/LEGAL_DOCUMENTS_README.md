@@ -136,7 +136,7 @@ Update these placeholders:
 
 ### App-Specific Information
 Verify these details match your app:
-- Bundle ID: `com.example.socChatApp`
+- Bundle ID: `com.faroukahmed74.socchatapp`
 - App Name: `SOC Chat App`
 - Version: `1.0.3`
 - Features and capabilities

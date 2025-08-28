@@ -53,7 +53,7 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions android = FirebaseOptions(
     apiKey: 'AIzaSyDf2OUnFBkHgjugfsD1elUe4dQAHb3y0OQ',
-    appId: '1:889400273440:android:2da928cdb9eb167b13aa45',
+    appId: '1:889400273440:android:062d33f7427a1d7013aa45',
     messagingSenderId: '889400273440',
     projectId: 'soc-chat-app-ca57e',
     databaseURL: 'https://soc-chat-app-ca57e-default-rtdb.firebaseio.com',
@@ -62,22 +62,22 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyCoQ15YqG-6XuDqWU9H_Z2SU0AKq03I9fM',
-    appId: '1:889400273440:ios:9a39afa854b3e88e13aa45',
+    appId: '1:889400273440:ios:8e86b3a7185a222613aa45',
     messagingSenderId: '889400273440',
     projectId: 'soc-chat-app-ca57e',
     databaseURL: 'https://soc-chat-app-ca57e-default-rtdb.firebaseio.com',
     storageBucket: 'soc-chat-app-ca57e.firebasestorage.app',
-    iosBundleId: 'com.example.socChatApp',
+    iosBundleId: 'com.faroukahmed74.socchatapp',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyCoQ15YqG-6XuDqWU9H_Z2SU0AKq03I9fM',
-    appId: '1:889400273440:ios:9a39afa854b3e88e13aa45',
+    appId: '1:889400273440:ios:8e86b3a7185a222613aa45',
     messagingSenderId: '889400273440',
     projectId: 'soc-chat-app-ca57e',
     databaseURL: 'https://soc-chat-app-ca57e-default-rtdb.firebaseio.com',
     storageBucket: 'soc-chat-app-ca57e.firebasestorage.app',
-    iosBundleId: 'com.example.socChatApp',
+    iosBundleId: 'com.faroukahmed74.socchatapp',
   );
 
   static const FirebaseOptions windows = FirebaseOptions(

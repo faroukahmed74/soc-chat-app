@@ -52,6 +52,10 @@ class _ChatListScreenState extends State<ChatListScreen> {
   
   // Cache for user display names to avoid repeated Firestore calls
   final Map<String, String> _userDisplayNameCache = {};
+  
+  // User role management
+  String _userRole = 'user';
+  bool _isLoadingRole = true;
 
   @override
   void initState() {
@@ -66,6 +70,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
     
     // Run migration to fix missing user names in existing chats
     _runChatMigration();
+    
+    // Load user role for access control
+    _loadUserRole();
   }
 
   @override
@@ -81,6 +88,27 @@ class _ChatListScreenState extends State<ChatListScreen> {
       await ChatManagementService.fixMissingUserNames();
     } catch (e) {
       Log.e('Error during chat migration', 'CHAT_LIST', e);
+    }
+  }
+
+  /// Loads the current user's role for access control
+  Future<void> _loadUserRole() async {
+    try {
+      final role = await AdminGroupService().getCurrentUserRole();
+      if (mounted) {
+        setState(() {
+          _userRole = role;
+          _isLoadingRole = false;
+        });
+      }
+    } catch (e) {
+      Log.e('Error loading user role', 'CHAT_LIST', e);
+      if (mounted) {
+        setState(() {
+          _userRole = 'user';
+          _isLoadingRole = false;
+        });
+      }
     }
   }
 
@@ -202,7 +230,17 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   Navigator.pushNamed(context, '/profile');
                   break;
                 case 'admin':
-                  Navigator.pushNamed(context, '/admin');
+                  // Double-check admin access before navigation
+                  if (_userRole == 'admin') {
+                    Navigator.pushNamed(context, '/admin');
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Access denied. Admin privileges required.'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
                   break;
                 case 'logout':
                   final navigator = Navigator.of(context);
@@ -224,16 +262,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   ],
                 ),
               ),
-              const PopupMenuItem(
-                value: 'admin',
-                child: Row(
-                  children: [
-                    Icon(Icons.admin_panel_settings),
-                    SizedBox(width: 8),
-                    Text('Admin Panel'),
-                  ],
+              // Only show admin panel for admin users (when role is loaded)
+              if (!_isLoadingRole && _userRole == 'admin')
+                const PopupMenuItem(
+                  value: 'admin',
+                  child: Row(
+                    children: [
+                      Icon(Icons.admin_panel_settings),
+                      SizedBox(width: 8),
+                      Text('Admin Panel'),
+                    ],
+                  ),
                 ),
-              ),
               const PopupMenuItem(
                 value: 'logout',
                 child: Row(
@@ -259,20 +299,21 @@ class _ChatListScreenState extends State<ChatListScreen> {
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   CircleAvatar(
-                    radius: 30,
+                    radius: 25,
                     backgroundColor: Colors.white,
                     child: Text(
                       user.email?.substring(0, 1).toUpperCase() ?? 'U',
                       style: TextStyle(
-                        fontSize: 24,
+                        fontSize: 20,
                         fontWeight: FontWeight.bold,
                         color: Theme.of(context).colorScheme.primary,
                       ),
                     ),
                   ),
-                  const SizedBox(height: 12),
+                  const SizedBox(height: 8),
                   Text(
                     user.email ?? 'User',
                     style: const TextStyle(
@@ -281,14 +322,53 @@ class _ChatListScreenState extends State<ChatListScreen> {
                       fontWeight: FontWeight.w500,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 2),
                   Text(
                     'Online',
                     style: TextStyle(
-                      color: Colors.white.withOpacity(0.8),
+                      color: Colors.white.withValues(alpha: 0.8),
                       fontSize: 14,
                     ),
                   ),
+                  if (_isLoadingRole)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.white.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Loading...',
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.6),
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  // Debug: Show current user role (remove in production)
+                  if (!_isLoadingRole)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 4),
+                      child: Text(
+                        'Role: $_userRole',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
                 ],
               ),
             ),
@@ -312,14 +392,26 @@ class _ChatListScreenState extends State<ChatListScreen> {
               },
             ),
             
-            ListTile(
-              leading: const Icon(Icons.admin_panel_settings),
-              title: const Text('Admin Panel'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.pushNamed(context, '/admin');
-              },
-            ),
+            // Only show admin panel for admin users (when role is loaded)
+            if (!_isLoadingRole && _userRole == 'admin')
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings),
+                title: const Text('Admin Panel'),
+                onTap: () {
+                  Navigator.pop(context);
+                  // Double-check admin access before navigation
+                  if (_userRole == 'admin') {
+                    Navigator.pushNamed(context, '/admin');
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Access denied. Admin privileges required.'),
+                        backgroundColor: Colors.red,
+                      ),
+                    );
+                  }
+                },
+              ),
             
             ListTile(
               leading: const Icon(Icons.settings),
@@ -335,7 +427,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
               title: const Text('Help & Support'),
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Navigate to help screen
+                Navigator.pushNamed(context, '/help');
               },
             ),
             
@@ -381,7 +473,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     'Developed by نقيب \\ احمد فاروق',
                     style: TextStyle(
                       fontSize: 12,
-                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
                       fontWeight: FontWeight.w400,
                     ),
                     textAlign: TextAlign.center,

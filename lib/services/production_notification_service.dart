@@ -475,6 +475,46 @@ class ProductionNotificationService {
     }
   }
 
+  /// Get notification status
+  Future<Map<String, dynamic>> getNotificationStatus() async {
+    try {
+      final settings = await _firebaseMessaging.getNotificationSettings();
+      final token = await getFcmToken();
+      
+      return {
+        'isInitialized': true,
+        'hasNotificationPermission': settings.authorizationStatus == AuthorizationStatus.authorized,
+        'fcmToken': token != null ? '${token.substring(0, 20)}...' : null,
+        'platform': kIsWeb ? 'web' : 'mobile',
+        'authorizationStatus': _getAuthorizationStatusString(settings.authorizationStatus),
+      };
+    } catch (e) {
+      Log.e('Error getting notification status', 'PRODUCTION_NOTIFICATION', e);
+      return {
+        'isInitialized': false,
+        'hasNotificationPermission': false,
+        'fcmToken': null,
+        'platform': kIsWeb ? 'web' : 'mobile',
+        'error': e.toString(),
+      };
+    }
+  }
+
+  /// Test server connection
+  Future<bool> testServerConnection() async {
+    try {
+      final response = await http.get(
+        Uri.parse('$_fcmServerUrl/health'),
+        headers: {'Content-Type': 'application/json'},
+      ).timeout(const Duration(seconds: 5));
+      
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error testing server connection', 'PRODUCTION_NOTIFICATION', e);
+      return false;
+    }
+  }
+
   /// Subscribe to topic
   Future<void> subscribeToTopic(String topic) async {
     try {

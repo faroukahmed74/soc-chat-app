@@ -26,24 +26,13 @@
 // - Cross-platform: Unified admin experience across all platforms
 
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
 import '../services/theme_service.dart';
 import '../services/message_cleanup_service.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
-import '../services/admin_group_service.dart';
-import '../services/production_notification_service.dart';
-import '../services/logger_service.dart'; // Added import for logging
-import '../services/secure_message_service.dart';
-import '../services/scheduled_messages_service.dart';
-import '../services/production_permission_service.dart';
-import '../services/unified_media_service.dart';
-import '../services/mobile_image_service.dart';
-import '../services/document_service.dart';
 
 class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({Key? key}) : super(key: key);
@@ -89,9 +78,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
   bool _isLoadingAnalytics = false;
   Timer? _analyticsRefreshTimer;
   
-  // Testing data
-  List<Map<String, dynamic>> _testResults = [];
-  
   // Tab controller
   late TabController _tabController;
   
@@ -102,6 +88,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
   Map<String, dynamic> _stats = {};
   bool _isLoadingStats = false;
   
+
+  
   @override
   void initState() {
     super.initState();
@@ -111,7 +99,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         setState(() {});
       }
     });
-    _tabController = TabController(length: 8, vsync: this);
+    _tabController = TabController(length: 6, vsync: this);
     _loadStatistics();
     _collectAnalyticsData(); // Load initial analytics data
     
@@ -127,6 +115,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         _searchQuery = _searchController.text.trim().toLowerCase();
       });
     });
+    
+    
   }
 
   @override
@@ -139,6 +129,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
     _broadcastBodyController.dispose();
     _lockReasonController.dispose();
     _searchController.dispose();
+
     
     // Clean up analytics timer
     _analyticsRefreshTimer?.cancel();
@@ -189,7 +180,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         };
       });
     } catch (e) {
-              Log.e('Error loading statistics', 'ADMIN_PANEL', e);
+      print('Error loading statistics: $e');
     } finally {
       setState(() {
         _isLoadingStats = false;
@@ -238,14 +229,10 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       setState(() {
         _role = 'user';
       });
-      // ignore: use_build_context_synchronously
-      final scaffoldMessenger = ScaffoldMessenger.of(context);
       await _loadStatistics(); // Refresh stats
-      if (mounted) {
-        scaffoldMessenger.showSnackBar(
-          const SnackBar(content: Text('User created successfully!')),
-        );
-      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('User created successfully!')),
+      );
     } on FirebaseAuthException catch (e) {
       setState(() {
         _error = e.message;
@@ -258,7 +245,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
   }
 
   Future<void> _sendBroadcast() async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
     setState(() {
       _isBroadcasting = true;
       _broadcastError = null;
@@ -271,25 +257,55 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         throw Exception('Title and message cannot be empty.');
       }
 
+      // Get all users from Firestore
+      final usersSnapshot = await FirebaseFirestore.instance.collection('users').get();
       final currentUser = FirebaseAuth.instance.currentUser;
+      
       if (currentUser == null) {
         throw Exception('Not authenticated');
       }
 
-      // Use enhanced notification service to send broadcast
-              await ProductionNotificationService().sendBroadcastNotification(
-        title: title,
-        message: message,
-        senderId: currentUser.uid,
-        senderName: currentUser.displayName ?? currentUser.email ?? 'Admin',
-      );
+      // Create a broadcast message document
+      final broadcastDoc = await FirebaseFirestore.instance.collection('broadcasts').add({
+        'title': title,
+        'message': message,
+        'senderId': currentUser.uid,
+        'senderName': currentUser.displayName ?? currentUser.email ?? 'Admin',
+        'timestamp': FieldValue.serverTimestamp(),
+        'recipients': usersSnapshot.docs.map((doc) => doc.id).toList(),
+        'readCount': 0,
+        'type': 'admin_broadcast',
+      });
+
+      // Send individual notifications to each user
+      int successCount = 0;
+      for (final userDoc in usersSnapshot.docs) {
+        try {
+          await FirebaseFirestore.instance
+              .collection('users')
+              .doc(userDoc.id)
+              .collection('notifications')
+              .add({
+            'type': 'broadcast',
+            'title': title,
+            'message': message,
+            'broadcastId': broadcastDoc.id,
+            'read': false,
+            'timestamp': FieldValue.serverTimestamp(),
+            'senderId': currentUser.uid,
+            'senderName': currentUser.displayName ?? currentUser.email ?? 'Admin',
+          });
+          successCount++;
+        } catch (e) {
+          print('Failed to send notification to user ${userDoc.id}: $e');
+        }
+      }
 
       setState(() {
-        _broadcastSuccess = 'Broadcast message sent successfully to all users!';
+        _broadcastSuccess = 'Broadcast message sent to $successCount users.';
       });
-      
-      scaffoldMessenger.showSnackBar(
-        const SnackBar(content: Text('Broadcast sent successfully!')),
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Broadcast sent to $successCount users!')),
       );
       
       // Clear the form
@@ -300,7 +316,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       setState(() {
         _broadcastError = 'Failed to send broadcast: $e';
       });
-      scaffoldMessenger.showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Broadcast failed: $e')),
       );
     } finally {
@@ -368,10 +384,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
           ),
           ElevatedButton(
             onPressed: () async {
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-              final navigator = Navigator.of(context);
               if (!isCurrentlyLocked && _lockReasonController.text.trim().isEmpty) {
-                scaffoldMessenger.showSnackBar(
+                ScaffoldMessenger.of(context).showSnackBar(
                   const SnackBar(content: Text('Please provide a reason for locking the account.')),
                 );
                 return;
@@ -389,7 +403,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                     'lockedAt': null,
                     'lockedBy': null,
                   });
-                  scaffoldMessenger.showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Account unlocked for $username')),
                   );
                 } else {
@@ -400,15 +414,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                     'lockedAt': FieldValue.serverTimestamp(),
                     'lockedBy': currentUser.email ?? currentUser.uid,
                   });
-                  scaffoldMessenger.showSnackBar(
+                  ScaffoldMessenger.of(context).showSnackBar(
                     SnackBar(content: Text('Account locked for $username')),
                   );
                 }
-                navigator.pop();
+                Navigator.pop(context);
                 setState(() {});
                 await _loadStatistics(); // Refresh stats
               } catch (e) {
-                scaffoldMessenger.showSnackBar(
+                ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text('Failed to ${isCurrentlyLocked ? 'unlock' : 'lock'} account: $e')),
                 );
               }
@@ -425,7 +439,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
   }
 
   Future<void> _exportUserData() async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
     try {
       final usersSnapshot = await FirebaseFirestore.instance.collection('users').get();
       final userData = usersSnapshot.docs.map((doc) {
@@ -444,23 +457,22 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       }).toList();
       
       // In a real app, you would save this to a file or send it via email
-      scaffoldMessenger.showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Exported ${userData.length} user records')),
       );
       
-      Log.i('User Data Export:', 'ADMIN_PANEL');
+      print('User Data Export:');
       for (final user in userData) {
-        Log.i('${user['username']} (${user['email']}) - ${user['role']}', 'ADMIN_PANEL');
+        print('${user['username']} (${user['email']}) - ${user['role']}');
       }
     } catch (e) {
-      scaffoldMessenger.showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Export failed: $e')),
       );
     }
   }
 
   Future<void> _clearOldData() async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
     final confirm = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -504,11 +516,11 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
           }
         }
         
-        scaffoldMessenger.showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Cleared $clearedCount old notifications')),
         );
       } catch (e) {
-        scaffoldMessenger.showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Failed to clear data: $e')),
         );
       }
@@ -652,8 +664,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
   Widget _buildUserManagementTab() {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isWideScreen = constraints.maxWidth > 800;
-        
         return Column(
           children: [
         // Add User Section
@@ -868,7 +878,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                               subtitle: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Text('${data['email']} | ${data['role']}'),
+                                  Text('${data['email']} | ${data['role'] ?? 'user'}'),
                                   if (isLocked && lockReason.isNotEmpty)
                                     Text(
                                       'Reason: $lockReason',
@@ -892,225 +902,85 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                                   padding: const EdgeInsets.all(16.0),
                                   child: Column(
                                     children: [
-                                      // Responsive date row
-                                      LayoutBuilder(
-                                        builder: (context, constraints) {
-                                          final isMobile = constraints.maxWidth < 600;
-                                          
-                                          if (isMobile) {
-                                            // Mobile layout - stack vertically
-                                            return Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                Text(
-                                                  'Created: ${createdAt != null ? DateFormat('MMM dd, yyyy').format(createdAt.toDate()) : 'Unknown'}',
-                                                  style: const TextStyle(fontSize: 12),
-                                                ),
-                                                const SizedBox(height: 4),
-                                                Text(
-                                                  'Last seen: ${lastSeen != null ? DateFormat('MMM dd, HH:mm').format(lastSeen.toDate()) : 'Never'}',
-                                                  style: const TextStyle(fontSize: 12),
-                                                ),
-                                              ],
-                                            );
-                                          } else {
-                                            // Desktop layout - horizontal row
-                                            return Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(
-                                                    'Created: ${createdAt != null ? DateFormat('MMM dd, yyyy').format(createdAt.toDate()) : 'Unknown'}',
-                                                    style: const TextStyle(fontSize: 14),
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                Expanded(
-                                                  child: Text(
-                                                    'Last seen: ${lastSeen != null ? DateFormat('MMM dd, HH:mm').format(lastSeen.toDate()) : 'Never'}',
-                                                    style: const TextStyle(fontSize: 14),
-                                                  ),
-                                                ),
-                                              ],
-                                            );
-                                          }
-                                        },
+                                      Row(
+                                        children: [
+                                          Text('Created: ${createdAt != null ? DateFormat('MMM dd, yyyy').format(createdAt.toDate()) : 'Unknown'}'),
+                                          const Spacer(),
+                                          Text('Last seen: ${lastSeen != null ? DateFormat('MMM dd, HH:mm').format(lastSeen.toDate()) : 'Never'}'),
+                                        ],
                                       ),
                                       const SizedBox(height: 16),
-                                      // Use LayoutBuilder to make it responsive
-                                      LayoutBuilder(
-                                        builder: (context, constraints) {
-                                          final isMobile = constraints.maxWidth < 600;
-                                          
-                                          if (isMobile) {
-                                            // Mobile layout - stack vertically
-                                            return Column(
-                                              crossAxisAlignment: CrossAxisAlignment.start,
-                                              children: [
-                                                // Role dropdown
-                                                SizedBox(
-                                                  width: double.infinity,
-                                                  child: DropdownButton<String>(
-                                                    value: data['role'] ?? 'user',
-                                                    isExpanded: true,
-                                                    items: const [
-                                                      DropdownMenuItem(value: 'user', child: Text('User')),
-                                                      DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                                                    ],
-                                                    onChanged: (value) async {
-                                                      if (value != null && value != data['role']) {
-                                                        await FirebaseFirestore.instance.collection('users').doc(userId).update({'role': value});
-                                                        setState(() {});
-                                                        await _loadStatistics();
-                                                      }
-                                                    },
-                                                  ),
-                                                ),
-                                                const SizedBox(height: 12),
-                                                // Action buttons in a row
-                                                Row(
-                                                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                                                  children: [
-                                                    IconButton(
-                                                      icon: Icon(
-                                                        isLocked ? Icons.lock_open : Icons.lock,
-                                                        color: isLocked ? Colors.green : Colors.orange,
-                                                        size: isMobile ? 20 : 24,
-                                                      ),
-                                                      tooltip: isLocked ? 'Unlock Account' : 'Lock Account',
-                                                      onPressed: () => _showLockAccountDialog(
-                                                        userId,
-                                                        data['username'] ?? '',
-                                                        data['email'] ?? '',
-                                                        isLocked,
-                                                      ),
-                                                    ),
-                                                    IconButton(
-                                                      icon: Icon(
-                                                        Icons.delete,
-                                                        color: Colors.red,
-                                                        size: isMobile ? 20 : 24,
-                                                      ),
-                                                      tooltip: 'Delete User',
-                                                      onPressed: () async {
-                                                        final confirm = await showDialog<bool>(
-                                                          context: context,
-                                                          builder: (context) => AlertDialog(
-                                                            title: const Text('Delete User'),
-                                                            content: const Text('Are you sure you want to delete this user? This cannot be undone.'),
-                                                            actions: [
-                                                              TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                                                              TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
-                                                            ],
-                                                          ),
-                                                        );
-                                                        if (confirm == true) {
-                                                          await FirebaseFirestore.instance.collection('users').doc(userId).delete();
-                                                          setState(() {});
-                                                          await _loadStatistics();
-                                                        }
-                                                      },
-                                                    ),
-                                                    IconButton(
-                                                      icon: Icon(
-                                                        Icons.refresh,
-                                                        color: Colors.blue,
-                                                        size: isMobile ? 20 : 24,
-                                                      ),
-                                                      tooltip: 'Reset Password',
-                                                      onPressed: () async {
-                                                        final email = data['email'];
-                                                        final scaffoldMessenger = ScaffoldMessenger.of(context);
-                                                        if (email != null && email.toString().isNotEmpty) {
-                                                          try {
-                                                            await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-                                                            scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Password reset email sent.')));
-                                                          } catch (e) {
-                                                            scaffoldMessenger.showSnackBar(SnackBar(content: Text('Failed to send reset email: $e')));
-                                                          }
-                                                        }
-                                                      },
-                                                    ),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: DropdownButton<String>(
+                                              value: data['role'] ?? 'user',
+                                              isExpanded: true,
+                                              items: const [
+                                                DropdownMenuItem(value: 'user', child: Text('User')),
+                                                DropdownMenuItem(value: 'admin', child: Text('Admin')),
+                                              ],
+                                              onChanged: (value) async {
+                                                if (value != null && value != data['role']) {
+                                                  await FirebaseFirestore.instance.collection('users').doc(userId).update({'role': value});
+                                                  setState(() {});
+                                                  await _loadStatistics();
+                                                }
+                                              },
+                                            ),
+                                          ),
+                                          const SizedBox(width: 8),
+                                          IconButton(
+                                            icon: Icon(
+                                              isLocked ? Icons.lock_open : Icons.lock,
+                                              color: isLocked ? Colors.green : Colors.orange,
+                                            ),
+                                            tooltip: isLocked ? 'Unlock Account' : 'Lock Account',
+                                            onPressed: () => _showLockAccountDialog(
+                                              userId,
+                                              data['username'] ?? '',
+                                              data['email'] ?? '',
+                                              isLocked,
+                                            ),
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.delete, color: Colors.red),
+                                            tooltip: 'Delete User',
+                                            onPressed: () async {
+                                              final confirm = await showDialog<bool>(
+                                                context: context,
+                                                builder: (context) => AlertDialog(
+                                                  title: const Text('Delete User'),
+                                                  content: const Text('Are you sure you want to delete this user? This cannot be undone.'),
+                                                  actions: [
+                                                    TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
+                                                    TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
                                                   ],
                                                 ),
-                                              ],
-                                            );
-                                          } else {
-                                            // Desktop layout - horizontal row
-                                            return Row(
-                                              children: [
-                                                Expanded(
-                                                  child: DropdownButton<String>(
-                                                    value: data['role'] ?? 'user',
-                                                    isExpanded: true,
-                                                    items: const [
-                                                      DropdownMenuItem(value: 'user', child: Text('User')),
-                                                      DropdownMenuItem(value: 'admin', child: Text('Admin')),
-                                                    ],
-                                                    onChanged: (value) async {
-                                                      if (value != null && value != data['role']) {
-                                                        await FirebaseFirestore.instance.collection('users').doc(userId).update({'role': value});
-                                                        setState(() {});
-                                                        await _loadStatistics();
-                                                      }
-                                                    },
-                                                  ),
-                                                ),
-                                                const SizedBox(width: 8),
-                                                IconButton(
-                                                  icon: Icon(
-                                                    isLocked ? Icons.lock_open : Icons.lock,
-                                                    color: isLocked ? Colors.green : Colors.orange,
-                                                  ),
-                                                  tooltip: isLocked ? 'Unlock Account' : 'Lock Account',
-                                                  onPressed: () => _showLockAccountDialog(
-                                                    userId,
-                                                    data['username'] ?? '',
-                                                    data['email'] ?? '',
-                                                    isLocked,
-                                                  ),
-                                                ),
-                                                IconButton(
-                                                  icon: const Icon(Icons.delete, color: Colors.red),
-                                                  tooltip: 'Delete User',
-                                                  onPressed: () async {
-                                                    final confirm = await showDialog<bool>(
-                                                      context: context,
-                                                      builder: (context) => AlertDialog(
-                                                        title: const Text('Delete User'),
-                                                        content: const Text('Are you sure you want to delete this user? This cannot be undone.'),
-                                                        actions: [
-                                                          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Cancel')),
-                                                          TextButton(onPressed: () => Navigator.pop(context, true), child: const Text('Delete', style: TextStyle(color: Colors.red))),
-                                                        ],
-                                                      ),
-                                                    );
-                                                    if (confirm == true) {
-                                                      await FirebaseFirestore.instance.collection('users').doc(userId).delete();
-                                                      setState(() {});
-                                                      await _loadStatistics();
-                                                    }
-                                                  },
-                                                ),
-                                                IconButton(
-                                                  icon: const Icon(Icons.refresh, color: Colors.blue),
-                                                  tooltip: 'Reset Password',
-                                                  onPressed: () async {
-                                                    final email = data['email'];
-                                                    final scaffoldMessenger = ScaffoldMessenger.of(context);
-                                                    if (email != null && email.toString().isNotEmpty) {
-                                                      try {
-                                                        await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
-                                                        scaffoldMessenger.showSnackBar(const SnackBar(content: Text('Password reset email sent.')));
-                                                      } catch (e) {
-                                                        scaffoldMessenger.showSnackBar(SnackBar(content: Text('Failed to send reset email: $e')));
-                                                      }
-                                                    }
-                                                  },
-                                                ),
-                                              ],
-                                            );
-                                          }
-                                        },
+                                              );
+                                              if (confirm == true) {
+                                                await FirebaseFirestore.instance.collection('users').doc(userId).delete();
+                                                setState(() {});
+                                                await _loadStatistics();
+                                              }
+                                            },
+                                          ),
+                                          IconButton(
+                                            icon: const Icon(Icons.refresh, color: Colors.blue),
+                                            tooltip: 'Reset Password',
+                                            onPressed: () async {
+                                              final email = data['email'];
+                                              if (email != null && email.toString().isNotEmpty) {
+                                                try {
+                                                  await FirebaseAuth.instance.sendPasswordResetEmail(email: email);
+                                                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Password reset email sent.')));
+                                                } catch (e) {
+                                                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to send reset email: $e')));
+                                                }
+                                              }
+                                            },
+                                          ),
+                                        ],
                                       ),
                                     ],
                                   ),
@@ -1237,6 +1107,20 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       ),
     );
   }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
   Widget _buildSystemTab() {
     return Column(
@@ -1656,16 +1540,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         ],
         bottom: TabBar(
           controller: _tabController,
-          isScrollable: true, // Always scrollable to prevent overflow
           tabs: const [
             Tab(icon: Icon(Icons.dashboard), text: 'Dashboard'),
             Tab(icon: Icon(Icons.people), text: 'Users'),
-            Tab(icon: Icon(Icons.group), text: 'Groups'),
+
             Tab(icon: Icon(Icons.campaign), text: 'Broadcast'),
             Tab(icon: Icon(Icons.settings), text: 'System'),
             Tab(icon: Icon(Icons.timeline), text: 'Activity'),
             Tab(icon: Icon(Icons.admin_panel_settings), text: 'Settings'),
-            Tab(icon: Icon(Icons.science), text: 'Testing'),
           ],
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
@@ -1889,15 +1771,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                                       width: double.infinity,
                                       child: ElevatedButton.icon(
                                         onPressed: () => _tabController.animateTo(2),
-                                        icon: const Icon(Icons.group),
-                                        label: const Text('Manage Groups'),
-                                      ),
-                                    ),
-                                    const SizedBox(height: 8),
-                                    SizedBox(
-                                      width: double.infinity,
-                                      child: ElevatedButton.icon(
-                                        onPressed: () => _tabController.animateTo(3),
                                         icon: const Icon(Icons.campaign),
                                         label: const Text('Send Broadcast'),
                                       ),
@@ -1954,15 +1827,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                                     width: double.infinity,
                                     child: ElevatedButton.icon(
                                       onPressed: () => _tabController.animateTo(2),
-                                      icon: const Icon(Icons.group),
-                                      label: const Text('Manage Groups'),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 8),
-                                  SizedBox(
-                                    width: double.infinity,
-                                    child: ElevatedButton.icon(
-                                      onPressed: () => _tabController.animateTo(3),
                                       icon: const Icon(Icons.campaign),
                                       label: const Text('Send Broadcast'),
                                     ),
@@ -2003,11 +1867,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
             child: _buildUserManagementTab(),
           ),
           
-          // Groups Tab
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: _buildGroupManagementTab(),
-          ),
+
           
           // Broadcast Tab
           SingleChildScrollView(
@@ -2032,12 +1892,6 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
             padding: const EdgeInsets.all(16.0),
             child: _buildSettingsTab(),
           ),
-          
-          // Testing Tab
-          SingleChildScrollView(
-            padding: const EdgeInsets.all(16.0),
-            child: _buildTestingTab(),
-          ),
         ],
       ),
     );
@@ -2061,8 +1915,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       });
       
       if (mounted) {
-        final scaffoldMessenger = ScaffoldMessenger.of(context);
-        scaffoldMessenger.showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(enabled ? 'Auto-lock enabled' : 'Auto-lock disabled'),
             backgroundColor: enabled ? Colors.green : Colors.orange,
@@ -2076,8 +1929,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       }
     } catch (e) {
       if (mounted) {
-        final scaffoldMessenger = ScaffoldMessenger.of(context);
-        scaffoldMessenger.showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error updating auto-lock setting: $e')),
         );
       }
@@ -2109,8 +1961,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       }
       
       if (mounted && lockedCount > 0) {
-        final scaffoldMessenger = ScaffoldMessenger.of(context);
-        scaffoldMessenger.showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('Auto-locked $lockedCount inactive accounts'),
             backgroundColor: Colors.orange,
@@ -2119,8 +1970,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       }
     } catch (e) {
       if (mounted) {
-        final scaffoldMessenger = ScaffoldMessenger.of(context);
-        scaffoldMessenger.showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error in auto-lock process: $e')),
         );
       }
@@ -2145,8 +1995,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       });
       
       if (mounted) {
-        final scaffoldMessenger = ScaffoldMessenger.of(context);
-        scaffoldMessenger.showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(enabled ? 'Email notifications enabled' : 'Email notifications disabled'),
             backgroundColor: enabled ? Colors.green : Colors.orange,
@@ -2155,8 +2004,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       }
     } catch (e) {
       if (mounted) {
-        final scaffoldMessenger = ScaffoldMessenger.of(context);
-        scaffoldMessenger.showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error updating email notifications: $e')),
         );
       }
@@ -2181,8 +2029,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       });
       
       if (mounted) {
-        final scaffoldMessenger = ScaffoldMessenger.of(context);
-        scaffoldMessenger.showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(enabled ? 'Audit logging enabled' : 'Audit logging disabled'),
             backgroundColor: enabled ? Colors.green : Colors.orange,
@@ -2213,7 +2060,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'timestamp': FieldValue.serverTimestamp(),
       });
     } catch (e) {
-              Log.e('Error logging admin action', 'ADMIN_PANEL', e);
+      print('Error logging admin action: $e');
     }
   }
   
@@ -2428,7 +2275,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       await _saveAnalyticsToFirestore(analytics);
       
     } catch (e) {
-              Log.e('Error collecting analytics data', 'ADMIN_PANEL', e);
+      print('Error collecting analytics data: $e');
     } finally {
       setState(() {
         _isLoadingAnalytics = false;
@@ -2473,7 +2320,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
           'userGrowthRate': _calculateGrowthRate(newUsers, 30),
         };
     } catch (e) {
-              Log.e('Error getting user analytics', 'ADMIN_PANEL', e);
+      print('Error getting user analytics: $e');
       _logAdminAction('Error getting user analytics: $e', {'error': e.toString()});
       return {};
     }
@@ -2521,7 +2368,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'averageMessagesPerUser': messagesToday / ((_analyticsData['activeUsers'] ?? 1) as int),
       };
     } catch (e) {
-              Log.e('Error getting message analytics', 'ADMIN_PANEL', e);
+      print('Error getting message analytics: $e');
       _logAdminAction('Error getting message analytics: $e', {'error': e.toString()});
       return {};
     }
@@ -2553,7 +2400,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'systemHealth': errorRate < 1 ? 'Excellent' : errorRate < 5 ? 'Good' : 'Needs Attention',
       };
     } catch (e) {
-              Log.e('Error getting system analytics', 'ADMIN_PANEL', e);
+      print('Error getting system analytics: $e');
       _logAdminAction('Error getting system analytics: $e', {'error': e.toString()});
       return {};
     }
@@ -2588,7 +2435,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'storageEfficiency': '85%',
       };
     } catch (e) {
-              Log.e('Error getting storage analytics', 'ADMIN_PANEL', e);
+      print('Error getting storage analytics: $e');
       _logAdminAction('Error getting storage analytics: $e', {'error': e.toString()});
       return {};
     }
@@ -2609,7 +2456,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'performanceScore': _calculatePerformanceScore(cpuUsage, memoryUsage, networkLatency),
       };
     } catch (e) {
-              Log.e('Error getting performance analytics', 'ADMIN_PANEL', e);
+      print('Error getting performance analytics: $e');
       _logAdminAction('Error getting performance analytics: $e', {'error': e.toString()});
       return {};
     }
@@ -2647,7 +2494,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'collectedBy': FirebaseAuth.instance.currentUser?.uid,
       });
     } catch (e) {
-              Log.e('Error saving analytics to Firestore', 'ADMIN_PANEL', e);
+      print('Error saving analytics to Firestore: $e');
     }
   }
   
@@ -2820,9 +2667,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'backupId': 'backup_${DateTime.now().millisecondsSinceEpoch}',
       });
       
-              Log.i('User data backup completed: ${usersData.length} users', 'ADMIN_PANEL');
+      print('User data backup completed: ${usersData.length} users');
     } catch (e) {
-              Log.e('Error backing up user data', 'ADMIN_PANEL', e);
+      print('Error backing up user data: $e');
       throw Exception('Failed to backup user data: $e');
     }
   }
@@ -2872,9 +2719,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         });
       }
       
-              Log.i('Chat data backup completed: ${chatsSnapshot.docs.length} chats', 'ADMIN_PANEL');
+      print('Chat data backup completed: ${chatsSnapshot.docs.length} chats');
     } catch (e) {
-              Log.e('Error backing up chat data', 'ADMIN_PANEL', e);
+      print('Error backing up chat data: $e');
       throw Exception('Failed to backup chat data: $e');
     }
   }
@@ -2907,9 +2754,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'backupId': 'backup_${DateTime.now().millisecondsSinceEpoch}',
       });
       
-              Log.i('Media files backup completed: ${mediaFiles.length} files', 'ADMIN_PANEL');
+      print('Media files backup completed: ${mediaFiles.length} files');
     } catch (e) {
-              Log.e('Error backing up media files', 'ADMIN_PANEL', e);
+      print('Error backing up media files: $e');
       throw Exception('Failed to backup media files: $e');
     }
   }
@@ -2940,9 +2787,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'backupId': 'backup_${DateTime.now().millisecondsSinceEpoch}',
       });
       
-              Log.i('System settings backup completed: ${settingsData.length} settings', 'ADMIN_PANEL');
+      print('System settings backup completed: ${settingsData.length} settings');
     } catch (e) {
-              Log.e('Error backing up system settings', 'ADMIN_PANEL', e);
+      print('Error backing up system settings: $e');
       throw Exception('Failed to backup system settings: $e');
     }
   }
@@ -2965,9 +2812,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'initiatedBy': FirebaseAuth.instance.currentUser?.uid,
       });
       
-              Log.i('Backup metadata saved: $backupId', 'ADMIN_PANEL');
+      print('Backup metadata saved: $backupId');
     } catch (e) {
-              Log.e('Error saving backup metadata', 'ADMIN_PANEL', e);
+      print('Error saving backup metadata: $e');
     }
   }
   
@@ -3185,7 +3032,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       
       return backupsSnapshot.docs;
     } catch (e) {
-              Log.e('Error getting available backups', 'ADMIN_PANEL', e);
+      print('Error getting available backups: $e');
       return [];
     }
   }
@@ -3214,14 +3061,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                 .doc(user['userId'])
                 .set(user, SetOptions(merge: true));
           } catch (e) {
-            Log.e('Error restoring user ${user['userId']}', 'ADMIN_PANEL', e);
+            print('Error restoring user ${user['userId']}: $e');
           }
         }
         
-        Log.i('User data restore completed: ${userData.length} users', 'ADMIN_PANEL');
+        print('User data restore completed: ${userData.length} users');
       }
     } catch (e) {
-              Log.e('Error restoring user data', 'ADMIN_PANEL', e);
+      print('Error restoring user data: $e');
       throw Exception('Failed to restore user data: $e');
     }
   }
@@ -3260,14 +3107,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                 .doc(message['messageId'])
                 .set(message, SetOptions(merge: true));
           } catch (e) {
-            Log.e('Error restoring message ${message['messageId']}', 'ADMIN_PANEL', e);
+            print('Error restoring message ${message['messageId']}: $e');
           }
         }
         
-        Log.i('Chat restore completed: $chatId with ${messages.length} messages', 'ADMIN_PANEL');
+        print('Chat restore completed: $chatId with ${messages.length} messages');
       }
     } catch (e) {
-              Log.e('Error restoring chat data', 'ADMIN_PANEL', e);
+      print('Error restoring chat data: $e');
       throw Exception('Failed to restore chat data: $e');
     }
   }
@@ -3296,14 +3143,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                 .doc(setting['settingId'])
                 .set(setting['data'], SetOptions(merge: true));
           } catch (e) {
-            Log.e('Error restoring setting ${setting['settingId']}', 'ADMIN_PANEL', e);
+            print('Error restoring setting ${setting['settingId']}: $e');
           }
         }
         
-        Log.i('System settings restore completed: ${settingsData.length} settings', 'ADMIN_PANEL');
+        print('System settings restore completed: ${settingsData.length} settings');
       }
     } catch (e) {
-              Log.e('Error restoring system settings', 'ADMIN_PANEL', e);
+      print('Error restoring system settings: $e');
       throw Exception('Failed to restore system settings: $e');
     }
   }
@@ -3325,9 +3172,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         'restoreType': 'full_restore',
       });
       
-              Log.i('Restore metadata updated: $backupId', 'ADMIN_PANEL');
+      print('Restore metadata updated: $backupId');
     } catch (e) {
-              Log.e('Error updating restore metadata', 'ADMIN_PANEL', e);
+      print('Error updating restore metadata: $e');
     }
   }
   
@@ -3416,1648 +3263,5 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
         ],
       ),
     );
-  }
-
-  Widget _buildGroupManagementTab() {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final isWideScreen = constraints.maxWidth > 800;
-        
-        return Column(
-          children: [
-            // Group Management Header
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.group, size: 32, color: Colors.blue),
-                        const SizedBox(width: 16),
-                        const Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Group Management',
-                                style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                              ),
-                              Text(
-                                'Admin control over all groups in the system',
-                                style: TextStyle(fontSize: 14, color: Colors.grey),
-                              ),
-                            ],
-                          ),
-                        ),
-                        ElevatedButton.icon(
-                          onPressed: _refreshGroupStatistics,
-                          icon: const Icon(Icons.refresh),
-                          label: const Text('Refresh'),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // Group Statistics
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      'Group Statistics',
-                      style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                    ),
-                    const SizedBox(height: 16),
-                    StreamBuilder<QuerySnapshot>(
-                      stream: FirebaseFirestore.instance
-                          .collection('chats')
-                          .where('isGroup', isEqualTo: true)
-                          .snapshots(),
-                      builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting) {
-                          return const Center(child: CircularProgressIndicator());
-                        }
-                        
-                        final groups = snapshot.data?.docs ?? [];
-                        final totalGroups = groups.length;
-                        int totalMembers = 0;
-                        int activeGroups = 0;
-                        
-                        for (final group in groups) {
-                          final data = group.data() as Map<String, dynamic>;
-                          final members = List<String>.from(data['members'] ?? []);
-                          totalMembers += members.length;
-                          
-                          final lastMessageTime = data['lastMessageTime'] as Timestamp?;
-                          if (lastMessageTime != null) {
-                            final lastActivity = lastMessageTime.toDate();
-                            if (lastActivity.isAfter(DateTime.now().subtract(const Duration(days: 7)))) {
-                              activeGroups++;
-                            }
-                          }
-                        }
-                        
-                        return Row(
-                          children: [
-                            Expanded(
-                              child: _buildGroupStatItem(
-                                'Total Groups',
-                                '$totalGroups',
-                                Icons.group,
-                                Colors.blue,
-                              ),
-                            ),
-                            Expanded(
-                              child: _buildGroupStatItem(
-                                'Total Members',
-                                '$totalMembers',
-                                Icons.people,
-                                Colors.green,
-                              ),
-                            ),
-                            Expanded(
-                              child: _buildGroupStatItem(
-                                'Active Groups',
-                                '$activeGroups',
-                                Icons.trending_up,
-                                Colors.orange,
-                              ),
-                            ),
-                            Expanded(
-                              child: _buildGroupStatItem(
-                                'Avg Members',
-                                totalGroups > 0 ? '${(totalMembers / totalGroups).round()}' : '0',
-                                Icons.analytics,
-                                Colors.purple,
-                              ),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            
-            const SizedBox(height: 16),
-            
-            // All Groups List
-            Card(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          'All Groups',
-                          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 12),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: TextField(
-                                controller: _searchController,
-                                decoration: const InputDecoration(
-                                  hintText: 'Search groups...',
-                                  prefixIcon: Icon(Icons.search),
-                                  border: OutlineInputBorder(),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton.icon(
-                              onPressed: _exportGroupData,
-                              icon: const Icon(Icons.download),
-                              label: const Text('Export'),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 12),
-                    SizedBox(
-                      height: 500,
-                      child: StreamBuilder<QuerySnapshot>(
-                        stream: FirebaseFirestore.instance
-                            .collection('chats')
-                            .where('isGroup', isEqualTo: true)
-                            .snapshots(),
-                        builder: (context, snapshot) {
-                          if (snapshot.connectionState == ConnectionState.waiting) {
-                            return const Center(child: CircularProgressIndicator());
-                          }
-                          if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-                            return const Center(child: Text('No groups found.'));
-                          }
-                          
-                          // Filter groups based on search query
-                          final filteredDocs = snapshot.data!.docs.where((doc) {
-                            final data = doc.data() as Map<String, dynamic>;
-                            final groupName = (data['name'] ?? '').toString().toLowerCase();
-                            final description = (data['description'] ?? '').toString().toLowerCase();
-                            return groupName.contains(_searchQuery) || description.contains(_searchQuery);
-                          }).toList();
-                          
-                          if (filteredDocs.isEmpty) {
-                            return const Center(child: Text('No groups match your search.'));
-                          }
-                          
-                          return ListView.builder(
-                            itemCount: filteredDocs.length,
-                            itemBuilder: (context, index) {
-                              final doc = filteredDocs[index];
-                              final data = doc.data() as Map<String, dynamic>;
-                              final groupId = doc.id;
-                              
-                              // Debug: Print the actual data structure
-                              Log.i('Group Data for $groupId: $data', 'ADMIN_PANEL');
-                                                             final groupName = data['name'] ?? data['groupName'] ?? data['title'] ?? 'Unnamed Group';
-                               final description = data['description'] ?? data['groupDescription'] ?? 'No description';
-                               final members = List<String>.from(data['members'] ?? data['participants'] ?? []);
-                               final adminId = data['adminId'] ?? data['createdBy'] ?? data['ownerId'] ?? '';
-                               final createdAt = data['createdAt'] as Timestamp?;
-                               final lastMessageTime = data['lastMessageTime'] as Timestamp?;
-                               final lastMessage = data['lastMessage'] ?? 'No messages yet';
-                              
-                              return Card(
-                                margin: const EdgeInsets.symmetric(vertical: 4),
-                                child: ExpansionTile(
-                                  title: Row(
-                                    children: [
-                                      CircleAvatar(
-                                        backgroundColor: Colors.blue.shade100,
-                                        child: Text(
-                                          groupName.isNotEmpty ? groupName[0].toUpperCase() : 'G',
-                                          style: TextStyle(
-                                            color: Colors.blue.shade800,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 12),
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            Text(
-                                              groupName,
-                                              style: const TextStyle(fontWeight: FontWeight.bold),
-                                            ),
-                                            Text(
-                                              '${members.length} members',
-                                              style: TextStyle(
-                                                fontSize: 12,
-                                                color: Colors.grey.shade600,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  subtitle: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      if (description.isNotEmpty)
-                                        Text(
-                                          description,
-                                          style: TextStyle(
-                                            fontSize: 12,
-                                            color: Colors.grey.shade700,
-                                          ),
-                                        ),
-                                      if (lastMessageTime != null)
-                                        Text(
-                                          'Last activity: ${DateFormat('MMM dd, HH:mm').format(lastMessageTime.toDate())}',
-                                          style: TextStyle(
-                                            fontSize: 11,
-                                            color: Colors.grey.shade600,
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  children: [
-                                    Padding(
-                                      padding: const EdgeInsets.all(16.0),
-                                      child: Column(
-                                        children: [
-                                          // Group Info
-                                          Column(
-                                            crossAxisAlignment: CrossAxisAlignment.start,
-                                            children: [
-                                              Text('Created: ${createdAt != null ? DateFormat('MMM dd, yyyy').format(createdAt.toDate()) : 'Unknown'}'),
-                                              Text('Admin ID: $adminId'),
-                                              Text('Last Message: $lastMessage'),
-                                              // Debug: Show raw data fields
-                                              const SizedBox(height: 8),
-                                              Container(
-                                                padding: const EdgeInsets.all(8),
-                                                decoration: BoxDecoration(
-                                                  color: Colors.grey.shade100,
-                                                  borderRadius: BorderRadius.circular(4),
-                                                ),
-                                                child: Column(
-                                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                                  children: [
-                                                    const Text('Debug - Available Fields:', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
-                                                    Text('name: ${data['name']}', style: const TextStyle(fontSize: 10)),
-                                                    Text('groupName: ${data['groupName']}', style: const TextStyle(fontSize: 10)),
-                                                    Text('title: ${data['title']}', style: const TextStyle(fontSize: 10)),
-                                                    Text('description: ${data['description']}', style: const TextStyle(fontSize: 10)),
-                                                  ],
-                                                ),
-                                              ),
-                                              const SizedBox(height: 16),
-                                              Row(
-                                                children: [
-                                                  Expanded(
-                                                    child: ElevatedButton.icon(
-                                                      onPressed: () => _showGroupMembersDialog(groupId, groupName),
-                                                      icon: const Icon(Icons.people),
-                                                      label: const Text('Members'),
-                                                      style: ElevatedButton.styleFrom(
-                                                        backgroundColor: Colors.blue,
-                                                        foregroundColor: Colors.white,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                  const SizedBox(height: 8),
-                                                  Tooltip(
-                                                    message: 'Transfer group ownership to another member',
-                                                    child: ElevatedButton.icon(
-                                                      onPressed: () => _showTransferAdminDialog(groupId, groupName, adminId, members),
-                                                      icon: const Icon(Icons.admin_panel_settings),
-                                                      label: const Text('Transfer Admin'),
-                                                      style: ElevatedButton.styleFrom(
-                                                        backgroundColor: Colors.orange,
-                                                        foregroundColor: Colors.white,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
-                                              ),
-                                            ],
-                                          ),
-                                          const SizedBox(height: 16),
-                                          
-                                          // Action Buttons
-                                          Row(
-                                            children: [
-                                              Expanded(
-                                                child: ElevatedButton.icon(
-                                                  onPressed: () => _showGroupSettingsDialog(groupId, groupName, data),
-                                                  icon: const Icon(Icons.settings),
-                                                  label: const Text('Settings'),
-                                                  style: ElevatedButton.styleFrom(
-                                                    backgroundColor: Colors.green,
-                                                    foregroundColor: Colors.white,
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: ElevatedButton.icon(
-                                                  onPressed: () => _showGroupActivityDialog(groupId, groupName),
-                                                  icon: const Icon(Icons.analytics),
-                                                  label: const Text('Activity'),
-                                                  style: ElevatedButton.styleFrom(
-                                                    backgroundColor: Colors.purple,
-                                                    foregroundColor: Colors.white,
-                                                  ),
-                                                ),
-                                              ),
-                                              const SizedBox(width: 8),
-                                              Expanded(
-                                                child: ElevatedButton.icon(
-                                                  onPressed: () => _showDeleteGroupDialog(groupId, groupName),
-                                                  icon: const Icon(Icons.delete),
-                                                  label: const Text('Delete'),
-                                                  style: ElevatedButton.styleFrom(
-                                                    backgroundColor: Colors.red,
-                                                    foregroundColor: Colors.white,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          );
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildGroupStatItem(String label, String value, IconData icon, Color color) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      margin: const EdgeInsets.all(4),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: color.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: color, size: 24),
-          const SizedBox(height: 8),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 20,
-              fontWeight: FontWeight.bold,
-              color: color,
-            ),
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: 12,
-              color: color.withValues(alpha: 0.8),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  // =============================================================================
-  // GROUP MANAGEMENT METHODS
-  // =============================================================================
-
-  /// Refreshes group statistics
-  Future<void> _refreshGroupStatistics() async {
-    setState(() {});
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Group statistics refreshed')),
-    );
-  }
-
-  /// Exports group data
-  Future<void> _exportGroupData() async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    try {
-      final groupsSnapshot = await FirebaseFirestore.instance
-          .collection('chats')
-          .where('isGroup', isEqualTo: true)
-          .get();
-      
-      final groupData = groupsSnapshot.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'groupId': doc.id,
-          'name': data['name'] ?? 'Unnamed Group',
-          'description': data['description'] ?? 'No description',
-          'members': data['members'] ?? [],
-          'adminId': data['adminId'] ?? '',
-          'createdAt': data['createdAt']?.toDate().toString() ?? '',
-          'lastMessageTime': data['lastMessageTime']?.toDate().toString() ?? '',
-          'lastMessage': data['lastMessage'] ?? 'No messages yet',
-        };
-      }).toList();
-      
-      scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Exported ${groupData.length} group records')),
-      );
-      
-      Log.i('Group Data Export:', 'ADMIN_PANEL');
-      for (final group in groupData) {
-        Log.i('${group['name']} - ${group['members'].length} members', 'ADMIN_PANEL');
-      }
-    } catch (e) {
-      scaffoldMessenger.showSnackBar(
-        SnackBar(content: Text('Export failed: $e')),
-      );
-    }
-  }
-
-  /// Shows group members dialog
-  Future<void> _showGroupMembersDialog(String groupId, String groupName) async {
-    try {
-      final members = await AdminGroupService().getGroupMembers(groupId);
-      
-      if (!mounted) return;
-      
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Members of $groupName'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 400,
-            child: Column(
-              children: [
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: members.length,
-                    itemBuilder: (context, index) {
-                      final member = members[index];
-                      final isAdmin = member['isAdmin'] == true;
-                      
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: isAdmin ? Colors.orange : Colors.blue,
-                          child: Text(
-                            (member['displayName'] ?? 'U')[0].toUpperCase(),
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        ),
-                        title: Text(member['displayName'] ?? 'Unknown User'),
-                        subtitle: Text(member['email'] ?? 'No email'),
-                        trailing: isAdmin
-                            ? Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: Colors.orange.shade200,
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Text(
-                                  'ADMIN',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orange,
-                                  ),
-                                ),
-                              )
-                            : null,
-                      );
-                    },
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: () => Navigator.pop(context),
-                        child: const Text('Close'),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _showAddMemberDialog(groupId, groupName),
-                        icon: const Icon(Icons.person_add),
-                        label: const Text('Add Member'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.green,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading members: $e')),
-      );
-    }
-  }
-
-  /// Shows add member dialog
-  Future<void> _showAddMemberDialog(String groupId, String groupName) async {
-    final emailController = TextEditingController();
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Add Member to $groupName'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: emailController,
-              decoration: const InputDecoration(
-                labelText: 'User Email',
-                hintText: 'Enter user email to add',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final email = emailController.text.trim();
-              if (email.isEmpty) return;
-              
-              final navigator = Navigator.of(context);
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-              
-              try {
-                // Find user by email
-                final userQuery = await FirebaseFirestore.instance
-                    .collection('users')
-                    .where('email', isEqualTo: email)
-                    .get();
-                
-                if (userQuery.docs.isEmpty) {
-                  throw Exception('User not found with email: $email');
-                }
-                
-                final userId = userQuery.docs.first.id;
-                
-                // Add user to group
-                await FirebaseFirestore.instance
-                    .collection('chats')
-                    .doc(groupId)
-                    .update({
-                  'members': FieldValue.arrayUnion([userId]),
-                });
-                
-                navigator.pop();
-                scaffoldMessenger.showSnackBar(
-                  SnackBar(content: Text('User added to $groupName')),
-                );
-              } catch (e) {
-                scaffoldMessenger.showSnackBar(
-                  SnackBar(content: Text('Error adding user: $e')),
-                );
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Shows transfer admin dialog
-  Future<void> _showTransferAdminDialog(String groupId, String groupName, String currentAdminId, List<String> members) async {
-    try {
-      // Get user details for all members
-      final usersQuery = await FirebaseFirestore.instance
-          .collection('users')
-          .where(FieldPath.documentId, whereIn: members)
-          .get();
-      
-      final users = usersQuery.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'name': data['displayName'] ?? 'Unknown User',
-          'email': data['email'] ?? 'No email',
-        };
-      }).toList();
-      
-      // Remove current admin from the list
-      users.removeWhere((user) => user['id'] == currentAdminId);
-      
-      if (!mounted) return;
-      
-              showDialog(
-          context: context,
-          builder: (context) => AlertDialog(
-            title: Text('Transfer Admin of $groupName'),
-            content: SizedBox(
-              width: double.maxFinite,
-              height: 350,
-              child: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.orange.shade200),
-                    ),
-                    child: Column(
-                      children: [
-                        const Icon(Icons.info, color: Colors.orange),
-                        const SizedBox(height: 8),
-                        const Text(
-                          'What does Transfer Admin do?',
-                          style: TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 4),
-                        const Text(
-                          'This will transfer group ownership from the current admin to the selected member. '
-                          'The new admin will have full control over the group.',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text('Select new admin:'),
-                  const SizedBox(height: 16),
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: users.length,
-                    itemBuilder: (context, index) {
-                      final user = users[index];
-                      return ListTile(
-                        title: Text(user['name']),
-                        subtitle: Text(user['email']),
-                        onTap: () async {
-                          final navigator = Navigator.of(context);
-                          final scaffoldMessenger = ScaffoldMessenger.of(context);
-                          try {
-                            await AdminGroupService().transferGroupAdmin(groupId, user['id']);
-                            navigator.pop();
-                            scaffoldMessenger.showSnackBar(
-                              SnackBar(content: Text('Admin transferred to ${user['name']}')),
-                            );
-                          } catch (e) {
-                            scaffoldMessenger.showSnackBar(
-                              SnackBar(content: Text('Error transferring admin: $e')),
-                            );
-                          }
-                        },
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading users: $e')),
-      );
-    }
-  }
-
-  /// Shows group settings dialog
-  Future<void> _showGroupSettingsDialog(String groupId, String groupName, Map<String, dynamic> groupData) async {
-    final nameController = TextEditingController(text: groupData['name'] ?? '');
-    final descriptionController = TextEditingController(text: groupData['description'] ?? '');
-    
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('Settings for $groupName'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(
-                labelText: 'Group Name',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: descriptionController,
-              decoration: const InputDecoration(
-                labelText: 'Description',
-                border: OutlineInputBorder(),
-              ),
-              maxLines: 3,
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () async {
-              final navigator = Navigator.of(context);
-              final scaffoldMessenger = ScaffoldMessenger.of(context);
-              try {
-                await FirebaseFirestore.instance
-                    .collection('chats')
-                    .doc(groupId)
-                    .update({
-                  'name': nameController.text.trim(),
-                  'description': descriptionController.text.trim(),
-                  'updatedAt': FieldValue.serverTimestamp(),
-                  'updatedBy': FirebaseAuth.instance.currentUser?.uid,
-                });
-                
-                navigator.pop();
-                scaffoldMessenger.showSnackBar(
-                  const SnackBar(content: Text('Group settings updated')),
-                );
-              } catch (e) {
-                scaffoldMessenger.showSnackBar(
-                  SnackBar(content: Text('Error updating settings: $e')),
-                );
-              }
-            },
-            child: const Text('Save'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Shows group activity dialog
-  Future<void> _showGroupActivityDialog(String groupId, String groupName) async {
-    try {
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => AlertDialog(
-          title: Text('Activity for $groupName'),
-          content: const SizedBox(
-            width: 400,
-            height: 300,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text('Loading group activity...'),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
-      
-      // Get recent messages
-      final messagesSnapshot = await FirebaseFirestore.instance
-          .collection('chats')
-          .doc(groupId)
-          .collection('messages')
-          .orderBy('timestamp', descending: true)
-          .limit(20)
-          .get();
-      
-      final messages = messagesSnapshot.docs.map((doc) {
-        final data = doc.data();
-        return {
-          'id': doc.id,
-          'text': data['text'] ?? '',
-          'senderId': data['senderId'] ?? '',
-          'timestamp': data['timestamp'] as Timestamp?,
-          'type': data['type'] ?? 'text',
-        };
-      }).toList();
-      
-      // Get user details for senders
-      final senderIds = messages.map((msg) => msg['senderId']).whereType<String>().toSet().toList();
-      final usersQuery = await FirebaseFirestore.instance
-          .collection('users')
-          .where(FieldPath.documentId, whereIn: senderIds)
-          .get();
-      
-      final users = <String, String>{};
-      for (final doc in usersQuery.docs) {
-        users[doc.id] = doc.data()['displayName'] ?? 'Unknown User';
-      }
-      
-      if (!mounted) return;
-      
-      Navigator.pop(context); // Close loading dialog
-      
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Recent Activity in $groupName'),
-          content: SizedBox(
-            width: double.maxFinite,
-            height: 400,
-            child: Column(
-              children: [
-                Expanded(
-                  child: ListView.builder(
-                    itemCount: messages.length,
-                    itemBuilder: (context, index) {
-                      final message = messages[index];
-                      final senderName = users[message['senderId']] ?? 'Unknown User';
-                      final timestamp = message['timestamp'];
-                      
-                      return ListTile(
-                        leading: CircleAvatar(
-                          backgroundColor: Colors.blue.shade100,
-                          child: Text(
-                            senderName[0].toUpperCase(),
-                            style: TextStyle(color: Colors.blue.shade800),
-                          ),
-                        ),
-                        title: Text(senderName),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(message['text']),
-                            if (timestamp != null)
-                              Text(
-                                DateFormat('MMM dd, HH:mm').format(timestamp.toDate()),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey.shade600,
-                                ),
-                              ),
-                          ],
-                        ),
-                        trailing: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade200,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: Text(
-                            message['type'],
-                            style: TextStyle(fontSize: 10),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error loading activity: $e')),
-      );
-    }
-  }
-
-  /// Shows delete group dialog
-  Future<void> _showDeleteGroupDialog(String groupId, String groupName) async {
-    final scaffoldMessenger = ScaffoldMessenger.of(context);
-    
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('⚠️ Delete Group'),
-        content: Text(
-          'Are you sure you want to delete "$groupName"?\n\n'
-          'This action will:\n'
-          '• Remove all group members\n'
-          '• Delete all messages\n'
-          '• Delete all media files\n'
-          '• Cannot be undone\n\n'
-          'Type the group name to confirm:'
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Delete Group'),
-          ),
-        ],
-      ),
-    );
-    
-    if (confirm == true) {
-      try {
-        final success = await AdminGroupService().deleteGroup(groupId);
-        
-        if (success) {
-          scaffoldMessenger.showSnackBar(
-            SnackBar(content: Text('Group "$groupName" deleted successfully')),
-          );
-        } else {
-          scaffoldMessenger.showSnackBar(
-            const SnackBar(content: Text('Failed to delete group')),
-          );
-        }
-      } catch (e) {
-        scaffoldMessenger.showSnackBar(
-          SnackBar(content: Text('Error deleting group: $e')),
-        );
-      }
-    }
-  }
-
-  /// Builds the comprehensive testing tab for all functionality and services
-  Widget _buildTestingTab() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        // Header
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Row(
-              children: [
-                const Icon(Icons.science, size: 32, color: Colors.purple),
-                const SizedBox(width: 12),
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Comprehensive System Testing',
-                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                      ),
-                      Text(
-                        'Test all functionality and services across the entire project',
-                        style: TextStyle(color: Colors.grey),
-                      ),
-                    ],
-                  ),
-                ),
-                ElevatedButton.icon(
-                  onPressed: _runAllTests,
-                  icon: const Icon(Icons.play_arrow),
-                  label: const Text('Run All Tests'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.green,
-                    foregroundColor: Colors.white,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-        
-        // Core Services Testing
-        _buildTestingSection(
-          'Core Services Testing',
-          Icons.settings,
-          Colors.blue,
-          [
-            _buildTestCard('Firebase Authentication', 'Test user login, registration, and authentication', () => _testAuthentication()),
-            _buildTestCard('Firestore Database', 'Test data operations, queries, and real-time updates', () => _testFirestore()),
-            _buildTestCard('Firebase Storage', 'Test file upload, download, and media storage', () => _testFirebaseStorage()),
-            _buildTestCard('Firebase Messaging', 'Test FCM notifications and messaging', () => _testFirebaseMessaging()),
-            _buildTestCard('Logger Service', 'Test centralized logging functionality', () => _testLoggerService()),
-            _buildTestCard('Error Boundaries', 'Test error handling and recovery', () => _testErrorBoundaries()),
-          ],
-        ),
-        
-        // Communication Services Testing
-        _buildTestingSection(
-          'Communication Services Testing',
-          Icons.chat,
-          Colors.green,
-          [
-            _buildTestCard('Enhanced Notification Service', 'Test local and push notifications', () => _testNotificationService()),
-            _buildTestCard('Secure Message Service', 'Test encrypted messaging and cleanup', () => _testSecureMessages()),
-            _buildTestCard('Scheduled Messages Service', 'Test message scheduling and templates', () => _testScheduledMessages()),
-            _buildTestCard('Message Cleanup Service', 'Test automatic message deletion', () => _testMessageCleanup()),
-            _buildTestCard('Local Message Storage', 'Test local Hive storage', () => _testLocalStorage()),
-          ],
-        ),
-        
-        // Permission and Media Services Testing
-        _buildTestingSection(
-          'Permission & Media Services Testing',
-          Icons.perm_device_information,
-          Colors.orange,
-          [
-            _buildTestCard('Unified Permission Service', 'Test permission requests across platforms', () => _testPermissions()),
-            _buildTestCard('iOS Permission Service', 'Test iOS-specific permission handling', () => _testIOSPermissions()),
-            _buildTestCard('Permission Request Helper', 'Test permission UI and callbacks', () => _testPermissionHelper()),
-            _buildTestCard('Unified Media Service', 'Test media capture and selection', () => _testMediaService()),
-            _buildTestCard('Mobile Image Service', 'Test image and document picking', () => _testImageService()),
-            _buildTestCard('Document Service', 'Test document handling and display', () => _testDocumentService()),
-          ],
-        ),
-        
-        // UI and Localization Testing
-        _buildTestingSection(
-          'UI & Localization Testing',
-          Icons.phone_android,
-          Colors.purple,
-          [
-            _buildTestCard('Theme Service', 'Test dark/light mode switching', () => _testThemeService()),
-            _buildTestCard('Error Boundary Widget', 'Test UI error handling', () => _testErrorBoundaryWidget()),
-            _buildTestCard('Update Dialog', 'Test app update prompts', () => _testUpdateDialog()),
-            _buildTestCard('Scheduled Message Widget', 'Test message scheduling UI', () => _testScheduledMessageWidget()),
-          ],
-        ),
-        
-        // Cross-Platform Testing
-        _buildTestingSection(
-          'Cross-Platform Testing',
-          Icons.devices,
-          Colors.red,
-          [
-            _buildTestCard('Web Compatibility', 'Test web-specific functionality', () => _testWebCompatibility()),
-            _buildTestCard('Android Features', 'Test Android-specific features', () => _testAndroidFeatures()),
-            _buildTestCard('iOS Features', 'Test iOS-specific features', () => _testIOSFeatures()),
-            _buildTestCard('Responsive Design', 'Test UI across different screen sizes', () => _testResponsiveDesign()),
-            _buildTestCard('Performance', 'Test app performance and memory usage', () => _testPerformance()),
-          ],
-        ),
-        
-        // Integration Testing
-        _buildTestingSection(
-          'Integration Testing',
-          Icons.link,
-          Colors.teal,
-          [
-            _buildTestCard('End-to-End Chat Flow', 'Test complete chat functionality', () => _testChatFlow()),
-            _buildTestCard('User Registration Flow', 'Test complete user onboarding', () => _testRegistrationFlow()),
-            _buildTestCard('Admin Panel Functions', 'Test all admin capabilities', () => _testAdminFunctions()),
-            _buildTestCard('Group Management', 'Test group creation and management', () => _testGroupManagement()),
-            _buildTestCard('Security Features', 'Test secure messaging and permissions', () => _testSecurityFeatures()),
-          ],
-        ),
-        
-        // Test Results Display
-        const SizedBox(height: 24),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.assessment, color: Colors.indigo),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Test Results',
-                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: _clearTestResults,
-                      icon: const Icon(Icons.clear_all),
-                      label: const Text('Clear Results'),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  height: 200,
-                  decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: ListView.builder(
-                    itemCount: _testResults.length,
-                    itemBuilder: (context, index) {
-                      final result = _testResults[index];
-                      return ListTile(
-                        leading: Icon(
-                          result['success'] ? Icons.check_circle : Icons.error,
-                          color: result['success'] ? Colors.green : Colors.red,
-                        ),
-                        title: Text(result['test']),
-                        subtitle: Text(result['message']),
-                        trailing: Text(
-                          result['timestamp'].toString().split('.').first,
-                          style: const TextStyle(fontSize: 12),
-                        ),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-  
-  /// Builds a testing section with grouped test cards
-  Widget _buildTestingSection(String title, IconData icon, Color color, List<Widget> tests) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: Row(
-            children: [
-              Icon(icon, color: color),
-              const SizedBox(width: 8),
-              Text(
-                title,
-                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color),
-              ),
-            ],
-          ),
-        ),
-        Card(
-          child: Padding(
-            padding: const EdgeInsets.all(12.0),
-            child: Column(
-              children: tests.map((test) => Padding(
-                padding: const EdgeInsets.symmetric(vertical: 4.0),
-                child: test,
-              )).toList(),
-            ),
-          ),
-        ),
-        const SizedBox(height: 16),
-      ],
-    );
-  }
-  
-  /// Builds an individual test card
-  Widget _buildTestCard(String title, String description, VoidCallback onTest) {
-    return Container(
-      width: double.infinity,
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(fontWeight: FontWeight.w600),
-                ),
-                Text(
-                  description,
-                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-                ),
-              ],
-            ),
-          ),
-          ElevatedButton(
-            onPressed: onTest,
-            child: const Text('Test'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue,
-              foregroundColor: Colors.white,
-              minimumSize: const Size(60, 36),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-  
-  // =============================================================================
-  // TESTING METHODS
-  // =============================================================================
-  
-  /// Runs all tests sequentially
-  Future<void> _runAllTests() async {
-    _addTestResult('Starting comprehensive test suite', true);
-    
-    // Core Services
-    await _testAuthentication();
-    await _testFirestore();
-    await _testFirebaseStorage();
-    await _testFirebaseMessaging();
-    await _testLoggerService();
-    await _testErrorBoundaries();
-    
-    // Communication Services
-    await _testNotificationService();
-    await _testSecureMessages();
-    await _testScheduledMessages();
-    await _testMessageCleanup();
-    await _testLocalStorage();
-    
-    // Permissions & Media
-    await _testPermissions();
-    await _testIOSPermissions();
-    await _testPermissionHelper();
-    await _testMediaService();
-    await _testImageService();
-    await _testDocumentService();
-    
-    // UI & Localization
-    await _testThemeService();
-    await _testErrorBoundaryWidget();
-    await _testUpdateDialog();
-    await _testScheduledMessageWidget();
-    
-    // Cross-Platform
-    await _testWebCompatibility();
-    await _testAndroidFeatures();
-    await _testIOSFeatures();
-    await _testResponsiveDesign();
-    await _testPerformance();
-    
-    // Integration
-    await _testChatFlow();
-    await _testRegistrationFlow();
-    await _testAdminFunctions();
-    await _testGroupManagement();
-    await _testSecurityFeatures();
-    
-    _addTestResult('All tests completed', true);
-  }
-  
-  /// Adds a test result to the list
-  void _addTestResult(String testName, bool success, [String? message]) {
-    setState(() {
-      _testResults.insert(0, {
-        'test': testName,
-        'success': success,
-        'message': message ?? (success ? 'Test passed' : 'Test failed'),
-        'timestamp': DateTime.now(),
-      });
-    });
-  }
-  
-  /// Clears all test results
-  void _clearTestResults() {
-    setState(() {
-      _testResults.clear();
-    });
-  }
-  
-  // Core Services Tests
-  Future<void> _testAuthentication() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        _addTestResult('Firebase Authentication', true, 'User authenticated: ${user.email}');
-      } else {
-        _addTestResult('Firebase Authentication', false, 'No user authenticated');
-      }
-    } catch (e) {
-      _addTestResult('Firebase Authentication', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testFirestore() async {
-    try {
-      final doc = await FirebaseFirestore.instance.collection('test').doc('connection').get();
-      _addTestResult('Firestore Database', true, 'Connection successful');
-    } catch (e) {
-      _addTestResult('Firestore Database', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testFirebaseStorage() async {
-    try {
-      final ref = FirebaseStorage.instance.ref().child('test');
-      _addTestResult('Firebase Storage', true, 'Storage reference created successfully');
-    } catch (e) {
-      _addTestResult('Firebase Storage', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testFirebaseMessaging() async {
-    try {
-      // Check if we're on web platform
-      if (kIsWeb) {
-        // Web-specific FCM test
-        try {
-          final token = await FirebaseMessaging.instance.getToken();
-          if (token != null) {
-            _addTestResult('Firebase Messaging', true, 'FCM token obtained on web');
-          } else {
-            _addTestResult('Firebase Messaging', false, 'Failed to get FCM token on web');
-          }
-        } catch (webError) {
-          // Web FCM might fail in development due to service worker issues
-          _addTestResult('Firebase Messaging', true, 'Web FCM accessible (service worker may need HTTPS in production)');
-        }
-      } else {
-        // Mobile platform FCM test
-        final token = await FirebaseMessaging.instance.getToken();
-        if (token != null) {
-          _addTestResult('Firebase Messaging', true, 'FCM token obtained on mobile');
-        } else {
-          _addTestResult('Firebase Messaging', false, 'Failed to get FCM token on mobile');
-        }
-      }
-    } catch (e) {
-      _addTestResult('Firebase Messaging', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testLoggerService() async {
-    try {
-      Log.i('Testing Logger Service');
-      _addTestResult('Logger Service', true, 'Logging functionality working');
-    } catch (e) {
-      _addTestResult('Logger Service', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testErrorBoundaries() async {
-    try {
-      // Test if error boundary exists
-      _addTestResult('Error Boundaries', true, 'Error boundary system active');
-    } catch (e) {
-      _addTestResult('Error Boundaries', false, 'Error: $e');
-    }
-  }
-  
-  // Communication Services Tests
-  Future<void> _testNotificationService() async {
-    try {
-              final service = ProductionNotificationService();
-      _addTestResult('Enhanced Notification Service', true, 'Service instantiated successfully');
-    } catch (e) {
-      _addTestResult('Enhanced Notification Service', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testSecureMessages() async {
-    try {
-      final service = SecureMessageService();
-      _addTestResult('Secure Message Service', true, 'Service instantiated successfully');
-    } catch (e) {
-      _addTestResult('Secure Message Service', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testScheduledMessages() async {
-    try {
-      final service = ScheduledMessagesService();
-      _addTestResult('Scheduled Messages Service', true, 'Service instantiated successfully');
-    } catch (e) {
-      _addTestResult('Scheduled Messages Service', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testMessageCleanup() async {
-    try {
-      final service = MessageCleanupService();
-      _addTestResult('Message Cleanup Service', true, 'Service instantiated successfully');
-    } catch (e) {
-      _addTestResult('Message Cleanup Service', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testLocalStorage() async {
-    try {
-      // Test Hive local storage
-      _addTestResult('Local Message Storage', true, 'Local storage accessible');
-    } catch (e) {
-      _addTestResult('Local Message Storage', false, 'Error: $e');
-    }
-  }
-  
-  // Permission & Media Tests
-  Future<void> _testPermissions() async {
-    try {
-              final service = ProductionPermissionService();
-      _addTestResult('Unified Permission Service', true, 'Service instantiated successfully');
-    } catch (e) {
-      _addTestResult('Unified Permission Service', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testIOSPermissions() async {
-    try {
-              final service = ProductionPermissionService();
-      _addTestResult('iOS Permission Service', true, 'Service instantiated successfully');
-    } catch (e) {
-      _addTestResult('iOS Permission Service', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testPermissionHelper() async {
-    try {
-      // Test permission helper
-      _addTestResult('Permission Request Helper', true, 'Helper accessible');
-    } catch (e) {
-      _addTestResult('Permission Request Helper', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testMediaService() async {
-    try {
-      final service = UnifiedMediaService();
-      _addTestResult('Unified Media Service', true, 'Service instantiated successfully');
-    } catch (e) {
-      _addTestResult('Unified Media Service', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testImageService() async {
-    try {
-      final service = MobileImageService();
-      _addTestResult('Mobile Image Service', true, 'Service instantiated successfully');
-    } catch (e) {
-      _addTestResult('Mobile Image Service', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testDocumentService() async {
-    try {
-      final service = DocumentService();
-      _addTestResult('Document Service', true, 'Service instantiated successfully');
-    } catch (e) {
-      _addTestResult('Document Service', false, 'Error: $e');
-    }
-  }
-  
-  // UI & Localization Tests
-  Future<void> _testThemeService() async {
-    try {
-      final service = ThemeService.instance;
-      final isDark = service.isDarkMode;
-      _addTestResult('Theme Service', true, 'Current theme: ${isDark ? 'Dark' : 'Light'}');
-    } catch (e) {
-      _addTestResult('Theme Service', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testErrorBoundaryWidget() async {
-    try {
-      _addTestResult('Error Boundary Widget', true, 'Widget system functional');
-    } catch (e) {
-      _addTestResult('Error Boundary Widget', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testUpdateDialog() async {
-    try {
-      _addTestResult('Update Dialog', true, 'Update system accessible');
-    } catch (e) {
-      _addTestResult('Update Dialog', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testScheduledMessageWidget() async {
-    try {
-      _addTestResult('Scheduled Message Widget', true, 'Widget system functional');
-    } catch (e) {
-      _addTestResult('Scheduled Message Widget', false, 'Error: $e');
-    }
-  }
-  
-  // Cross-Platform Tests
-  Future<void> _testWebCompatibility() async {
-    try {
-      _addTestResult('Web Compatibility', true, 'Web platform features accessible');
-    } catch (e) {
-      _addTestResult('Web Compatibility', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testAndroidFeatures() async {
-    try {
-      _addTestResult('Android Features', true, 'Android platform features accessible');
-    } catch (e) {
-      _addTestResult('Android Features', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testIOSFeatures() async {
-    try {
-      _addTestResult('iOS Features', true, 'iOS platform features accessible');
-    } catch (e) {
-      _addTestResult('iOS Features', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testResponsiveDesign() async {
-    try {
-      final size = MediaQuery.of(context).size;
-      _addTestResult('Responsive Design', true, 'Screen size: ${size.width}x${size.height}');
-    } catch (e) {
-      _addTestResult('Responsive Design', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testPerformance() async {
-    try {
-      final stopwatch = Stopwatch()..start();
-      await Future.delayed(const Duration(milliseconds: 10));
-      stopwatch.stop();
-      _addTestResult('Performance', true, 'Response time: ${stopwatch.elapsedMilliseconds}ms');
-    } catch (e) {
-      _addTestResult('Performance', false, 'Error: $e');
-    }
-  }
-  
-  // Integration Tests
-  Future<void> _testChatFlow() async {
-    try {
-      _addTestResult('End-to-End Chat Flow', true, 'Chat system components accessible');
-    } catch (e) {
-      _addTestResult('End-to-End Chat Flow', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testRegistrationFlow() async {
-    try {
-      _addTestResult('User Registration Flow', true, 'Registration system accessible');
-    } catch (e) {
-      _addTestResult('User Registration Flow', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testAdminFunctions() async {
-    try {
-      final service = AdminGroupService();
-      _addTestResult('Admin Panel Functions', true, 'Admin services accessible');
-    } catch (e) {
-      _addTestResult('Admin Panel Functions', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testGroupManagement() async {
-    try {
-      final service = AdminGroupService();
-      _addTestResult('Group Management', true, 'Group management services accessible');
-    } catch (e) {
-      _addTestResult('Group Management', false, 'Error: $e');
-    }
-  }
-  
-  Future<void> _testSecurityFeatures() async {
-    try {
-      final user = FirebaseAuth.instance.currentUser;
-      final hasAuth = user != null;
-      _addTestResult('Security Features', hasAuth, hasAuth ? 'Security systems active' : 'Authentication required');
-    } catch (e) {
-      _addTestResult('Security Features', false, 'Error: $e');
-    }
   }
 } 

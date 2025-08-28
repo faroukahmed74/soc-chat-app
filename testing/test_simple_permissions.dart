@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
-import 'lib/services/production_permission_service.dart';
-import 'lib/services/production_notification_service.dart';
+import '../lib/services/production_permission_service.dart';
+import '../lib/services/production_notification_service.dart';
 
 void main() {
   runApp(const PermissionTestApp());
@@ -103,7 +103,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
     });
     
     try {
-              final result = await ProductionPermissionService.requestCameraPermission(context);
+      final result = await ProductionPermissionService.requestCameraPermission(context);
       setState(() {
         _status = 'Camera permission: ${result ? "GRANTED" : "DENIED"}';
       });
@@ -120,7 +120,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
     });
     
     try {
-              final result = await ProductionPermissionService.requestPhotosPermission(context);
+      final result = await ProductionPermissionService.requestPhotosPermission(context);
       setState(() {
         _status = 'Photos permission: ${result ? "GRANTED" : "DENIED"}';
       });
@@ -137,7 +137,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
     });
     
     try {
-              final result = await ProductionPermissionService.requestMicrophonePermission(context);
+      final result = await ProductionPermissionService.requestMicrophonePermission(context);
       setState(() {
         _status = 'Microphone permission: ${result ? "GRANTED" : "DENIED"}';
       });
@@ -154,7 +154,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
     });
     
     try {
-              final result = await ProductionNotificationService().requestNotificationPermission();
+      final result = await ProductionNotificationService().requestNotificationPermission();
       setState(() {
         _status = 'Notification permission: ${result ? "GRANTED" : "DENIED"}';
       });
@@ -171,7 +171,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
     });
     
     try {
-              final result = await ProductionPermissionService.requestLocationPermission(context);
+      final result = await ProductionPermissionService.requestLocationPermission(context);
       setState(() {
         _status = 'Location permission: ${result ? "GRANTED" : "DENIED"}';
       });
@@ -188,11 +188,19 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
     });
     
     try {
-              final results = await ProductionPermissionService.getPermissionStatus();
+      // Test all permissions individually since there's no bulk status method
+      final cameraResult = await ProductionPermissionService.requestCameraPermission(context);
+      final photosResult = await ProductionPermissionService.requestPhotosPermission(context);
+      final micResult = await ProductionPermissionService.requestMicrophonePermission(context);
+      final notifResult = await ProductionNotificationService().requestNotificationPermission();
+      final locationResult = await ProductionPermissionService.requestLocationPermission(context);
       
-      final statusText = results.entries
-          .map((e) => '${e.key.toString().split('.').last}: ${e.value ? "✓" : "✗"}')
-          .join('\n');
+      final statusText = '''
+Camera: ${cameraResult ? "✓" : "✗"}
+Photos: ${photosResult ? "✓" : "✗"}
+Microphone: ${micResult ? "✓" : "✗"}
+Notifications: ${notifResult ? "✓" : "✗"}
+Location: ${locationResult ? "✓" : "✗"}''';
       
       setState(() {
         _status = 'All permissions status:\n$statusText';

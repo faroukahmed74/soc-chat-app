@@ -16,10 +16,10 @@ class MobileImageService {
     
     try {
       // Note: This method now requires BuildContext for proper permission handling
-      // Use ProductionPermissionService.requestCameraPermission(context) before calling this method
+      // Use SimplePermissionService.requestCameraPermission(context) before calling this method
       final status = await Permission.camera.status;
       if (!status.isGranted) {
-        Log.w('Camera permission not granted. Use ProductionPermissionService.requestCameraPermission(context) first.', 'MOBILE_IMAGE');
+        Log.w('Camera permission not granted. Use SimplePermissionService.requestCameraPermission(context) first.', 'MOBILE_IMAGE');
         return null;
       }
       
@@ -43,10 +43,10 @@ class MobileImageService {
     
     try {
       // Note: This method now requires BuildContext for proper permission handling
-      // Use ProductionPermissionService.requestPhotosPermission(context) before calling this method
+      // Use SimplePermissionService.requestPhotosPermission(context) before calling this method
       final status = await Permission.photos.status;
       if (!status.isGranted && !status.isLimited) {
-        Log.w('Photos permission not granted. Use ProductionPermissionService.requestPhotosPermission(context) first.', 'MOBILE_IMAGE');
+        Log.w('Photos permission not granted. Use SimplePermissionService.requestPhotosPermission(context) first.', 'MOBILE_IMAGE');
         return null;
       }
       
@@ -347,7 +347,7 @@ class MobileImageService {
         Log.w('permission_handler failed, trying alternative method: $e', 'MOBILE_IMAGE');
         
         // Fallback: try to open Android app settings directly
-        final url = 'package:com.example.socchatapp';
+        final url = 'package:com.faroukahmed74.socchatapp';
         if (await canLaunchUrl(Uri.parse(url))) {
           await launchUrl(Uri.parse(url));
           Log.i('Android Settings opened using URL launcher', 'MOBILE_IMAGE');

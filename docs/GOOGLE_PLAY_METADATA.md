@@ -7,7 +7,7 @@
 
 ### Basic Details
 - **App Name:** SOC Chat App
-- **Package Name:** com.example.socchatapp
+- **Package Name:** com.faroukahmed74.socchatapp
 - **Category:** Social
 - **Content Rating:** Teen (13+)
 - **Language:** English (Primary), Arabic (Secondary)

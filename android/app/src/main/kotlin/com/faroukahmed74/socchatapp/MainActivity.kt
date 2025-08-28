@@ -1,4 +1,4 @@
-package com.example.socchatapp
+package com.faroukahmed74.socchatapp
 
 import io.flutter.embedding.android.FlutterActivity
 

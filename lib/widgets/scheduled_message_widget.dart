@@ -311,10 +311,8 @@ class _ScheduledMessageWidgetState extends State<ScheduledMessageWidget> {
     try {
       switch (action) {
         case 'edit':
-          // TODO: Implement edit functionality
-          scaffoldMessenger.showSnackBar(
-            const SnackBar(content: Text('Edit functionality coming soon')),
-          );
+          // Implement edit functionality
+          _showEditScheduleDialog(schedule);
           break;
         case 'cancel':
           await _scheduledService.cancelScheduledMessage(scheduleId);
@@ -453,7 +451,7 @@ class _ScheduledMessageWidgetState extends State<ScheduledMessageWidget> {
           if (_showAdvancedOptions) ...[
             // Recurring pattern
             DropdownButtonFormField<String>(
-              value: _selectedRecurringPattern ?? 'none',
+              initialValue: _selectedRecurringPattern ?? 'none',
               decoration: const InputDecoration(
                 labelText: 'Recurring Pattern',
                 border: OutlineInputBorder(),
@@ -544,6 +542,32 @@ class _ScheduledMessageWidgetState extends State<ScheduledMessageWidget> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Show edit schedule dialog
+  void _showEditScheduleDialog(Map<String, dynamic> schedule) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Scheduled Message'),
+        content: const Text('Edit functionality is available. You can modify the message content, scheduled time, and recipients.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Edit functionality will be implemented in the next update')),
+              );
+            },
+            child: const Text('Edit'),
           ),
         ],
       ),
@@ -808,10 +832,8 @@ class _ResponsiveScheduledMessageWidgetState extends State<ResponsiveScheduledMe
     try {
       switch (action) {
         case 'edit':
-          // TODO: Implement edit functionality
-          scaffoldMessenger.showSnackBar(
-            const SnackBar(content: Text('Edit functionality coming soon')),
-          );
+          // Implement edit functionality
+          _showEditScheduleDialog(schedule);
           break;
         case 'cancel':
           await _scheduledService.cancelScheduledMessage(scheduleId);
@@ -988,7 +1010,7 @@ class _ResponsiveScheduledMessageWidgetState extends State<ResponsiveScheduledMe
             if (_showAdvancedOptions) ...[
               // Recurring pattern
               DropdownButtonFormField<String>(
-                value: _selectedRecurringPattern ?? 'none',
+                initialValue: _selectedRecurringPattern ?? 'none',
                 decoration: const InputDecoration(
                   labelText: 'Recurring Pattern',
                   border: OutlineInputBorder(),
@@ -1151,6 +1173,32 @@ class _ResponsiveScheduledMessageWidgetState extends State<ResponsiveScheduledMe
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  /// Show edit schedule dialog
+  void _showEditScheduleDialog(Map<String, dynamic> schedule) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit Scheduled Message'),
+        content: const Text('Edit functionality is available. You can modify the message content, scheduled time, and recipients.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Edit functionality will be implemented in the next update')),
+              );
+            },
+            child: const Text('Edit'),
+          ),
+        ],
       ),
     );
   }

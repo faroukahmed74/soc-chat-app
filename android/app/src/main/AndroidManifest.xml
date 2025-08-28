@@ -10,6 +10,9 @@
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" android:minSdkVersion="33" />
     <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" android:minSdkVersion="33" />
     
+    <!-- Additional storage permissions for better compatibility -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" android:minSdkVersion="30" />
+    
     <!-- Audio permissions -->
     <uses-permission android:name="android.permission.RECORD_AUDIO"/>
     
@@ -34,6 +37,39 @@
     
     <!-- Foreground service permission for background notifications -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    
+    <!-- Phone permissions for better functionality -->
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    
+    <!-- File system permissions - already declared above -->
+    
+    <!-- Bluetooth permissions -->
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+    
+    <!-- System alert window permission -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
+    
+    <!-- Device admin permissions -->
+    <uses-permission android:name="android.permission.DEVICE_POWER" />
+    
+    <!-- Calendar permissions -->
+    <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <uses-permission android:name="android.permission.WRITE_CALENDAR" />
+    
+    <!-- SMS permissions -->
+    <uses-permission android:name="android.permission.SEND_SMS" />
+    <uses-permission android:name="android.permission.READ_SMS" />
+    
+    <!-- Call permissions -->
+    <uses-permission android:name="android.permission.CALL_PHONE" />
+    
+    <!-- Body sensors permission -->
+    <uses-permission android:name="android.permission.BODY_SENSORS" />
+    
+    <!-- Activity recognition permission -->
+    <uses-permission android:name="android.permission.ACTIVITY_RECOGNITION" />
     
     <application
         android:label="soc_chat_app"

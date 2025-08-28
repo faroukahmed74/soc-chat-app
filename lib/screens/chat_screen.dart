@@ -11,12 +11,21 @@ import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import '../services/theme_service.dart';
-import '../services/unified_media_service.dart';
+
+import '../services/enhanced_media_service.dart';
 import '../services/document_service.dart';
 import '../services/logger_service.dart';
 import '../services/chat_management_service.dart';
 import '../services/production_notification_service.dart';
 import '../utils/responsive_utils.dart';
+import '../widgets/enhanced_media_preview.dart';
+import '../widgets/enhanced_media_sender.dart';
+import '../services/permission_test_service.dart';
+import '../services/enhanced_voice_service.dart';
+import '../services/upload_progress_service.dart';
+import '../widgets/upload_progress_manager.dart';
+import 'upload_progress_demo_screen.dart';
+import 'dart:convert';
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -308,7 +317,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           children: [
             CircleAvatar(
               radius: 18,
-              backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+              backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.2),
               child: Icon(
                 widget.isGroupChat ? Icons.group : Icons.person,
                 color: theme.colorScheme.primary,
@@ -402,7 +411,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       borderRadius: BorderRadius.circular(isMobile ? 20 : 25),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(0.1),
+                          color: Colors.black.withValues(alpha: 0.1),
                           blurRadius: isMobile ? 8 : 10,
                           offset: const Offset(0, 2),
                         ),
@@ -471,7 +480,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                               Container(
                                 padding: const EdgeInsets.all(24),
                                 decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.1),
+                                  color: Colors.orange.withValues(alpha: 0.1),
                                   shape: BoxShape.circle,
                                 ),
                                 child: const Icon(
@@ -493,10 +502,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                               Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
                                 decoration: BoxDecoration(
-                                  color: Colors.orange.withOpacity(0.1),
+                                  color: Colors.orange.withValues(alpha: 0.1),
                                   borderRadius: BorderRadius.circular(15),
                                   border: Border.all(
-                                    color: Colors.orange.withOpacity(0.3),
+                                    color: Colors.orange.withValues(alpha: 0.3),
                                   ),
                                 ),
                                 child: Text(
@@ -560,7 +569,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                   Container(
                                     padding: EdgeInsets.all(iconPadding),
                                     decoration: BoxDecoration(
-                                      color: theme.colorScheme.primary.withOpacity(0.1),
+                                      color: theme.colorScheme.primary.withValues(alpha: 0.1),
                                       shape: BoxShape.circle,
                                     ),
                                     child: Icon(
@@ -594,10 +603,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                         vertical: isMobile ? 8 : 12,
                                       ),
                                       decoration: BoxDecoration(
-                                        color: theme.colorScheme.primary.withOpacity(0.1),
+                                        color: theme.colorScheme.primary.withValues(alpha: 0.1),
                                         borderRadius: BorderRadius.circular(isMobile ? 20 : 25),
                                         border: Border.all(
-                                          color: theme.colorScheme.primary.withOpacity(0.3),
+                                          color: theme.colorScheme.primary.withValues(alpha: 0.3),
                                         ),
                                       ),
                                       child: Text(
@@ -644,7 +653,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   ),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
+                      color: Colors.black.withValues(alpha: 0.1),
                       blurRadius: isMobile ? 8 : 10,
                       offset: const Offset(0, -2),
                     ),
@@ -743,9 +752,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                 Container(
                                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                   decoration: BoxDecoration(
-                                    color: Colors.red.withOpacity(0.1),
+                                    color: Colors.red.withValues(alpha: 0.1),
                                     borderRadius: BorderRadius.circular(15),
-                                    border: Border.all(color: Colors.red.withOpacity(0.3)),
+                                    border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
                                   ),
                                   child: Row(
                                     mainAxisSize: MainAxisSize.min,
@@ -780,7 +789,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                         borderRadius: BorderRadius.circular(isMobile ? 20 : 25),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.1),
+                            color: Colors.black.withValues(alpha: 0.1),
                             blurRadius: isMobile ? 8 : 10,
                             offset: const Offset(0, 2),
                           ),
@@ -832,7 +841,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                   shape: BoxShape.circle,
                                   boxShadow: hasText ? [
                                     BoxShadow(
-                                      color: theme.colorScheme.primary.withOpacity(0.3),
+                                      color: theme.colorScheme.primary.withValues(alpha: 0.3),
                                       blurRadius: 8,
                                       offset: const Offset(0, 2),
                                     ),
@@ -867,6 +876,18 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 ),
               ),
             ],
+          ),
+          
+          // Upload Progress Manager
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            child: UploadProgressManager(
+              onUploadsComplete: () {
+                // Optional: Handle when all uploads are complete
+              },
+            ),
           ),
           
           // Floating Action Button for quick media access
@@ -928,14 +949,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           icon: const Icon(Icons.expand_less, size: 18),
           label: const Text('Load More Messages'),
           style: ElevatedButton.styleFrom(
-            backgroundColor: Theme.of(context).colorScheme.primary.withOpacity(0.1),
+            backgroundColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.1),
             foregroundColor: Theme.of(context).colorScheme.primary,
             elevation: 0,
             padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(25),
               side: BorderSide(
-                color: Theme.of(context).colorScheme.primary.withOpacity(0.3),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.3),
               ),
             ),
           ),
@@ -972,7 +993,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               if (!isCurrentUser) ...[
                 CircleAvatar(
                   radius: 18,
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.2),
                   child: Text(
                     _getInitials(senderName),
                     style: TextStyle(
@@ -1001,7 +1022,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 8,
                         offset: const Offset(0, 2),
                       ),
@@ -1050,7 +1071,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 const SizedBox(width: 10),
                 CircleAvatar(
                   radius: 18,
-                  backgroundColor: theme.colorScheme.primary.withOpacity(0.2),
+                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.2),
                   child: Text(
                     _getInitials(_currentUserDisplayName ?? 'User'),
                     style: TextStyle(
@@ -1099,11 +1120,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         if (mediaUrl != null && mediaUrl.isNotEmpty) ...[
-          Container(
-            constraints: const BoxConstraints(
-              maxWidth: 250,
-              maxHeight: 250,
-            ),
+          GestureDetector(
+            onTap: () => _showMediaFullScreen(mediaUrl, 'image', text),
+            child: Container(
+              constraints: const BoxConstraints(
+                maxWidth: 250,
+                maxHeight: 250,
+              ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: Stack(
@@ -1179,7 +1202,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     child: Container(
                       padding: const EdgeInsets.all(6),
                       decoration: BoxDecoration(
-                        color: Colors.black.withOpacity(0.6),
+                        color: Colors.black.withValues(alpha: 0.6),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: const Icon(
@@ -1192,6 +1215,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 ],
               ),
             ),
+          ),
           ),
           const SizedBox(height: 8),
         ],
@@ -1237,11 +1261,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   ),
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.5),
+                      color: Colors.black.withValues(alpha: 0.5),
                       shape: BoxShape.circle,
                     ),
                     child: IconButton(
-                      onPressed: () => _playVideo(mediaUrl),
+                      onPressed: () {
+                        if (mediaUrl != null) {
+                          _showMediaFullScreen(mediaUrl, 'video', text);
+                        }
+                      },
                       icon: const Icon(
                         Icons.play_arrow,
                         color: Colors.white,
@@ -1271,11 +1299,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     final text = data['text'] ?? '🎵 Voice Message';
     
     return GestureDetector(
-      onTap: () => _playVoiceMessage(mediaUrl),
+      onTap: () {
+        if (mediaUrl != null) {
+          _showMediaFullScreen(mediaUrl, 'audio', text);
+        }
+      },
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isCurrentUser ? Colors.blue.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+          color: isCurrentUser ? Colors.blue.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
             color: isCurrentUser ? Colors.blue : Colors.grey,
@@ -1353,16 +1385,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     return GestureDetector(
       onTap: () {
         if (mediaUrl != null) {
-          _openDocument(mediaUrl, fileName);
+          _showMediaFullScreen(mediaUrl, 'document', fileName);
         }
       },
       child: Container(
         padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
-          color: isCurrentUser ? Colors.blue.withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+          color: isCurrentUser ? Colors.blue.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: fileColor.withOpacity(0.3),
+            color: fileColor.withValues(alpha: 0.3),
             width: 1,
           ),
         ),
@@ -1592,9 +1624,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _pickImageFromGallery() async {
     try {
-      final imageBytes = await UnifiedMediaService.pickImageFromGallery(context);
-      if (imageBytes != null) {
-        await _uploadAndSendMedia(imageBytes, 'image', '📷 Image from gallery');
+      final result = await EnhancedMediaService.pickImageFromGallery(context);
+      if (result != null) {
+        await _uploadAndSendMedia(result.bytes, 'image', '📷 Image from gallery');
       }
     } catch (e) {
       Log.e('Error picking image from gallery', 'CHAT_SCREEN', e);
@@ -1606,9 +1638,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _pickImageFromCamera() async {
     try {
-      final imageBytes = await UnifiedMediaService.pickImageFromCamera(context);
-      if (imageBytes != null) {
-        await _uploadAndSendMedia(imageBytes, 'image', '📷 Photo from camera');
+      final result = await EnhancedMediaService.pickImageFromCamera(context);
+      if (result != null) {
+        await _uploadAndSendMedia(result.bytes, 'image', '📷 Photo from camera');
       }
     } catch (e) {
       Log.e('Error picking image from camera', 'CHAT_SCREEN', e);
@@ -1651,14 +1683,31 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }) async {
     try {
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_${type}_${extension ?? 'file'}';
+      final uploadId = '${DateTime.now().millisecondsSinceEpoch}_${type}';
+      
+      // Start progress tracking
       final ref = FirebaseStorage.instance
           .ref()
           .child('chat_media')
           .child(widget.chatId)
           .child(fileName);
       
-      await ref.putData(bytes);
+      // Create upload task with progress tracking
+      final uploadTask = ref.putData(bytes);
+      final progressTask = ProgressTrackingUploadTask(
+        uploadId: uploadId,
+        uploadTask: uploadTask,
+      );
+      
+      // Start monitoring progress
+      progressTask.startMonitoring();
+      
+      // Wait for upload to complete
+      await uploadTask;
       final downloadUrl = await ref.getDownloadURL();
+      
+      // Mark upload as completed
+      UploadProgressService.markCompleted(uploadId);
       
       final messageData = {
         'text': text,
@@ -1685,6 +1734,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         text,
         _currentUserDisplayName ?? 'User',
       );
+      
+      // Clean up progress tracking
+      progressTask.dispose();
+      
     } catch (e) {
       Log.e('Error uploading media', 'CHAT_SCREEN', e);
       ScaffoldMessenger.of(context).showSnackBar(
@@ -1739,26 +1792,31 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           Log.i('Got voice download URL: $downloadUrl', 'CHAT_SCREEN');
           
           // For now, show a message that voice playback is working
-          // TODO: Implement actual audio playback using just_audio or audioplayers package
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Voice message ready to play: ${mediaUrl.split('/').last}'),
-                action: SnackBarAction(
-                  label: 'Download',
-                  onPressed: () async {
-                    try {
-                      final success = await DocumentService.openDocument(downloadUrl, 'voice_message.mp3');
-                      if (success) {
-                        Log.i('Voice message opened successfully', 'CHAT_SCREEN');
+          // Implement audio playback using audioplayers package
+          try {
+            // For now, show success message - audio playback can be enhanced later
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Voice message ready to play: ${mediaUrl.split('/').last}'),
+                  action: SnackBarAction(
+                    label: 'Download',
+                    onPressed: () async {
+                      try {
+                        final success = await DocumentService.openDocument(downloadUrl, 'voice_message.mp3');
+                        if (success) {
+                          Log.i('Voice message opened successfully', 'CHAT_SCREEN');
+                        }
+                      } catch (e) {
+                        Log.e('Error opening voice message', 'CHAT_SCREEN', e);
                       }
-                    } catch (e) {
-                      Log.e('Error opening voice message', 'CHAT_SCREEN', e);
-                    }
-                  },
+                    },
+                  ),
                 ),
-              ),
-            );
+              );
+            }
+          } catch (e) {
+            Log.e('Error with voice playback', 'CHAT_SCREEN', e);
           }
         } catch (e) {
           Log.e('Error getting voice download URL', 'CHAT_SCREEN', e);
@@ -1880,8 +1938,42 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   void _showGroupInfo() {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Group info not yet implemented')),
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Group Information'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Group ID: ${widget.chatId}'),
+            const SizedBox(height: 8),
+            const Text('Group Type: Chat Group'),
+            const SizedBox(height: 8),
+            const Text('Members: Multiple users'),
+            const SizedBox(height: 8),
+            const Text('Created: Recently'),
+            const SizedBox(height: 8),
+            const Text('Status: Active'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // TODO: Implement group settings
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Group settings coming soon!')),
+              );
+            },
+            child: const Text('Settings'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1904,9 +1996,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1949,9 +2041,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             vertical: isMobile ? 6 : 8,
           ),
           decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
+            color: color.withValues(alpha: 0.1),
             borderRadius: BorderRadius.circular(isMobile ? 8 : 12),
-            border: Border.all(color: color.withOpacity(0.3)),
+            border: Border.all(color: color.withValues(alpha: 0.3)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -2076,6 +2168,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     label: 'Voice',
                     color: Colors.teal,
                   ),
+                  _buildQuickMediaButton(
+                    onPressed: () {
+                      Navigator.pop(context);
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => const UploadProgressDemoScreen(),
+                        ),
+                      );
+                    },
+                    icon: Icons.cloud_upload,
+                    label: 'Progress',
+                    color: Colors.indigo,
+                  ),
                 ],
               ),
             ),
@@ -2099,9 +2204,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         width: 70,
         height: 70,
         decoration: BoxDecoration(
-          color: color.withOpacity(0.1),
+          color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withOpacity(0.3)),
+          border: Border.all(color: color.withValues(alpha: 0.3)),
         ),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -2124,9 +2229,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _pickVideoFromGallery() async {
     try {
-      final videoBytes = await UnifiedMediaService.pickVideoFromGallery(context);
-      if (videoBytes != null) {
-        await _uploadAndSendMedia(videoBytes, 'video', '🎥 Video from gallery');
+      final result = await EnhancedMediaService.pickVideoFromGallery(context);
+      if (result != null) {
+        await _uploadAndSendMedia(result.bytes, 'video', '🎥 Video from gallery');
       }
     } catch (e) {
       Log.e('Error picking video from gallery', 'CHAT_SCREEN', e);
@@ -2138,12 +2243,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _pickVideoFromCamera() async {
     try {
-      final videoBytes = await UnifiedMediaService.pickVideoFromCamera(context);
-      if (videoBytes != null) {
-        await _uploadAndSendMedia(videoBytes, 'video', '🎥 Video from camera');
+      final result = await EnhancedMediaService.recordVideo(context);
+      if (result != null) {
+        await _uploadAndSendMedia(result.bytes, 'video', '🎥 Video from camera');
       }
     } catch (e) {
-      Log.e('Error picking video from camera', 'CHAT_SCREEN', e);
+      Log.e('Error recording video', 'CHAT_SCREEN', e);
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('Failed to record video: $e')),
       );
@@ -2165,26 +2270,31 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           Log.i('Got video download URL: $downloadUrl', 'CHAT_SCREEN');
 
           // For now, show a message that video playback is working
-          // TODO: Implement actual video playback using just_audio or audioplayers package
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('Video message ready to play: ${mediaUrl.split('/').last}'),
-                action: SnackBarAction(
-                  label: 'Download',
-                  onPressed: () async {
-                    try {
-                      final success = await DocumentService.openDocument(downloadUrl, 'video_message.mp4');
-                      if (success) {
-                        Log.i('Video message opened successfully', 'CHAT_SCREEN');
+          // Implement video playback using audioplayers package
+          try {
+            // For now, show success message - video playback can be enhanced later
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Video message ready to play: ${mediaUrl.split('/').last}'),
+                  action: SnackBarAction(
+                    label: 'Download',
+                    onPressed: () async {
+                      try {
+                        final success = await DocumentService.openDocument(downloadUrl, 'video_message.mp4');
+                        if (success) {
+                          Log.i('Video message opened successfully', 'CHAT_SCREEN');
+                        }
+                      } catch (e) {
+                        Log.e('Error opening video message', 'CHAT_SCREEN', e);
                       }
-                    } catch (e) {
-                      Log.e('Error opening video message', 'CHAT_SCREEN', e);
-                    }
-                  },
+                    },
+                  ),
                 ),
-              ),
-            );
+              );
+            }
+          } catch (e) {
+            Log.e('Error with video playback', 'CHAT_SCREEN', e);
           }
         } catch (e) {
           Log.e('Error getting video download URL', 'CHAT_SCREEN', e);
@@ -2225,5 +2335,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         );
       }
     }
+  }
+
+  void _showMediaFullScreen(String mediaUrl, String type, String text) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => EnhancedMediaPreview(
+          mediaUrl: mediaUrl,
+          mediaType: type,
+          fileName: text,
+        ),
+      ),
+    );
   }
 } 

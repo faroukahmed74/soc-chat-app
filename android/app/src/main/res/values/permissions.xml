@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Permission descriptions for user -->
+    <string name="camera_permission_rationale">Camera access is needed to take photos and videos</string>
+    <string name="storage_permission_rationale">Storage access is needed to select images and videos from your device</string>
+    <string name="microphone_permission_rationale">Microphone access is needed to record voice messages</string>
+    <string name="notification_permission_rationale">Notification access is needed to receive chat messages</string>
+    <string name="location_permission_rationale">Location access is needed for location sharing features</string>
+</resources>

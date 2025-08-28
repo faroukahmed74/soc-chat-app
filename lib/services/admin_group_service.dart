@@ -29,6 +29,27 @@ class AdminGroupService {
     }
   }
 
+  // Get current user's role
+  Future<String> getCurrentUserRole() async {
+    try {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user == null) return 'user';
+
+      final userDoc = await FirebaseFirestore.instance
+          .collection('users')
+          .doc(user.uid)
+          .get();
+
+      if (!userDoc.exists) return 'user';
+
+      final userData = userDoc.data() as Map<String, dynamic>;
+      return userData['role'] ?? 'user';
+    } catch (e) {
+      Log.e('Error getting current user role', 'ADMIN_GROUP', e);
+      return 'user';
+    }
+  }
+
   // Check if user is admin of a specific group
   Future<bool> isUserGroupAdmin(String groupId, String userId) async {
     try {

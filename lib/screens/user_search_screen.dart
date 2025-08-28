@@ -398,7 +398,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                         final doc = visibleUsers[index];
                         final userData = doc.data() as Map<String, dynamic>;
                         final userId = doc.id;
-                        if (currentUser != null && userId == currentUser.uid) {
+                        if (userId == currentUser.uid) {
                           return const SizedBox.shrink();
                         }
                         

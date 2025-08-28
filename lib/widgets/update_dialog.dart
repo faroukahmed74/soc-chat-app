@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../services/version_check_service.dart';
+import '../services/fixed_version_check_service.dart';
 
 class UpdateDialog extends StatelessWidget {
   final Map<String, dynamic> updateInfo;
@@ -144,7 +145,7 @@ class UpdateDialog extends StatelessWidget {
     final scaffoldMessenger = ScaffoldMessenger.of(context);
     Navigator.of(context).pop();
     
-    final bool success = await VersionCheckService.downloadAndInstallUpdate(
+    final bool success = await FixedVersionCheckService.downloadAndInstallUpdate(
       updateInfo['downloadUrl'],
       context,
     );

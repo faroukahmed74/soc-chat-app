@@ -1,12 +1,14 @@
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 // Conditional imports for platform-specific services
 import 'mobile_image_service.dart';
 import 'mobile_voice_service.dart';
-import 'production_permission_service.dart';
 import 'document_service.dart';
+import 'ios_media_permission_fix.dart';
+import 'android_permission_fix.dart';
 
 // Conditional imports for web-specific services
 import 'web_media_service.dart' if (dart.library.io) 'web_media_stub.dart';
@@ -18,26 +20,43 @@ class UnifiedMediaService {
       final result = await WebMediaService.pickImageFromCamera();
       return result?['bytes'] as Uint8List?;
     } else {
-      // Request camera permission first using production approach
-      final hasPermission = await ProductionPermissionService.requestCameraPermission(context);
-      
-      if (!hasPermission) {
-        print('[UnifiedMediaService] Camera permission denied');
-        return null;
-      }
-      
-      try {
-        final xFile = await MobileImageService.pickImageFromCamera();
-        if (xFile != null) {
-          final bytes = await xFile.readAsBytes();
-          print('[UnifiedMediaService] Camera image captured: ${bytes.length} bytes');
-          return bytes;
+      // Use iOS-specific permission service for iOS, fallback to simple service for Android
+      if (Platform.isIOS) {
+        try {
+          final xFile = await IOSMediaPermissionFix.pickImageFromCamera(context);
+          if (xFile != null) {
+            final bytes = await xFile.readAsBytes();
+            print('[UnifiedMediaService] iOS Camera image captured: ${bytes.length} bytes');
+            return bytes;
+          }
+          print('[UnifiedMediaService] No image captured from iOS camera');
+          return null;
+        } catch (e) {
+          print('[UnifiedMediaService] Error capturing image from iOS camera: $e');
+          return null;
         }
-        print('[UnifiedMediaService] No image captured from camera');
-        return null;
-      } catch (e) {
-        print('[UnifiedMediaService] Error capturing image from camera: $e');
-        return null;
+      } else {
+        // Android permission handling with improved service
+        final hasPermission = await AndroidPermissionFix.requestCameraPermission(context);
+        
+        if (!hasPermission) {
+          print('[UnifiedMediaService] Android camera permission denied');
+          return null;
+        }
+        
+        try {
+          final xFile = await MobileImageService.pickImageFromCamera();
+          if (xFile != null) {
+            final bytes = await xFile.readAsBytes();
+            print('[UnifiedMediaService] Android camera image captured: ${bytes.length} bytes');
+            return bytes;
+          }
+          print('[UnifiedMediaService] No image captured from Android camera');
+          return null;
+        } catch (e) {
+          print('[UnifiedMediaService] Error capturing image from Android camera: $e');
+          return null;
+        }
       }
     }
   }
@@ -48,26 +67,43 @@ class UnifiedMediaService {
       final result = await WebMediaService.pickImageFromGallery();
       return result?['bytes'] as Uint8List?;
     } else {
-      // Request photos permission first using production approach
-      final hasPermission = await ProductionPermissionService.requestPhotosPermission(context);
-      
-      if (!hasPermission) {
-        print('[UnifiedMediaService] Photos permission denied');
-        return null;
-      }
-      
-      try {
-        final xFile = await MobileImageService.pickImageFromGallery();
-        if (xFile != null) {
-          final bytes = await xFile.readAsBytes();
-          print('[UnifiedMediaService] Gallery image selected: ${bytes.length} bytes');
-          return bytes;
+      // Use iOS-specific permission service for iOS, fallback to simple service for Android
+      if (Platform.isIOS) {
+        try {
+          final xFile = await IOSMediaPermissionFix.pickImageFromGallery(context);
+          if (xFile != null) {
+            final bytes = await xFile.readAsBytes();
+            print('[UnifiedMediaService] iOS Gallery image selected: ${bytes.length} bytes');
+            return bytes;
+          }
+          print('[UnifiedMediaService] No image selected from iOS gallery');
+          return null;
+        } catch (e) {
+          print('[UnifiedMediaService] Error selecting image from iOS gallery: $e');
+          return null;
         }
-        print('[UnifiedMediaService] No image selected from gallery');
-        return null;
-      } catch (e) {
-        print('[UnifiedMediaService] Error selecting image from gallery: $e');
-        return null;
+      } else {
+        // Android permission handling with improved service
+        final hasPermission = await AndroidPermissionFix.requestPhotosPermission(context);
+        
+        if (!hasPermission) {
+          print('[UnifiedMediaService] Android photos permission denied');
+          return null;
+        }
+        
+        try {
+          final xFile = await MobileImageService.pickImageFromGallery();
+          if (xFile != null) {
+            final bytes = await xFile.readAsBytes();
+            print('[UnifiedMediaService] Android gallery image selected: ${bytes.length} bytes');
+            return bytes;
+          }
+          print('[UnifiedMediaService] No image selected from Android gallery');
+          return null;
+        } catch (e) {
+          print('[UnifiedMediaService] Error selecting image from Android gallery: $e');
+          return null;
+        }
       }
     }
   }
@@ -113,24 +149,45 @@ class UnifiedMediaService {
     if (kIsWeb) {
       return await WebMediaService.startVoiceRecording();
     } else {
-      // Request microphone permission first using production approach
-      final hasPermission = await ProductionPermissionService.requestMicrophonePermission(context);
-      
-      if (!hasPermission) {
-        print('[UnifiedMediaService] Microphone permission denied');
-        return null;
-      }
-      
-      try {
-        final result = await MobileVoiceService.startRecording();
-        if (result) {
-          return {'status': 'recording', 'message': 'Voice recording started'};
-        } else {
+      // Use iOS-specific permission service for iOS, fallback to simple service for Android
+      if (Platform.isIOS) {
+        try {
+          final hasPermission = await IOSMediaPermissionFix.requestMicrophonePermission(context);
+          if (!hasPermission) {
+            print('[UnifiedMediaService] iOS microphone permission denied');
+            return null;
+          }
+          
+          final result = await MobileVoiceService.startRecording();
+          if (result) {
+            return {'status': 'recording', 'message': 'Voice recording started'};
+          } else {
+            return null;
+          }
+        } catch (e) {
+          print('[UnifiedMediaService] Error starting iOS voice recording: $e');
           return null;
         }
-      } catch (e) {
-        print('[UnifiedMediaService] Error starting voice recording: $e');
-        return null;
+      } else {
+        // Android permission handling with improved service
+        final hasPermission = await AndroidPermissionFix.requestMicrophonePermission(context);
+        
+        if (!hasPermission) {
+          print('[UnifiedMediaService] Android microphone permission denied');
+          return null;
+        }
+        
+        try {
+          final result = await MobileVoiceService.startRecording();
+          if (result) {
+            return {'status': 'recording', 'message': 'Voice recording started'};
+          } else {
+            return null;
+          }
+        } catch (e) {
+          print('[UnifiedMediaService] Error starting Android voice recording: $e');
+          return null;
+        }
       }
     }
   }
@@ -177,26 +234,43 @@ class UnifiedMediaService {
         return null;
       }
     } else {
-      // Request camera permission first using production approach
-      final hasPermission = await ProductionPermissionService.requestCameraPermission(context);
-      
-      if (!hasPermission) {
-        print('[UnifiedMediaService] Camera permission denied');
-        return null;
-      }
-      
-      try {
-        final xFile = await MobileImageService.pickVideoFromCamera();
-        if (xFile != null) {
-          final bytes = await xFile.readAsBytes();
-          print('[UnifiedMediaService] Camera video captured: ${bytes.length} bytes');
-          return bytes;
+      // Use iOS-specific permission service for iOS, fallback to simple service for Android
+      if (Platform.isIOS) {
+        try {
+          final xFile = await IOSMediaPermissionFix.pickVideoFromCamera(context);
+          if (xFile != null) {
+            final bytes = await xFile.readAsBytes();
+            print('[UnifiedMediaService] iOS Camera video captured: ${bytes.length} bytes');
+            return bytes;
+          }
+          print('[UnifiedMediaService] No video captured from iOS camera');
+          return null;
+        } catch (e) {
+          print('[UnifiedMediaService] Error capturing video from iOS camera: $e');
+          return null;
         }
-        print('[UnifiedMediaService] No video captured from camera');
-        return null;
-      } catch (e) {
-        print('[UnifiedMediaService] Error capturing video from camera: $e');
-        return null;
+      } else {
+        // Android permission handling with improved service
+        final hasPermission = await AndroidPermissionFix.requestCameraPermission(context);
+        
+        if (!hasPermission) {
+          print('[UnifiedMediaService] Android camera permission denied');
+          return null;
+        }
+        
+        try {
+          final xFile = await MobileImageService.pickVideoFromCamera();
+          if (xFile != null) {
+            final bytes = await xFile.readAsBytes();
+            print('[UnifiedMediaService] Android camera video captured: ${bytes.length} bytes');
+            return bytes;
+          }
+          print('[UnifiedMediaService] No video captured from Android camera');
+          return null;
+        } catch (e) {
+          print('[UnifiedMediaService] Error capturing video from Android camera: $e');
+          return null;
+        }
       }
     }
   }
@@ -215,26 +289,43 @@ class UnifiedMediaService {
         return null;
       }
     } else {
-      // Request photos permission first using production approach
-      final hasPermission = await ProductionPermissionService.requestPhotosPermission(context);
-      
-      if (!hasPermission) {
-        print('[UnifiedMediaService] Photos permission denied');
-        return null;
-      }
-      
-      try {
-        final xFile = await MobileImageService.pickVideoFromGallery();
-        if (xFile != null) {
-          final bytes = await xFile.readAsBytes();
-          print('[UnifiedMediaService] Gallery video selected: ${bytes.length} bytes');
-          return bytes;
+      // Use iOS-specific permission service for iOS, fallback to simple service for Android
+      if (Platform.isIOS) {
+        try {
+          final xFile = await IOSMediaPermissionFix.pickVideoFromGallery(context);
+          if (xFile != null) {
+            final bytes = await xFile.readAsBytes();
+            print('[UnifiedMediaService] iOS Gallery video selected: ${bytes.length} bytes');
+            return bytes;
+          }
+          print('[UnifiedMediaService] No video selected from iOS gallery');
+          return null;
+        } catch (e) {
+          print('[UnifiedMediaService] Error selecting video from iOS gallery: $e');
+          return null;
         }
-        print('[UnifiedMediaService] No video selected from gallery');
-        return null;
-      } catch (e) {
-        print('[UnifiedMediaService] Error selecting video from gallery: $e');
-        return null;
+      } else {
+        // Android permission handling with improved service
+        final hasPermission = await AndroidPermissionFix.requestPhotosPermission(context);
+        
+        if (!hasPermission) {
+          print('[UnifiedMediaService] Android photos permission denied');
+          return null;
+        }
+        
+        try {
+          final xFile = await MobileImageService.pickVideoFromGallery();
+          if (xFile != null) {
+            final bytes = await xFile.readAsBytes();
+            print('[UnifiedMediaService] Android gallery video selected: ${bytes.length} bytes');
+            return bytes;
+          }
+          print('[UnifiedMediaService] No video selected from Android gallery');
+          return null;
+        } catch (e) {
+          print('[UnifiedMediaService] Error selecting video from Android gallery: $e');
+          return null;
+        }
       }
     }
   }

@@ -1,340 +1,213 @@
 # SOC Chat App
 
-A comprehensive, cross-platform chat application built with Flutter that supports web, Android, and iOS platforms.
+A secure, cross-platform chat application built with Flutter, featuring real-time messaging, media sharing, and comprehensive notification systems.
 
-## 🌟 Features
+## 🏗️ Project Organization
 
-### Core Functionality
-- **Real-time Chat**: Instant messaging with real-time updates
-- **Group Chats**: Create and manage group conversations
-- **Media Sharing**: Send images, documents, and voice messages
-- **User Management**: User profiles, friend requests, and blocking
-- **Cross-platform**: Works on web, Android, and iOS
+This project has been organized for enhanced readability and maintainability:
 
-### Advanced Features
-- **Account Locking**: Admin-controlled user account management
-- **Message Encryption**: Secure group chat encryption
-- **Admin Panel**: Comprehensive administrative tools
-- **Theme Support**: Light and dark mode
-- **Multi-language**: English and Arabic support
-- **Responsive Design**: Adapts to all screen sizes
+### 📁 Directory Structure
 
-### Platform Support
-- **Web**: Full functionality with web APIs
-- **Android**: Native mobile experience (API 23+)
-- **iOS**: Native mobile experience (iOS 13.0+)
+```
+soc_chat_app/
+├── 📱 android/                 # Android platform-specific code
+├── 🍎 ios/                     # iOS platform-specific code
+├── 🐧 linux/                   # Linux platform-specific code
+├── 🪟 windows/                 # Windows platform-specific code
+├── 🖥️ macos/                   # macOS platform-specific code
+├── 🌐 web/                     # Web platform-specific code
+├── 📦 lib/                     # Main Flutter application code
+├── 🧪 test/                    # Flutter widget tests
+├── 📚 docs/                    # Project documentation
+├── 🔧 build-scripts/           # Build and execution scripts
+├── 🧪 testing/                 # Custom test files
+├── ⚙️ config/                  # Configuration files
+├── 🖥️ servers/                 # Server-side code and dependencies
+├── 🎨 assets/                  # App assets (images, fonts, etc.)
+├── 🚀 functions/               # Firebase Cloud Functions
+└── 📋 Project files           # Root-level project files
+```
 
-## 🏗️ Architecture
+### 📚 Documentation (`docs/`)
 
-### Service Layer
-- **UnifiedMediaService**: Cross-platform media handling
-- **ThemeService**: Theme and language management
-- **LocalizationService**: Internationalization support
-- **AdminGroupService**: Administrative functions
-- **PresenceService**: Online/offline status tracking
+All project documentation is organized in the `docs/` directory:
 
-### Data Layer
-- **Firebase Authentication**: User management
-- **Cloud Firestore**: Real-time database
-- **Firebase Storage**: Media file storage
-- **Firebase Messaging**: Push notifications
+- **Build & Testing**: Build status, testing reports, and testing guides
+- **Platform Guides**: Platform-specific setup and permission guides
+- **Legal & Compliance**: Privacy policy, terms of service, and compliance documents
+- **Feature Documentation**: Comprehensive guides for app features
+- **Setup & Deployment**: Setup guides and deployment instructions
 
-### UI Layer
-- **Responsive Design**: Adapts to all screen sizes
-- **Material Design 3**: Modern UI components
-- **Theme Switching**: Dynamic theme changes
-- **Localization**: RTL support for Arabic
+### 🔧 Build Scripts (`build-scripts/`)
 
-## 📱 Screens
+Platform-specific build and execution scripts:
 
-### Authentication
-- **LoginScreen**: User authentication with account locking detection
-- **RegisterScreen**: New user registration with profile picture upload
+- **Windows**: `.bat` and `.ps1` scripts for Windows builds
+- **Cross-platform**: Shell scripts for various build operations
+- **App Execution**: Scripts to run the built application
 
-### Main App
-- **ChatListScreen**: List of all conversations with search
-- **ChatScreen**: Individual chat interface with media support
-- **ProfileScreen**: User profile management
-- **SettingsScreen**: App configuration and preferences
+### 🧪 Testing (`testing/`)
 
-### Admin Features
-- **AdminPanelScreen**: Comprehensive administrative interface
-- **UserSearchScreen**: Find and interact with users
-- **CreateGroupScreen**: Group creation and management
+Custom test files for various app functionalities:
 
-## 🚀 Getting Started
+- **Permission Tests**: Platform-specific permission testing
+- **Notification Tests**: Notification system verification
+- **Performance Tests**: App performance and functionality testing
+
+### ⚙️ Configuration (`config/`)
+
+Project configuration files:
+
+- **Firebase**: Firebase configuration and rules
+- **Analysis**: Dart analysis options
+- **Build**: Platform-specific build configurations
+
+### 🖥️ Servers (`servers/`)
+
+Server-side components:
+
+- **FCM Server**: Firebase Cloud Messaging server
+- **Node.js Dependencies**: Server package management
+- **Server Scripts**: Server-side utilities and tests
+
+## 🚀 Quick Start
 
 ### Prerequisites
-- Flutter SDK (3.0.0 or higher)
-- Dart SDK (3.0.0 or higher)
-- Firebase project setup
+
+- Flutter SDK (3.8.0+)
+- Dart SDK (3.8.0+)
 - Android Studio / Xcode (for mobile development)
+- Node.js (for server components)
 
 ### Installation
 
 1. **Clone the repository**
    ```bash
-   git clone <repository-url>
+   git clone https://github.com/faroukahmed74/soc-chat_app.git
    cd soc_chat_app
    ```
 
-2. **Install dependencies**
+2. **Install Flutter dependencies**
    ```bash
    flutter pub get
    ```
 
-3. **Configure Firebase**
-   - Create a Firebase project
-   - Download `firebase_options.dart`
-   - Enable Authentication, Firestore, and Storage
+3. **Install server dependencies**
+   ```bash
+   cd servers
+   npm install
+   cd ..
+   ```
 
 4. **Run the app**
    ```bash
-   # Web
-   flutter run -d web-server --web-port 8080 --web-hostname 0.0.0.0
-   
-   # Android
-   flutter run -d android
-   
-   # iOS
-   flutter run -d ios
+   flutter run
    ```
 
-## 🔧 Configuration
+## 📱 Platform Support
 
-### Web Configuration
-The web app includes:
-- Custom favicon and app icons
-- Progressive Web App (PWA) support
-- Responsive design for all screen sizes
-- Web-specific media handling
+- ✅ **Android**: Full support with optimized APK builds
+- ✅ **iOS**: App Store ready with proper permissions
+- ✅ **Web**: Optimized web build with tree-shaking
+- ✅ **Windows**: Desktop application support
+- ✅ **macOS**: Native macOS application
+- ✅ **Linux**: Linux desktop support
 
-### Mobile Configuration
-Mobile apps include:
-- Native permissions handling
-- Platform-specific media services
-- Push notification support
-- Background service management
+## 🔐 Key Features
 
-### Environment Variables
-Create a `.env` file with:
-```
-FIREBASE_API_KEY=your_api_key
-FIREBASE_PROJECT_ID=your_project_id
-FIREBASE_MESSAGING_SENDER_ID=your_sender_id
-```
-
-## 📊 Admin Features
-
-### User Management
-- View all users
-- Lock/unlock accounts
-- Delete user accounts
-- Monitor user activity
-
-### System Monitoring
-- Real-time statistics
-- System health checks
-- Performance metrics
-- Error logging
-
-### Content Moderation
-- Message monitoring
-- User reporting
-- Content filtering
-- Automated moderation
-
-## 🌐 Web Features
-
-### Progressive Web App
-- Installable on desktop and mobile
-- Offline functionality
-- Push notifications
-- App-like experience
-
-### Responsive Design
-- Mobile-first approach
-- Adaptive layouts
-- Touch-friendly interface
-- Cross-browser compatibility
-
-### Media Handling
-- Web camera access
-- File upload support
-- Image processing
-- Audio recording
-
-## 📱 Mobile Features
-
-### Native Integration
-- Camera and gallery access
-- Push notifications
-- Background processing
-- Device-specific optimizations
-
-### Permissions
-- Camera access
-- Photo library access
-- Microphone access
-- Notification permissions
-
-## 🎨 Theming
-
-### Light Theme
-- Clean, modern design
-- Blue accent colors
-- High contrast text
-- Subtle shadows
-
-### Dark Theme
-- Dark backgrounds
-- Consistent color scheme
-- Reduced eye strain
-- Modern aesthetics
-
-### Language Support
-- English (LTR)
-- Arabic (RTL)
-- Dynamic switching
-- Localized content
-
-## 🔒 Security
-
-### Authentication
-- Firebase Authentication
-- Email/password login
-- Account locking
-- Session management
-
-### Data Protection
-- Group chat encryption
-- Secure file storage
-- User privacy controls
-- Admin oversight
-
-## 📈 Performance
-
-### Optimization
-- Lazy loading
-- Image compression
-- Efficient queries
-- Background processing
-
-### Monitoring
-- Performance metrics
-- Error tracking
-- User analytics
-- System health
+- **Secure Messaging**: End-to-end encryption
+- **Real-time Communication**: Firebase-powered real-time updates
+- **Media Sharing**: Photos, videos, and file sharing
+- **Cross-platform**: Consistent experience across all platforms
+- **Push Notifications**: Comprehensive notification system
+- **Admin Panel**: Advanced user management and monitoring
+- **Responsive Design**: Optimized for all screen sizes
 
 ## 🧪 Testing
 
-### Platform Testing
-- Web browser testing
-- Android device testing
-- iOS device testing
-- Cross-platform validation
+### Run Flutter Tests
+```bash
+flutter test
+```
 
-### Feature Testing
-- Authentication flow
-- Chat functionality
-- Media handling
-- Admin features
+### Run Custom Tests
+```bash
+cd testing
+flutter run test_permissions_cli.dart
+```
 
-## 🚀 Deployment
+### Test Notifications
+```bash
+cd testing
+flutter run test_notification_system.dart
+```
 
-### Web Deployment
-1. Build the web app
-   ```bash
-   flutter build web
-   ```
-2. Deploy to hosting service
-3. Configure custom domain
-4. Set up SSL certificate
+## 🏗️ Building
 
-### Mobile Deployment
-1. Build release versions
-   ```bash
-   flutter build apk --release
-   flutter build ios --release
-   ```
-2. Upload to app stores
-3. Configure app signing
-4. Set up distribution
+### Android
+```bash
+cd build-scripts
+./build_android.bat  # Windows
+./build_android.sh   # Linux/macOS
+```
 
-## 📚 Documentation
+### iOS
+```bash
+cd build-scripts
+./build_ios.sh
+```
 
-### Code Structure
-- Comprehensive comments
-- Function documentation
-- Architecture overview
-- Service descriptions
+### Web
+```bash
+flutter build web
+```
 
-### API Reference
-- Service interfaces
-- Method signatures
-- Parameter descriptions
-- Return values
+## 📚 Documentation Index
 
-### User Guide
-- Feature explanations
-- Usage instructions
-- Troubleshooting
-- FAQ section
+### Essential Guides
+- [Setup Guide](docs/SETUP_GUIDE.md) - Complete project setup
+- [Project Documentation](docs/PROJECT_DOCUMENTATION.md) - Comprehensive project overview
+- [Production Readiness](docs/PRODUCTION_READINESS.md) - Production deployment guide
+
+### Platform-Specific
+- [Android Setup](docs/ANDROID_UPDATE_SETUP.md) - Android development setup
+- [iOS Permissions](docs/IOS_PERMISSION_FIXES_SUMMARY.md) - iOS permission handling
+- [Windows Build](docs/WINDOWS_BUILD_GUIDE.md) - Windows application building
+
+### Testing & Quality
+- [Testing Guide](docs/PERMISSION_TESTING_GUIDE.md) - Comprehensive testing guide
+- [UAT Plan](docs/UAT_TEST_PLAN.md) - User acceptance testing
+- [Testing Status](docs/CURRENT_TESTING_STATUS.md) - Current testing status
+
+### Legal & Compliance
+- [Privacy Policy](docs/PRIVACY_POLICY.md) - App privacy policy
+- [Terms of Service](docs/TERMS_OF_SERVICE.md) - App terms and conditions
+- [Legal Compliance](docs/LEGAL_COMPLIANCE_CHECKLIST.md) - Compliance checklist
 
 ## 🤝 Contributing
 
-### Development Setup
 1. Fork the repository
-2. Create feature branch
-3. Make changes
-4. Add tests
-5. Submit pull request
-
-### Code Standards
-- Follow Flutter conventions
-- Add comprehensive comments
-- Include error handling
-- Write unit tests
+2. Create a feature branch
+3. Make your changes
+4. Add tests if applicable
+5. Submit a pull request
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 🙏 Acknowledgments
-
-- Flutter team for the amazing framework
-- Firebase for backend services
-- Community contributors
-- Beta testers and users
-
 ## 📞 Support
 
 For support and questions:
 - Create an issue on GitHub
-- Contact the development team
-- Check the documentation
-- Review the FAQ section
+- Check the [documentation](docs/) for guides
+- Review the [testing status](docs/CURRENT_TESTING_STATUS.md) for known issues
 
-## 🔄 Version History
+## 🔄 Project Status
 
-### v1.0.0
-- Initial release
-- Core chat functionality
-- Cross-platform support
-- Basic admin features
+- **Version**: 1.0.1 (Build 5)
+- **Status**: Production Ready ✅
+- **Last Updated**: 2025-01-27
+- **All Platforms**: Successfully Built ✅
 
-### v1.1.0
-- Enhanced admin panel
-- Account locking system
-- Theme and language support
-- Responsive design improvements
-
-### v1.2.0
-- Advanced media handling
-- Improved security
-- Performance optimizations
-- Enhanced user experience
-
----
-
-**SOC Chat App** - Secure, cross-platform messaging for everyone.
+For detailed build information, see [version_info.json](version_info.json).

@@ -18,6 +18,8 @@
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
 	<string>$(FLUTTER_BUILD_NAME)</string>
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
@@ -45,5 +47,131 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	
+	<!-- Essential Media Permissions for iOS -->
+	
+	<!-- Photo Library Access (iOS 14+) - PRIMARY PERMISSION -->
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>This app needs access to your photo library to select and share images, videos, and other media files in chat conversations.</string>
+	
+	<!-- Photo Library Add Permission (iOS 11+) -->
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>This app needs permission to save photos, videos, and other media files to your photo library.</string>
+	
+
+	
+	<!-- Camera Access for Photos and Videos -->
+	<key>NSCameraUsageDescription</key>
+	<string>This app needs camera access to take photos and record videos for sharing in chat conversations.</string>
+	
+	<!-- Microphone Access for Voice and Video Recording -->
+	<key>NSMicrophoneUsageDescription</key>
+	<string>This app needs microphone access to record voice messages and videos with audio in chat conversations.</string>
+	
+	<!-- Media Library Access for Content Sharing -->
+	<key>NSAppleMusicUsageDescription</key>
+	<string>This app needs access to your media library to share videos, music, and other media content in chat conversations.</string>
+	
+	<!-- File Provider Access for Cloud Storage -->
+	<key>NSFileProviderDomainUsageDescription</key>
+	<string>This app needs access to file providers to share documents, images, and videos from various cloud storage services.</string>
+	
+	<!-- Network Volumes Access for File Sharing -->
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>This app needs access to network volumes to share files, images, and videos across networks.</string>
+	
+	<!-- Additional Essential Permissions -->
+	
+	<!-- Location Permission -->
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This app needs location access to share your location in chat conversations.</string>
+	
+	<!-- Location Always Permission -->
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app needs location access to share your location in chat conversations.</string>
+	
+	<!-- Notification Permission -->
+	<key>NSUserNotificationUsageDescription</key>
+	<string>This app needs notification permission to alert you about new messages and important updates.</string>
+	
+	<!-- Face ID Permission -->
+	<key>NSFaceIDUsageDescription</key>
+	<string>This app uses Face ID to securely authenticate your identity.</string>
+	
+	<!-- Contacts Permission -->
+	<key>NSContactsUsageDescription</key>
+	<string>This app needs access to your contacts to help you find and connect with friends.</string>
+	
+	<!-- Calendar Permission -->
+	<key>NSCalendarsUsageDescription</key>
+	<string>This app needs access to your calendar to schedule events and reminders.</string>
+	
+	<!-- Reminders Permission -->
+	<key>NSRemindersUsageDescription</key>
+	<string>This app needs access to your reminders to help you stay organized.</string>
+	
+	<!-- Motion & Fitness Permission -->
+	<key>NSMotionUsageDescription</key>
+	<string>This app needs access to motion and fitness data to provide health-related features.</string>
+	
+	<!-- Health Permission -->
+	<key>NSHealthUpdateUsageDescription</key>
+	<string>This app needs access to your health data to provide health-related features.</string>
+	
+	<!-- Bluetooth Permission -->
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>This app needs Bluetooth access to connect with nearby devices and share content.</string>
+	
+	<!-- Bluetooth Peripheral Permission -->
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>This app needs Bluetooth peripheral access to connect with nearby devices.</string>
+	
+	<!-- Local Network Permission -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>This app needs local network access to discover and connect with nearby devices.</string>
+	
+	<!-- Speech Recognition Permission -->
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>This app needs speech recognition to convert voice messages to text.</string>
+	
+	<!-- Siri Permission -->
+	<key>NSSiriUsageDescription</key>
+	<string>This app integrates with Siri to provide voice-activated features.</string>
+	
+	<!-- HomeKit Permission -->
+	<key>NSHomeKitUsageDescription</key>
+	<string>This app needs HomeKit access to control smart home devices.</string>
+	
+	<!-- App Transport Security Settings -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSExceptionDomains</key>
+		<dict>
+			<key>localhost</key>
+			<dict>
+				<key>NSExceptionAllowsInsecureHTTPLoads</key>
+				<true/>
+			</dict>
+		</dict>
+	</dict>
+	
+	<!-- Firebase Cloud Messaging Configuration -->
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
+	
+	<!-- Background Modes for FCM -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
+		<string>background-processing</string>
+	</array>
+	
+	<!-- FCM Background App Refresh -->
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	</array>
 </dict>
 </plist>
