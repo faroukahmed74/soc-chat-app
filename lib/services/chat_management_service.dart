@@ -1,6 +1,6 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'production_notification_service.dart';
+import 'unified_notification_service.dart';
 import 'logger_service.dart';
 
 /// Service for managing chat operations and migrations
@@ -167,10 +167,12 @@ class ChatManagementService {
       if (isGroup) {
         // For group chats, send to topic
         final topic = 'chat_$chatId';
-        await ProductionNotificationService().sendBroadcastViaServer(
+        await UnifiedNotificationService().sendBroadcastNotification(
           title: '💬 $senderName in ${chatData['groupName'] ?? 'Group'}',
           body: _truncateMessage(message),
-          data: notificationData,
+          senderId: currentUser.uid,
+          senderName: senderName,
+          messageType: messageType,
         );
         Log.i('Group notification sent to topic: $topic', 'CHAT_MANAGEMENT');
       } else {
@@ -210,10 +212,10 @@ class ChatManagementService {
 
       // Send individual notifications
       for (final token in tokens) {
-        await ProductionNotificationService().sendNotificationViaServer(
-          recipientToken: token,
+        await UnifiedNotificationService().sendFcmNotification(
           title: senderName,
           body: _truncateMessage(message),
+          tokens: [token],
           data: notificationData,
         );
       }

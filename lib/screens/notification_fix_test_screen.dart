@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../services/notification_fix_service.dart';
+import '../services/unified_notification_service.dart';
 import '../services/logger_service.dart';
 
 /// Test screen for the notification fix service
@@ -11,7 +11,7 @@ class NotificationFixTestScreen extends StatefulWidget {
 }
 
 class _NotificationFixTestScreenState extends State<NotificationFixTestScreen> {
-  final NotificationFixService _notificationService = NotificationFixService();
+  final UnifiedNotificationService _notificationService = UnifiedNotificationService();
   
   Map<String, dynamic> _status = {};
   bool _isLoading = false;
@@ -199,7 +199,7 @@ class _NotificationFixTestScreenState extends State<NotificationFixTestScreen> {
             const SizedBox(height: 12),
             
             ElevatedButton.icon(
-              onPressed: _isSendingTest || !_notificationService.isReady ? null : _sendTestNotification,
+              onPressed: _isSendingTest || !_notificationService.isInitialized ? null : _sendTestNotification,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.blue,
                 foregroundColor: Colors.white,

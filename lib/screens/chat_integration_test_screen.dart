@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../services/chat_management_service.dart';
-import '../services/production_notification_service.dart';
+import '../services/unified_notification_service.dart';
 import '../services/logger_service.dart';
 
 class ChatIntegrationTestScreen extends StatefulWidget {
@@ -129,15 +129,13 @@ class _ChatIntegrationTestScreenState extends State<ChatIntegrationTestScreen> {
     });
 
     try {
-      final success = await ProductionNotificationService().sendBroadcastViaServer(
-        title: '📢 Test Broadcast from Chat Integration',
-        body: 'This is a test broadcast notification to verify the integration!',
-        data: {
-          'type': 'chat_integration_test',
-          'timestamp': DateTime.now().toIso8601String(),
-          'source': 'chat_integration_test_screen',
-        },
-      );
+                      final success = await UnifiedNotificationService().sendBroadcastNotification(
+                        title: '📢 Test Broadcast from Chat Integration',
+                        body: 'This is a test broadcast notification to verify the integration!',
+                        senderId: 'test_sender',
+                        senderName: 'Chat Integration Test',
+                        messageType: 'text',
+                      );
 
       setState(() {
         _lastResult = success 
@@ -170,11 +168,11 @@ class _ChatIntegrationTestScreenState extends State<ChatIntegrationTestScreen> {
 
     try {
       // Subscribe to all user topics
-      await ProductionNotificationService().subscribeToAllUserTopics(_currentUserId!);
+      await UnifiedNotificationService().subscribeToTopic('all_users');
       
       // Subscribe to test chat topic
       final chatId = _chatIdController.text.trim();
-      await ProductionNotificationService().subscribeToChatTopic(chatId);
+      await UnifiedNotificationService().subscribeToTopic('chat_$chatId');
 
       setState(() {
         _lastResult = '✅ Subscribed to all test topics!\n- Broadcast: all_users\n- User: user_$_currentUserId\n- Chat: chat_$chatId';

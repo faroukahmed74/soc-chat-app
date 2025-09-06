@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../lib/services/production_permission_service.dart';
-import '../lib/services/production_notification_service.dart';
+import '../lib/services/unified_notification_service.dart';
 
 void main() {
   runApp(const PermissionTestApp());
@@ -154,7 +154,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
     });
     
     try {
-      final result = await ProductionNotificationService().requestNotificationPermission();
+              final result = await UnifiedNotificationService().requestPermission();
       setState(() {
         _status = 'Notification permission: ${result ? "GRANTED" : "DENIED"}';
       });
@@ -192,7 +192,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
       final cameraResult = await ProductionPermissionService.requestCameraPermission(context);
       final photosResult = await ProductionPermissionService.requestPhotosPermission(context);
       final micResult = await ProductionPermissionService.requestMicrophonePermission(context);
-      final notifResult = await ProductionNotificationService().requestNotificationPermission();
+              final notifResult = await UnifiedNotificationService().requestPermission();
       final locationResult = await ProductionPermissionService.requestLocationPermission(context);
       
       final statusText = '''

@@ -49,6 +49,16 @@ build/
 
 # Firebase service account keys (keep these secure!)
 assets/service-account/*.json
+functions/service-account.json
+soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json
+servers/assets/service-account/*.json
+*.json
+!pubspec.json
+!package.json
+!package-lock.json
+!firebase.json
+!firestore.indexes.json
+!firestore.rules
 
 # FCM server files (optional - you might want to keep these)
 # fcm_server.js

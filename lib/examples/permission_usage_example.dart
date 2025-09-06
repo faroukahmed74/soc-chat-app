@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../services/production_permission_service.dart';
-import '../services/production_notification_service.dart';
+import '../services/unified_notification_service.dart';
 
 /// Example of how to use the new permission system in screens
 /// This shows the proper way to request permissions when user interacts with features
@@ -100,7 +100,7 @@ class PermissionUsageExample extends StatelessWidget {
                 onTap: () async {
                   // Request notification permission when user wants to enable notifications
                   final scaffoldMessenger = ScaffoldMessenger.of(context);
-                  final hasPermission = await ProductionNotificationService().requestNotificationPermission();
+                  final hasPermission = await UnifiedNotificationService().requestPermission();
                   if (hasPermission) {
                     // Proceed with notification setup
                     _showMessageWithMessenger(scaffoldMessenger, 'Notification permission granted! Notifications enabled.');

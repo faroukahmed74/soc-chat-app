@@ -27,6 +27,7 @@
 // - Cross-platform: Unified settings experience
 
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 import 'package:firebase_auth/firebase_auth.dart';
 
@@ -44,6 +45,8 @@ import '../services/chat_management_service.dart';
 import '../services/fixed_version_check_service.dart';
 import '../services/logger_service.dart';
 import '../widgets/update_dialog.dart';
+
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -282,13 +285,75 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const SizedBox(width: 8),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.pushNamed(context, '/notification-test');
+                            onPressed: () async {
+                              try {
+                                // Test local notification
+                                final localNotifications = FlutterLocalNotificationsPlugin();
+                                
+                                // Initialize if needed
+                                const androidSettings = AndroidInitializationSettings('@mipmap/ic_launcher');
+                                const iosSettings = DarwinInitializationSettings(
+                                  requestAlertPermission: true,
+                                  requestBadgePermission: true,
+                                  requestSoundPermission: true,
+                                );
+                                const initSettings = InitializationSettings(
+                                  android: androidSettings,
+                                  iOS: iosSettings,
+                                );
+                                
+                                await localNotifications.initialize(initSettings);
+                                
+                                // Request iOS permissions explicitly
+                                if (defaultTargetPlatform == TargetPlatform.iOS) {
+                                  await localNotifications
+                                      .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
+                                      ?.requestPermissions(
+                                        alert: true,
+                                        badge: true,
+                                        sound: true,
+                                      );
+                                }
+                                
+                                // Show test notification
+                                await localNotifications.show(
+                                  999,
+                                  '🔔 Test Notification',
+                                  'This is a test notification from the real system!',
+                                  const NotificationDetails(
+                                    android: AndroidNotificationDetails(
+                                      'test_channel',
+                                      'Test Notifications',
+                                      importance: Importance.high,
+                                      priority: Priority.high,
+                                    ),
+                                    iOS: DarwinNotificationDetails(
+                                      presentAlert: true,
+                                      presentBadge: true,
+                                      presentSound: true,
+                                    ),
+                                  ),
+                                );
+                                
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('✅ Test notification sent!'),
+                                    backgroundColor: Colors.green,
+                                  ),
+                                );
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text('❌ Error: $e'),
+                                    backgroundColor: Colors.red,
+                                  ),
+                                );
+                              }
                             },
-                            icon: const Icon(Icons.notifications),
-                            label: const Text('Test Notifications'),
+                            icon: const Icon(Icons.notifications_active),
+                            label: const Text('Test Real Notification'),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Theme.of(context).colorScheme.tertiary,
+                              backgroundColor: Colors.green.shade600,
                               foregroundColor: Colors.white,
                             ),
                           ),
@@ -300,52 +365,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       width: double.infinity,
                       child: ElevatedButton.icon(
                         onPressed: () {
-                          Navigator.pushNamed(context, '/media-notification-test');
-                        },
-                        icon: const Icon(Icons.perm_media),
-                        label: const Text('Test Media & Notifications'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.purple,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
                           Navigator.pushNamed(context, '/comprehensive-test');
-                        },
-                        icon: const Icon(Icons.science),
-                        label: const Text('Comprehensive Functionality Test'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.indigo,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/update-test');
-                        },
-                        icon: const Icon(Icons.system_update),
-                        label: const Text('Test Update System'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.blue,
-                          foregroundColor: Colors.white,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    SizedBox(
-                      width: double.infinity,
-                      child: ElevatedButton.icon(
-                        onPressed: () {
-                          Navigator.pushNamed(context, '/comprehensive-app-test');
                         },
                         icon: const Icon(Icons.app_registration),
                         label: const Text('Comprehensive App Test'),

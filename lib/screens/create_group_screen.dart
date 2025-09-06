@@ -84,8 +84,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
         _filteredUsers = _allUsers!.where((doc) {
           final data = doc.data() as Map<String, dynamic>;
           final username = (data['username'] ?? '').toString().toLowerCase();
+          final displayName = (data['displayName'] ?? '').toString().toLowerCase();
           final email = (data['email'] ?? '').toString().toLowerCase();
-          return username.contains(query) || email.contains(query);
+          return username.contains(query) || displayName.contains(query) || email.contains(query);
         }).toList();
       });
     }
@@ -409,24 +410,37 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                                         ),
                                       ],
                                     ),
-                                    title: Text(
-                                      data['username'] ?? '',
-                                      style: const TextStyle(fontWeight: FontWeight.w500),
-                                    ),
-                                    subtitle: Column(
+                                    title: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(data['email'] ?? ''),
-                                        if (isFriend)
-                                          const Text(
+                                        // Display Name (if available) or Username
+                                        Text(
+                                          data['displayName'] ?? data['username'] ?? 'Unknown User',
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 16,
+                                          ),
+                                        ),
+                                        const SizedBox(height: 2),
+                                        // Email address
+                                        Text(
+                                          data['email'] ?? '',
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    subtitle: isFriend
+                                        ? const Text(
                                             'Friend',
                                             style: TextStyle(
                                               color: Colors.green,
                                               fontWeight: FontWeight.bold,
                                             ),
-                                          ),
-                                      ],
-                                    ),
+                                          )
+                                        : null,
                                     trailing: isWideScreen
                                         ? Row(
                                             mainAxisSize: MainAxisSize.min,

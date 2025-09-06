@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
-import '../services/fcm_service.dart';
+import '../services/unified_notification_service.dart';
 import '../services/logger_service.dart';
 
 /// FCM Test Screen for testing push notifications
@@ -27,7 +27,7 @@ class _FCMTestScreenState extends State<FCMTestScreen> {
   /// Load FCM token
   Future<void> _loadFCMToken() async {
     try {
-      final token = FCMService().fcmToken;
+      final token = UnifiedNotificationService().currentFcmToken;
       setState(() {
         _fcmToken = token;
       });
@@ -58,7 +58,7 @@ class _FCMTestScreenState extends State<FCMTestScreen> {
   /// Subscribe to test topic
   Future<void> _subscribeToTestTopic() async {
     try {
-      await FCMService().subscribeToTopic('test_topic');
+      await UnifiedNotificationService().subscribeToTopic('test_topic');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Subscribed to test_topic')),
       );
@@ -72,7 +72,7 @@ class _FCMTestScreenState extends State<FCMTestScreen> {
   /// Unsubscribe from test topic
   Future<void> _unsubscribeFromTestTopic() async {
     try {
-      await FCMService().unsubscribeFromTopic('test_topic');
+      await UnifiedNotificationService().unsubscribeFromTopic('test_topic');
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Unsubscribed from test_topic')),
       );

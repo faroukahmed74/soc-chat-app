@@ -1,8 +1,9 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'secure_media_service.dart';
-import 'production_notification_service.dart';
+import 'unified_notification_service.dart';
 import 'logger_service.dart';
 
 class SecureMessageService {
@@ -292,12 +293,16 @@ class SecureMessageService {
     // Send notifications to all recipients
     for (final recipientId in recipientIds) {
       try {
-        ProductionNotificationService().sendChatNotification(
-          recipientId: recipientId,
-          senderName: senderName,
-          message: messageText,
-          chatId: chatId,
-          chatType: chatType,
+        UnifiedNotificationService().sendLocalNotification(
+          title: 'New message from $senderName',
+          body: messageText,
+          payload: json.encode({
+            'type': 'chat',
+            'chatId': chatId,
+            'chatType': chatType,
+            'senderName': senderName,
+            'messageId': messageId,
+          }),
         );
       } catch (e) {
         print('[SecureMessage] Failed to send notification to $recipientId: $e');

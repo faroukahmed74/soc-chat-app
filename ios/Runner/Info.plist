@@ -43,10 +43,23 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
+	
 	<key>CADisableMinimumFrameDurationOnPhone</key>
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<key>UIBackgroundModes</key>
+    <array>
+        <string>remote-notification</string>
+        <string>background-processing</string>
+    </array>
+    <key>FirebaseAppDelegateProxyEnabled</key>
+    <true/>
+    <key>UIApplicationSupportsIndirectInputEvents</key>
+    <true/>
+    <!-- Optional: description strings if you prompt from native -->
+    <key>NSUserNotificationUsageDescription</key>
+    <string>This app uses notifications to alert you about new messages.</string>
 	
 	<!-- Essential Media Permissions for iOS -->
 	
@@ -157,15 +170,10 @@
 		</dict>
 	</dict>
 	
-	<!-- Firebase Cloud Messaging Configuration -->
-	<key>FirebaseAppDelegateProxyEnabled</key>
-	<false/>
-	
 	<!-- Background Modes for FCM -->
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>remote-notification</string>
-		<string>background-processing</string>
 	</array>
 	
 	<!-- FCM Background App Refresh -->

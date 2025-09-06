@@ -5,7 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'package:file_picker/file_picker.dart';
 import '../services/fixed_media_service.dart';
-import '../services/working_notification_service.dart';
+import '../services/unified_notification_service.dart';
 import '../services/fixed_version_check_service.dart';
 import '../services/logger_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -46,8 +46,8 @@ class _ComprehensiveAppTestScreenState extends State<ComprehensiveAppTestScreen>
 
       // Get FCM token
       try {
-        final service = WorkingNotificationService();
-        final token = await service.getFcmToken();
+        final service = UnifiedNotificationService();
+        final token = service.currentFcmToken;
         setState(() {
           _fcmToken = token != null ? '${token.substring(0, 20)}...' : 'Not available';
         });
@@ -478,8 +478,8 @@ class _ComprehensiveAppTestScreenState extends State<ComprehensiveAppTestScreen>
     _addResult('Local Notifications', true, 'Testing local notifications...');
     
     try {
-      final service = WorkingNotificationService();
-      await service.showLocalNotification(
+      final service = UnifiedNotificationService();
+      await service.sendLocalNotification(
         title: 'Test Notification',
         body: 'This is a test notification from comprehensive test',
         payload: 'test_payload',
@@ -494,8 +494,8 @@ class _ComprehensiveAppTestScreenState extends State<ComprehensiveAppTestScreen>
     _addResult('FCM Token', true, 'Testing FCM token...');
     
     try {
-      final service = WorkingNotificationService();
-      final token = await service.getFcmToken();
+              final service = UnifiedNotificationService();
+        final token = service.currentFcmToken;
       if (token != null) {
         _addResult('FCM Token', true, 'FCM token available: ${token.substring(0, 20)}...');
       } else {
@@ -511,7 +511,7 @@ class _ComprehensiveAppTestScreenState extends State<ComprehensiveAppTestScreen>
     
     try {
       // Test notification service initialization
-      final service = WorkingNotificationService();
+      final service = UnifiedNotificationService();
       await service.initialize();
       _addResult('Message Notifications', true, 'Notification service initialized successfully');
     } catch (e) {

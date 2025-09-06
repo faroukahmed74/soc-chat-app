@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
+import 'dart:io';
 
 import '../services/simple_permission_service.dart';
 import '../services/logger_service.dart';
+import '../services/unified_notification_service.dart';
 
 /// Comprehensive permission testing screen
 /// Helps debug permission issues on both Android and iOS
@@ -99,6 +101,161 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
         _isTesting = false;
       });
     }
+  }
+
+  /// Test iOS notifications specifically
+  Future<void> _testIOSNotifications() async {
+    setState(() {
+      _isTesting = true;
+    });
+
+    try {
+      // Show explanation dialog first
+      final shouldProceed = await _showIOSNotificationExplanationDialog();
+      if (!shouldProceed) {
+        setState(() {
+          _isTesting = false;
+        });
+        return;
+      }
+
+      final notificationService = UnifiedNotificationService();
+      await notificationService.initialize();
+      
+      final result = await notificationService.requestIOSNotificationPermission();
+      
+      setState(() {
+        _isTesting = false;
+      });
+      
+      // Reload status after testing
+      await _loadPermissionStatus();
+      
+      // Show result
+      if (result) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('✅ iOS Notifications: GRANTED - Test notification sent!'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 4),
+          ),
+        );
+        
+        // Send test notification
+        await Future.delayed(const Duration(seconds: 1));
+        await notificationService.sendTestNotification();
+      } else {
+        // Show settings dialog if denied
+        await _showIOSNotificationSettingsDialog();
+      }
+      
+    } catch (e) {
+      Log.e('Error testing iOS notifications', 'PERMISSION_TEST', e);
+      setState(() {
+        _isTesting = false;
+      });
+      
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error testing iOS notifications: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
+  }
+
+  /// Show iOS notification explanation dialog
+  Future<bool> _showIOSNotificationExplanationDialog() async {
+    return await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        title: const Text('🔔 Enable Notifications'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'To receive message alerts and important updates, please enable notifications for Soc Chat App.',
+              style: TextStyle(fontSize: 16),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'You\'ll be able to:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text('• Get notified when you receive new messages'),
+            Text('• Receive important app updates'),
+            Text('• Stay connected with your contacts'),
+            SizedBox(height: 16),
+            Text(
+              'You can change this later in iOS Settings.',
+              style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Not Now'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Enable Notifications'),
+          ),
+        ],
+      ),
+    ) ?? false;
+  }
+
+  /// Show iOS notification settings dialog
+  Future<void> _showIOSNotificationSettingsDialog() async {
+    await showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('⚠️ Notifications Disabled'),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Notifications are currently disabled for Soc Chat App.',
+              style: TextStyle(fontSize: 16),
+            ),
+            SizedBox(height: 16),
+            Text(
+              'To enable notifications:',
+              style: TextStyle(fontWeight: FontWeight.bold),
+            ),
+            SizedBox(height: 8),
+            Text('1. Open iOS Settings'),
+            Text('2. Scroll down and tap "Soc Chat App"'),
+            Text('3. Tap "Notifications"'),
+            Text('4. Toggle "Allow Notifications" to ON'),
+            SizedBox(height: 16),
+            Text(
+              'You can also tap "Open Settings" below to go directly to the app settings.',
+              style: TextStyle(fontStyle: FontStyle.italic, fontSize: 12),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              // Open iOS Settings
+              // Note: In a real app, you would use url_launcher to open settings
+            },
+            child: const Text('Open Settings'),
+          ),
+        ],
+      ),
+    );
   }
 
   /// Show results summary
@@ -240,6 +397,24 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
                     ),
                   ),
                   
+                  const SizedBox(height: 16),
+                  
+                  // iOS Notification Test Button
+                  if (Platform.isIOS)
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isTesting ? null : _testIOSNotifications,
+                        icon: const Icon(Icons.notifications_active),
+                        label: const Text('Test iOS Notifications'),
+                        style: ElevatedButton.styleFrom(
+                          padding: const EdgeInsets.all(16),
+                          backgroundColor: Colors.blue,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                  
                   const SizedBox(height: 24),
                   
                   // Individual Permission Tests
@@ -319,7 +494,7 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
                     crossAxisCount: 2,
                     crossAxisSpacing: 8,
                     mainAxisSpacing: 8,
-                    childAspectRatio: 2.5,
+                    childAspectRatio: 3.0,
                     children: [
                       _buildStatusCard('Camera', _permissionStatus['camera'] ?? 'unknown'),
                       _buildStatusCard('Photos', _permissionStatus['photos'] ?? 'unknown'),
@@ -425,30 +600,39 @@ class _PermissionTestScreenState extends State<PermissionTestScreen> {
   Widget _buildStatusCard(String permission, String status) {
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(8),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
           children: [
             Icon(
               _getStatusIcon(status),
               color: _getStatusColor(status),
-              size: 24,
-            ),
-            const SizedBox(height: 4),
-            Text(
-              permission,
-              style: Theme.of(context).textTheme.bodySmall,
-              textAlign: TextAlign.center,
+              size: 20,
             ),
             const SizedBox(height: 2),
-            Text(
-              status.replaceAll('_', ' ').toUpperCase(),
-              style: TextStyle(
-                fontSize: 10,
-                color: _getStatusColor(status),
-                fontWeight: FontWeight.bold,
+            Flexible(
+              child: Text(
+                permission,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(fontSize: 10),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
               ),
-              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 1),
+            Flexible(
+              child: Text(
+                status.replaceAll('_', ' ').toUpperCase(),
+                style: TextStyle(
+                  fontSize: 8,
+                  color: _getStatusColor(status),
+                  fontWeight: FontWeight.bold,
+                ),
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
           ],
         ),

@@ -32,8 +32,10 @@ import 'chat_screen.dart';
 import '../services/admin_group_service.dart';
 import '../services/theme_service.dart';
 import '../services/chat_management_service.dart';
+import '../services/fcm_notification_service.dart';
 import '../services/logger_service.dart'; // Added import for logging
 import '../widgets/version_display_widget.dart';
+import '../widgets/voice_message_player.dart';
 
 
 class ChatListScreen extends StatefulWidget {
@@ -47,6 +49,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
+  final FCMNotificationService _fcmService = FCMNotificationService();
+  bool _isFCMHealthy = false;
   late ThemeService _themeService;
   late VoidCallback _themeListener;
   
@@ -73,6 +77,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
     
     // Load user role for access control
     _loadUserRole();
+    
+    // Check FCM service health
+    _checkFCMHealth();
   }
 
   @override
@@ -91,6 +98,74 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
+  /// Shows options for creating new chats or groups
+  void _showCreateOptions(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      builder: (BuildContext context) {
+        return Container(
+          padding: const EdgeInsets.all(20),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                'Create New',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, '/search');
+                      },
+                      icon: const Icon(Icons.person_add),
+                      label: const Text('New Chat'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.pop(context);
+                        Navigator.pushNamed(context, '/create_group');
+                      },
+                      icon: const Icon(Icons.group_add),
+                      label: const Text('New Group'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Theme.of(context).colorScheme.secondary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Cancel'),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   /// Loads the current user's role for access control
   Future<void> _loadUserRole() async {
     try {
@@ -107,6 +182,26 @@ class _ChatListScreenState extends State<ChatListScreen> {
         setState(() {
           _userRole = 'user';
           _isLoadingRole = false;
+        });
+      }
+    }
+  }
+
+  /// Check FCM service health
+  Future<void> _checkFCMHealth() async {
+    try {
+      final isHealthy = await _fcmService.checkFCMServerHealth();
+      if (mounted) {
+        setState(() {
+          _isFCMHealthy = isHealthy;
+        });
+      }
+      Log.i('FCM health check: ${isHealthy ? "healthy" : "unhealthy"}', 'CHAT_LIST');
+    } catch (e) {
+      Log.e('Error checking FCM health', 'CHAT_LIST', e);
+      if (mounted) {
+        setState(() {
+          _isFCMHealthy = false;
         });
       }
     }
@@ -215,6 +310,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
         actions: [
+          // FCM Status Indicator
+          IconButton(
+            onPressed: () => Navigator.pushNamed(context, '/startup-diagnostics'),
+            icon: Icon(
+              _isFCMHealthy ? Icons.notifications_active : Icons.notifications_off,
+              color: _isFCMHealthy ? Colors.green : Colors.orange,
+            ),
+            tooltip: _isFCMHealthy ? 'FCM Service Healthy' : 'FCM Service Issues',
+          ),
           IconButton(
             onPressed: () => _themeService.toggleTheme(),
             icon: Icon(
@@ -226,6 +330,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
             icon: const Icon(Icons.more_vert),
             onSelected: (value) async {
               switch (value) {
+                case 'create_group':
+                  Navigator.pushNamed(context, '/create_group');
+                  break;
                 case 'profile':
                   Navigator.pushNamed(context, '/profile');
                   break;
@@ -252,6 +359,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'create_group',
+                child: Row(
+                  children: [
+                    Icon(Icons.group_add),
+                    SizedBox(width: 8),
+                    Text('Create Group'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'profile',
                 child: Row(
@@ -392,6 +509,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
               },
             ),
             
+            ListTile(
+              leading: const Icon(Icons.group_add),
+              title: const Text('Create Group'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/create_group');
+              },
+            ),
+            
             // Only show admin panel for admin users (when role is loaded)
             if (!_isLoadingRole && _userRole == 'admin')
               ListTile(
@@ -470,7 +596,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   const Divider(),
                   const SizedBox(height: 8),
                   Text(
-                    'Developed by نقيب \\ احمد فاروق',
+                    'Developed by نقيب // احمد فاروق',
                     style: TextStyle(
                       fontSize: 12,
                       color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
@@ -722,11 +848,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => Navigator.pushNamed(context, '/search'),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => _showCreateOptions(context),
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
-        child: const Icon(Icons.add),
+        icon: const Icon(Icons.add),
+        label: const Text('New'),
       ),
     );
   }
@@ -757,15 +884,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (lastMessage.isNotEmpty) ...[
-              Text(
-                lastMessage,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Colors.black87,
-                ),
-              ),
+              _buildLastMessageDisplay(lastMessage, data),
               if (lastMessageTime != null) ...[
                 const SizedBox(height: 2),
                 Text(
@@ -821,6 +940,71 @@ class _ChatListScreenState extends State<ChatListScreen> {
     } else {
       return 'Just now';
     }
+  }
+
+  /// Builds the last message display with support for voice messages
+  Widget _buildLastMessageDisplay(String lastMessage, Map<String, dynamic> data) {
+    // Check if this is a voice message
+    if (_isVoiceMessage(lastMessage, data)) {
+      return VoiceMessageIndicator(
+        isSender: _isCurrentUserSender(data),
+        onTap: () {
+          // Navigate to chat to play the voice message
+          // We'll navigate to the chat screen where the user can play the voice message
+          // The chat screen already has voice message playback functionality
+        },
+      );
+    }
+    
+    // Regular text message
+    return Text(
+      lastMessage,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: const TextStyle(
+        fontSize: 14,
+        color: Colors.black87,
+      ),
+    );
+  }
+
+  /// Checks if the last message is a voice message
+  bool _isVoiceMessage(String lastMessage, Map<String, dynamic> data) {
+    // Check for voice message indicators in the message content
+    if (lastMessage.toLowerCase().contains('voice message') ||
+        lastMessage.toLowerCase().contains('audio') ||
+        lastMessage.toLowerCase().contains('🎵') ||
+        lastMessage.toLowerCase().contains('🎤')) {
+      return true;
+    }
+    
+    // Check if the message has voice message metadata
+    if (data['lastMessageType'] == 'voice' || 
+        data['lastMessageType'] == 'audio') {
+      return true;
+    }
+    
+    // Check if the message contains voice message file extension
+    if (lastMessage.toLowerCase().contains('.m4a') ||
+        lastMessage.toLowerCase().contains('.wav') ||
+        lastMessage.toLowerCase().contains('.mp3')) {
+      return true;
+    }
+    
+    // Check if the message contains voice message indicators from the chat screen
+    if (lastMessage.contains('Voice Message') ||
+        lastMessage.contains('🎵 Voice Message')) {
+      return true;
+    }
+    
+    return false;
+  }
+
+  /// Checks if the current user is the sender of the last message
+  bool _isCurrentUserSender(Map<String, dynamic> data) {
+    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+    final lastMessageSender = data['lastMessageSender'];
+    return currentUserId == lastMessageSender;
   }
   
   /// Builds the status badge for a chat tile

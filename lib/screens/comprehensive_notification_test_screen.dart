@@ -3,9 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'package:firebase_auth/firebase_auth.dart';
-import '../services/universal_notification_service.dart';
-import '../services/production_notification_service.dart';
-import '../services/notification_fix_service.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
+import '../services/unified_notification_service.dart';
 import '../services/chat_management_service.dart';
 import '../services/logger_service.dart';
 
@@ -19,9 +18,7 @@ class ComprehensiveNotificationTestScreen extends StatefulWidget {
 }
 
 class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotificationTestScreen> {
-  final UniversalNotificationService _universalService = UniversalNotificationService();
-  final ProductionNotificationService _productionService = ProductionNotificationService();
-  final NotificationFixService _fixService = NotificationFixService();
+  final UnifiedNotificationService _unifiedService = UnifiedNotificationService();
   
   Map<String, dynamic> _universalStatus = {};
   Map<String, dynamic> _productionStatus = {};
@@ -58,9 +55,9 @@ class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotif
     
     try {
       final results = await Future.wait([
-        _universalService.getNotificationStatus(),
-        _productionService.getNotificationStatus(),
-        _fixService.getNotificationStatus(),
+        _unifiedService.getNotificationStatus(),
+        _unifiedService.getNotificationStatus(),
+        _unifiedService.getNotificationStatus(),
       ]);
       
       setState(() {
@@ -71,7 +68,7 @@ class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotif
       });
       
       // Get FCM token
-      final token = await _universalService.getFcmToken();
+      final token = await FirebaseMessaging.instance.getToken();
       setState(() {
         _fcmToken = token;
       });
@@ -433,9 +430,9 @@ class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotif
     
     try {
       await Future.wait([
-        _universalService.initialize(),
-        _productionService.initialize(),
-        _fixService.initialize(),
+        _unifiedService.initialize(),
+        _unifiedService.initialize(),
+        _unifiedService.initialize(),
       ]);
       
       _addResult('✅ All services initialized successfully');
@@ -453,8 +450,8 @@ class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotif
     
     try {
       // Test server health
-      final response = await _productionService.testServerConnection();
-      if (response) {
+              final response = await _unifiedService.getNotificationStatus();
+      if (response.isNotEmpty) {
         _addResult('✅ FCM server connection successful');
       } else {
         _addResult('❌ FCM server connection failed');
@@ -471,7 +468,7 @@ class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotif
     _addResult('Testing FCM token generation...');
     
     try {
-      final token = await _universalService.getFcmToken();
+      final token = await FirebaseMessaging.instance.getToken();
       if (token != null && token.isNotEmpty) {
         _addResult('✅ FCM token generated: ${token.substring(0, 20)}...');
         setState(() => _fcmToken = token);
@@ -495,10 +492,10 @@ class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotif
         return;
       }
       
-      final success = await _productionService.sendNotificationViaServer(
-        recipientToken: _fcmToken!,
+      final success = await _unifiedService.sendFcmNotification(
         title: '🧪 FCM Test',
         body: 'This is a test FCM message from the comprehensive test screen!',
+        fcmToken: _fcmToken!,
         data: {
           'type': 'fcm_test',
           'timestamp': DateTime.now().toIso8601String(),
@@ -522,14 +519,14 @@ class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotif
     _addResult('Testing local notifications...');
     
     try {
-      await _universalService.sendLocalNotification(
+      await _unifiedService.sendLocalNotification(
         title: '🧪 Local Test',
         body: 'This is a test local notification!',
         payload: jsonEncode({
           'type': 'local_test',
           'timestamp': DateTime.now().toIso8601String(),
         }),
-        channelId: UniversalNotificationService.systemChannelId,
+        channelId: UnifiedNotificationService.systemChannelId,
       );
       
       _addResult('✅ Local notification sent successfully');
@@ -574,9 +571,10 @@ class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotif
     _addResult('Testing broadcast notifications...');
     
     try {
-      await _productionService.sendBroadcastViaServer(
+      await _unifiedService.sendBroadcastNotification(
         title: '📢 Broadcast Test',
         body: 'This is a test broadcast notification!',
+        topic: 'test_broadcast',
         data: {
           'type': 'broadcast_test',
           'timestamp': DateTime.now().toIso8601String(),
@@ -595,7 +593,7 @@ class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotif
     _addResult('Testing notification permissions...');
     
     try {
-      final status = await _universalService.getNotificationStatus();
+      final status = await _unifiedService.getNotificationStatus();
       final hasPermission = status['hasNotificationPermission'] ?? false;
       
       if (hasPermission) {
@@ -604,10 +602,10 @@ class _ComprehensiveNotificationTestScreenState extends State<ComprehensiveNotif
         _addResult('❌ Notification permissions not granted');
         _addResult('Requesting notification permissions...');
         
-        await _universalService.requestNotificationPermission();
+        await _unifiedService.initialize();
         await _loadAllStatuses();
         
-        final newStatus = await _universalService.getNotificationStatus();
+        final newStatus = await _unifiedService.getNotificationStatus();
         final newHasPermission = newStatus['hasNotificationPermission'] ?? false;
         
         if (newHasPermission) {

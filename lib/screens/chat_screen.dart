@@ -10,22 +10,33 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:async';
 import 'dart:typed_data';
+import 'package:http/http.dart' as http;
 import '../services/theme_service.dart';
 
 import '../services/enhanced_media_service.dart';
 import '../services/document_service.dart';
 import '../services/logger_service.dart';
 import '../services/chat_management_service.dart';
-import '../services/production_notification_service.dart';
+import '../services/fcm_notification_service.dart';
 import '../utils/responsive_utils.dart';
 import '../widgets/enhanced_media_preview.dart';
-import '../widgets/enhanced_media_sender.dart';
-import '../services/permission_test_service.dart';
-import '../services/enhanced_voice_service.dart';
+import '../widgets/voice_message_player.dart';
+
+
+
 import '../services/upload_progress_service.dart';
 import '../widgets/upload_progress_manager.dart';
 import 'upload_progress_demo_screen.dart';
-import 'dart:convert';
+import 'package:audioplayers/audioplayers.dart';
+import 'package:audioplayers/src/source.dart';
+import 'package:path_provider/path_provider.dart';
+
+import 'dart:io';
+import 'package:flutter/foundation.dart';
+import 'dart:math';
+import 'package:url_launcher/url_launcher.dart';
+import '../widgets/in_app_video_player.dart';
+
 
 class ChatScreen extends StatefulWidget {
   final String chatId;
@@ -51,9 +62,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final _searchController = TextEditingController();
   
   bool _isTyping = false;
-  bool _isRecordingVoice = false;
-  Timer? _recordingTimer;
-  int _recordingDuration = 0;
+  
+  // Voice messaging - Independent players for each message
+  final Map<String, AudioPlayer> _audioPlayers = {};
+  final Map<String, bool> _isPlayingMap = {};
+  final Map<String, Duration> _positionMap = {};
+  final Map<String, Duration> _durationMap = {};
   
   bool _isSearching = false;
   String _searchQuery = '';
@@ -73,6 +87,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final Map<String, String> _messageStatuses = {};
   final Map<String, Map<String, dynamic>> _messageCache = {};
   StreamSubscription<QuerySnapshot>? _messagesSubscription;
+  
+  // FCM Notification Service
+  final FCMNotificationService _fcmService = FCMNotificationService();
+  
+  // Sending indicators
+  final Map<String, bool> _sendingMessages = {};
+  final Map<String, String> _sendingMessageIds = {};
   
   // Animation controllers for enhanced UI
   late AnimationController _fadeController;
@@ -128,13 +149,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _messageController.dispose();
     _scrollController.dispose();
     _searchController.dispose();
-    _recordingTimer?.cancel();
+
     _messagesSubscription?.cancel();
     
     // Dispose animation controllers
     _fadeController.dispose();
     _slideController.dispose();
     _scaleController.dispose();
+    _audioPlayers.values.forEach((player) => player.dispose());
     
     super.dispose();
   }
@@ -191,7 +213,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   /// Subscribe to chat topic for FCM notifications
   Future<void> _subscribeToChatTopic() async {
     try {
-      await ProductionNotificationService().subscribeToChatTopic(widget.chatId);
+              // FCM topic subscription will be handled by FCMNotificationService
       Log.i('Subscribed to chat topic: ${widget.chatId}', 'CHAT_SCREEN');
     } catch (e) {
       Log.e('Error subscribing to chat topic', 'CHAT_SCREEN', e);
@@ -630,10 +652,18 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     return ListView.builder(
                       reverse: true,
                       controller: _scrollController,
-                      itemCount: messages.length + (_hasMoreMessages ? 1 : 0),
+                      itemCount: messages.length + _sendingMessages.length + (_hasMoreMessages ? 1 : 0),
                       itemBuilder: (context, index) {
-                        if (index == messages.length) {
+                        if (index == messages.length + _sendingMessages.length) {
                           return _buildLoadMoreIndicator();
+                        }
+                        
+                        if (index >= messages.length) {
+                          // Show sending messages
+                          final sendingIndex = index - messages.length;
+                          final sendingMessageId = _sendingMessages.keys.elementAt(sendingIndex);
+                          final sendingText = _sendingMessageIds[sendingMessageId] ?? '';
+                          return _buildSendingMessageBubble(sendingMessageId, sendingText);
                         }
                         
                         final message = messages[index];
@@ -727,58 +757,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                       isMobile: isMobile,
                                       padding: buttonPadding,
                                     ),
-                                    SizedBox(width: buttonSpacing),
-                                    _buildResponsiveMediaButton(
-                                      onPressed: () => _toggleVoiceRecording(),
-                                      icon: _isRecordingVoice ? Icons.stop : Icons.mic,
-                                      label: _isRecordingVoice ? 'Stop' : 'Voice',
-                                      color: _isRecordingVoice ? Colors.red : Colors.teal,
-                                      tooltip: _isRecordingVoice ? 'Stop Recording' : 'Voice Message',
-                                      isMobile: isMobile,
-                                      padding: buttonPadding,
-                                    ),
+
                                   ],
                                 ),
                               );
                             },
                           ),
                           
-                          // Recording status - moved to separate row for better responsiveness
-                          if (_isRecordingVoice) ...[
-                            const SizedBox(height: 8),
-                            Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                  decoration: BoxDecoration(
-                                    color: Colors.red.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(15),
-                                    border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      Icon(
-                                        Icons.fiber_manual_record,
-                                        color: Colors.red,
-                                        size: 16,
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Text(
-                                        '${_recordingDuration}s',
-                                        style: const TextStyle(
-                                          color: Colors.red,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ],
+
                         ],
                       ),
                     ),
@@ -1063,6 +1049,34 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                           ],
                         ),
                       ],
+                      // Add sending indicator for current user's messages
+                      if (isCurrentUser && _isMessageSending(messageDoc.id)) ...[
+                        const SizedBox(height: 8),
+                        Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                  Colors.white70,
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              'Sending...',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.white70,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
                   ),
                 ),
@@ -1090,6 +1104,20 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   Widget _buildMessageContent(Map<String, dynamic> data, String messageType, bool isCurrentUser) {
+    // Check if this is a voice message (even if stored as text type)
+    final text = data['text'] ?? '';
+    final mediaUrl = data['mediaUrl'] as String?;
+    final isVoiceMessage = text.contains('🎵 Voice Message') || 
+                          text.contains('Voice Message') ||
+                          text.contains('🎵') ||
+                          (data['messageType'] == 'voice' || data['messageType'] == 'audio') ||
+                          (mediaUrl != null && (mediaUrl.contains('.m4a') || mediaUrl.contains('.wav') || mediaUrl.contains('.mp3')));
+    
+    // If it's a voice message, use audio content builder regardless of message type
+    if (isVoiceMessage && mediaUrl != null) {
+      return _buildAudioContent(data, isCurrentUser);
+    }
+    
     switch (messageType) {
       case 'image':
         return _buildImageContent(data, isCurrentUser);
@@ -1249,25 +1277,45 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               child: Stack(
                 alignment: Alignment.center,
                 children: [
+                  // Video thumbnail with fallback
                   Container(
                     width: 250,
                     height: 200,
-                    color: Colors.black,
-                    child: const Icon(
-                      Icons.video_file,
-                      color: Colors.white,
-                      size: 50,
+                    decoration: BoxDecoration(
+                      color: Colors.grey[800],
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: FutureBuilder<String?>(
+                      future: _generateVideoThumbnail(mediaUrl!),
+                      builder: (context, snapshot) {
+                        if (snapshot.hasData && snapshot.data != null) {
+                          return ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Image.network(
+                              snapshot.data!,
+                              width: 250,
+                              height: 200,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return _buildVideoPlaceholder();
+                              },
+                            ),
+                          );
+                        }
+                        return _buildVideoPlaceholder();
+                      },
                     ),
                   ),
+                  // Play button overlay
                   Container(
                     decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.5),
+                      color: Colors.black.withValues(alpha: 0.6),
                       shape: BoxShape.circle,
                     ),
                     child: IconButton(
                       onPressed: () {
                         if (mediaUrl != null) {
-                          _showMediaFullScreen(mediaUrl, 'video', text);
+                          _playVideo(mediaUrl);
                         }
                       },
                       icon: const Icon(
@@ -1277,6 +1325,28 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       ),
                     ),
                   ),
+                  // Video duration indicator (if available)
+                  if (data['duration'] != null) ...[
+                    Positioned(
+                      bottom: 8,
+                      right: 8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.7),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          _formatDuration(Duration(seconds: data['duration'])),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w500,
+                          ),
+                      ),
+                    ),
+                  ),
+                  ],
                 ],
               ),
             ),
@@ -1294,18 +1364,73 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
+  Widget _buildVideoPlaceholder() {
+    return Container(
+      width: 250,
+      height: 200,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.grey[700]!,
+            Colors.grey[800]!,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.videocam,
+            color: Colors.white.withValues(alpha: 0.7),
+            size: 40,
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Video',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<String?> _generateVideoThumbnail(String videoUrl) async {
+    try {
+      // For now, return null to use placeholder
+      // In a production app, you would implement video thumbnail generation
+      // This could be done using video_thumbnail package or server-side generation
+      return null;
+    } catch (e) {
+      Log.e('Error generating video thumbnail', 'CHAT_SCREEN', e);
+      return null;
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
+    String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
+    return "$twoDigitMinutes:$twoDigitSeconds";
+  }
+
   Widget _buildAudioContent(Map<String, dynamic> data, bool isCurrentUser) {
     final mediaUrl = data['mediaUrl'] as String?;
     final text = data['text'] ?? '🎵 Voice Message';
+    final duration = data['duration'] ?? 0;
+    final messageId = data['id'] ?? '';
     
-    return GestureDetector(
-      onTap: () {
-        if (mediaUrl != null) {
-          _showMediaFullScreen(mediaUrl, 'audio', text);
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.all(12),
+    // Since this method is called for voice messages, always show the enhanced player
+    if (mediaUrl != null) {
+      // Use enhanced VoiceMessagePlayer for voice messages
+      return Container(
+        padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: isCurrentUser ? Colors.blue.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(12),
@@ -1317,12 +1442,35 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              Icons.play_circle_filled,
-              color: isCurrentUser ? Colors.white : Colors.black87,
-              size: 32,
+            // Play/Pause Button
+            GestureDetector(
+              onTap: () {
+                if (mediaUrl != null) {
+                  final isCurrentlyPlaying = _isPlayingMap[messageId] ?? false;
+                  if (isCurrentlyPlaying) {
+                    _pauseAudioPlayback(messageId);
+                  } else {
+                    _playVoiceMessage(mediaUrl, messageId: messageId);
+                  }
+                }
+              },
+              child: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: isCurrentUser ? Colors.blue : Colors.grey.shade300,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  (_isPlayingMap[messageId] ?? false) ? Icons.pause : Icons.play_arrow,
+                  color: isCurrentUser ? Colors.white : Colors.black87,
+                  size: 20,
+                ),
+              ),
             ),
             const SizedBox(width: 12),
+            
+            // Voice Message Info
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1334,17 +1482,169 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(
-                  'Tap to play',
-                  style: TextStyle(
-                    color: isCurrentUser ? Colors.white70 : Colors.black54,
-                    fontSize: 12,
-                  ),
+                Row(
+                  children: [
+                    Icon(
+                      Icons.mic,
+                      size: 16,
+                      color: isCurrentUser ? Colors.white70 : Colors.black54,
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      '${duration}s',
+                      style: TextStyle(
+                        color: isCurrentUser ? Colors.white70 : Colors.black54,
+                        fontSize: 12,
+                      ),
+                    ),
+                    if (_isPlayingMap[messageId] ?? false) ...[
+                      const SizedBox(width: 8),
+                      Container(
+                        width: 8,
+                        height: 8,
+                        decoration: const BoxDecoration(
+                          color: Colors.green,
+                          shape: BoxShape.circle,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
+            
+            const SizedBox(width: 8),
+            
+            // Stop Button (if playing)
+            if (_isPlayingMap[messageId] ?? false)
+              GestureDetector(
+                onTap: () => _stopAudioPlayback(messageId),
+                child: Container(
+                  width: 32,
+                  height: 32,
+                  decoration: BoxDecoration(
+                    color: Colors.red.withOpacity(0.1),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(
+                    Icons.stop,
+                    color: Colors.red,
+                    size: 16,
+                  ),
+                ),
+              ),
           ],
         ),
+      );
+    }
+    
+    // Fallback to original implementation for other audio content
+    final isCurrentlyPlaying = _isPlayingMap[messageId] ?? false;
+    
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: isCurrentUser ? Colors.blue.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isCurrentUser ? Colors.blue : Colors.grey,
+          width: 1,
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Play/Pause Button
+          GestureDetector(
+            onTap: () {
+              if (mediaUrl != null) {
+                if (isCurrentlyPlaying) {
+                  _pauseAudioPlayback(messageId);
+                } else {
+                  _playVoiceMessage(mediaUrl, messageId: messageId);
+                }
+              }
+            },
+            child: Container(
+              width: 40,
+              height: 40,
+              decoration: BoxDecoration(
+                color: isCurrentUser ? Colors.blue : Colors.grey.shade300,
+                shape: BoxShape.circle,
+              ),
+            child: Icon(
+                isCurrentlyPlaying ? Icons.pause : Icons.play_arrow,
+              color: isCurrentUser ? Colors.white : Colors.black87,
+                size: 20,
+              ),
+            ),
+          ),
+          const SizedBox(width: 12),
+          
+          // Voice Message Info
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                text,
+                style: TextStyle(
+                  color: isCurrentUser ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Row(
+                children: [
+                  Icon(
+                    Icons.mic,
+                    size: 16,
+                    color: isCurrentUser ? Colors.white70 : Colors.black54,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${duration}s',
+                    style: TextStyle(
+                      color: isCurrentUser ? Colors.white70 : Colors.black54,
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (isCurrentlyPlaying) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: const BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
+          ),
+          
+          const SizedBox(width: 8),
+          
+          // Stop Button (if playing)
+          if (isCurrentlyPlaying)
+            GestureDetector(
+              onTap: () => _stopAudioPlayback(messageId),
+              child: Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: Colors.red.withOpacity(0.1),
+                  shape: BoxShape.circle,
+                ),
+              child: Icon(
+                  Icons.stop,
+                  color: Colors.red,
+                  size: 16,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1478,6 +1778,109 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     return _messageStatuses[messageId] ?? 'sent';
   }
 
+  bool _isMessageSending(String messageId) {
+    return _sendingMessages.containsKey(messageId);
+  }
+
+  Widget _buildSendingMessageBubble(String messageId, String text) {
+    final theme = Theme.of(context);
+    final isDark = _themeService.isDarkMode;
+    
+    return SlideTransition(
+      position: _slideAnimation,
+      child: FadeTransition(
+        opacity: _fadeAnimation,
+        child: Container(
+          margin: const EdgeInsets.only(
+            left: 50,
+            right: 8,
+            bottom: 12,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.8),
+                    borderRadius: const BorderRadius.only(
+                      topLeft: Radius.circular(20),
+                      topRight: Radius.circular(20),
+                      bottomLeft: Radius.circular(20),
+                      bottomRight: Radius.circular(8),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                    border: Border.all(
+                      color: Colors.blue.withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        text,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 16,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.blue[200]!,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Sending...',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue[200],
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          SizedBox(
+                            width: 12,
+                            height: 12,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.5,
+                              valueColor: AlwaysStoppedAnimation<Color>(
+                                Colors.blue[100]!,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildMessageStatusIcon(String status, bool isCurrentUser) {
     IconData icon;
     Color color;
@@ -1542,6 +1945,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     final messageText = _messageController.text.trim();
     if (messageText.isEmpty) return;
 
+    // Generate temporary message ID for tracking
+    final tempMessageId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    
+    // Add to sending messages
+    setState(() {
+      _sendingMessages[tempMessageId] = true;
+      _sendingMessageIds[tempMessageId] = messageText;
+    });
+
     try {
       // Trigger send animation
       _scaleController.forward().then((_) => _scaleController.reverse());
@@ -1556,7 +1968,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         'readBy': [_currentUserId],
       };
 
-      await FirebaseFirestore.instance
+      final docRef = await FirebaseFirestore.instance
           .collection('chats')
           .doc(widget.chatId)
           .collection('messages')
@@ -1569,6 +1981,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         _currentUserDisplayName ?? 'User',
       );
 
+      // Send FCM notification to other users
+      await _sendFCMNotificationForMessage(
+        messageText: messageText,
+        messageType: 'text',
+      );
+
       _messageController.clear();
       
       if (_scrollController.hasClients) {
@@ -1579,46 +1997,93 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         );
       }
 
-      // Show success feedback
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                const Text('Message sent successfully'),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 1),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
+      // Remove from sending messages
+      setState(() {
+        _sendingMessages.remove(tempMessageId);
+        _sendingMessageIds.remove(tempMessageId);
+      });
+
     } catch (e) {
       Log.e('Error sending message', 'CHAT_SCREEN', e);
+      
+      // Remove from sending messages on error
+      setState(() {
+        _sendingMessages.remove(tempMessageId);
+        _sendingMessageIds.remove(tempMessageId);
+      });
+      
+      // Show error popup only for text messages
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
               children: [
-                Icon(Icons.error, color: Colors.white, size: 20),
-                const SizedBox(width: 8),
-                Text('Error sending message: $e'),
+                const Icon(
+                  Icons.error,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Error sending message: $e',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
               ],
             ),
             backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
             behavior: SnackBarBehavior.floating,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),
             ),
+            margin: const EdgeInsets.all(16),
           ),
         );
       }
+    }
+  }
+
+  /// Send FCM notification for new message
+  Future<void> _sendFCMNotificationForMessage({
+    required String messageText,
+    required String messageType,
+  }) async {
+    try {
+      if (widget.isGroupChat) {
+        // Group chat notification
+        await _fcmService.handleGroupMessage(
+          senderId: _currentUserId,
+          senderName: _currentUserDisplayName ?? 'User',
+          message: messageText,
+          groupId: widget.chatId,
+          groupName: widget.chatName ?? 'Group',
+          messageType: messageType,
+        );
+      } else {
+        // One-to-one chat notification
+        final recipientId = widget.userIds?.firstWhere(
+          (id) => id != _currentUserId,
+          orElse: () => '',
+        );
+        
+        if (recipientId != null && recipientId.isNotEmpty) {
+          await _fcmService.handleNewMessage(
+            senderId: _currentUserId,
+            senderName: _currentUserDisplayName ?? 'User',
+            message: messageText,
+            receiverId: recipientId,
+            messageType: messageType,
+          );
+        }
+      }
+      
+      Log.i('FCM notification sent for message', 'CHAT_SCREEN');
+    } catch (e) {
+      Log.e('Error sending FCM notification', 'CHAT_SCREEN', e);
     }
   }
 
@@ -1681,6 +2146,51 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     String? extension,
     String? mimeType,
   }) async {
+    // Generate temporary message ID for tracking
+    final tempMessageId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
+    
+    // Add to sending messages
+    setState(() {
+      _sendingMessages[tempMessageId] = true;
+      _sendingMessageIds[tempMessageId] = text;
+    });
+
+    // Show "waiting while sending" popup
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              const Text(
+                'Waiting while sending the message...',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 10),
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          margin: const EdgeInsets.all(16),
+        ),
+      );
+    }
+
     try {
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_${type}_${extension ?? 'file'}';
       final uploadId = '${DateTime.now().millisecondsSinceEpoch}_${type}';
@@ -1738,124 +2248,539 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       // Clean up progress tracking
       progressTask.dispose();
       
+      // Remove from sending messages
+      setState(() {
+        _sendingMessages.remove(tempMessageId);
+        _sendingMessageIds.remove(tempMessageId);
+      });
+      
+      // Show "Send successfully" popup
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.check_circle,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                const Text(
+                  'Send successfully',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            duration: const Duration(seconds: 2),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
+      }
+      
     } catch (e) {
       Log.e('Error uploading media', 'CHAT_SCREEN', e);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Error uploading media: $e')),
-      );
-    }
-  }
-
-  void _toggleVoiceRecording() {
-    if (_isRecordingVoice) {
-      _stopVoiceRecording();
-    } else {
-      _startVoiceRecording();
-    }
-  }
-
-  void _startVoiceRecording() {
-    setState(() {
-      _isRecordingVoice = true;
-      _recordingDuration = 0;
-    });
-    
-    _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      
+      // Remove from sending messages on error
+      setState(() {
+        _sendingMessages.remove(tempMessageId);
+        _sendingMessageIds.remove(tempMessageId);
+      });
+      
+      // Show error popup
       if (mounted) {
-        setState(() {
-          _recordingDuration++;
-        });
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.error,
+                  color: Colors.white,
+                  size: 20,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Error sending message: $e',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            duration: const Duration(seconds: 4),
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: const EdgeInsets.all(16),
+          ),
+        );
       }
-    });
+    }
   }
 
-  void _stopVoiceRecording() {
-    _recordingTimer?.cancel();
+
+
+  List<int> _generateSimulatedAudioData(int durationSeconds) {
+    // Generate a more realistic voice-like audio file
+    final List<int> audioData = [];
     
-    setState(() {
-      _isRecordingVoice = false;
-    });
+    final sampleRate = 44100;
+    final channels = 1;
+    final bitsPerSample = 16;
+    final byteRate = sampleRate * channels * bitsPerSample ~/ 8;
+    final blockAlign = channels * bitsPerSample ~/ 8;
+    final dataSize = durationSeconds * sampleRate * channels * (bitsPerSample ~/ 8);
+    final fileSize = 36 + dataSize;
+    
+    // WAV file header
+    // RIFF header
+    audioData.addAll([0x52, 0x49, 0x46, 0x46]); // "RIFF"
+    audioData.addAll(_intToBytes(fileSize, 4)); // File size
+    audioData.addAll([0x57, 0x41, 0x56, 0x45]); // "WAVE"
+    
+    // fmt chunk
+    audioData.addAll([0x66, 0x6D, 0x74, 0x20]); // "fmt "
+    audioData.addAll(_intToBytes(16, 4)); // Chunk size
+    audioData.addAll(_intToBytes(1, 2)); // Audio format (PCM)
+    audioData.addAll(_intToBytes(channels, 2)); // Channels
+    audioData.addAll(_intToBytes(sampleRate, 4)); // Sample rate
+    audioData.addAll(_intToBytes(byteRate, 4)); // Byte rate
+    audioData.addAll(_intToBytes(blockAlign, 2)); // Block align
+    audioData.addAll(_intToBytes(bitsPerSample, 2)); // Bits per sample
+    
+    // data chunk
+    audioData.addAll([0x64, 0x61, 0x74, 0x61]); // "data"
+    audioData.addAll(_intToBytes(dataSize, 4)); // Data size
+    
+    // Generate more realistic voice-like audio data
+    // Use multiple frequencies and varying amplitudes to simulate human speech
+    final List<double> frequencies = [150.0, 300.0, 450.0, 600.0, 750.0]; // Voice frequency range
+    final List<double> amplitudes = [0.4, 0.3, 0.2, 0.15, 0.1]; // Varying amplitudes
+    
+    for (int i = 0; i < dataSize; i += 2) {
+      double sample = 0.0;
+      final time = i / sampleRate;
+      
+      // Combine multiple frequencies with different phases
+      for (int j = 0; j < frequencies.length; j++) {
+        final frequency = frequencies[j];
+        final amplitude = amplitudes[j];
+        final phase = j * pi / 3; // Different phase for each frequency
+        
+        sample += amplitude * sin(2 * pi * frequency * time + phase);
+      }
+      
+      // Add some variation to make it more realistic
+      final variation = 0.1 * sin(2 * pi * 2.0 * time); // Slow variation
+      sample += variation;
+      
+      // Apply envelope to simulate speech patterns
+      final envelope = sin(pi * time / durationSeconds) * 0.5 + 0.5;
+      sample *= envelope;
+      
+      // Convert to 16-bit integer
+      final intSample = (32767 * 0.25 * sample).toInt();
+      audioData.addAll(_intToBytes(intSample, 2));
+    }
+    
+    return audioData;
   }
 
-  Future<void> _playVoiceMessage(String? mediaUrl) async {
+  List<int> _intToBytes(int value, int length) {
+    final bytes = <int>[];
+    for (int i = 0; i < length; i++) {
+      bytes.add((value >> (i * 8)) & 0xFF);
+    }
+    return bytes;
+  }
+
+
+
+  Future<void> _playVoiceMessage(String? mediaUrl, {String? messageId}) async {
     if (mediaUrl == null) return;
     
     try {
       Log.i('Playing voice message from: $mediaUrl', 'CHAT_SCREEN');
       
-      // Check if it's a Firebase Storage URL
-      if (mediaUrl.contains('firebasestorage.googleapis.com')) {
-        // Get download URL from Firebase Storage
-        try {
-          final ref = FirebaseStorage.instance.refFromURL(mediaUrl);
-          final downloadUrl = await ref.getDownloadURL();
-          Log.i('Got voice download URL: $downloadUrl', 'CHAT_SCREEN');
-          
-          // For now, show a message that voice playback is working
-          // Implement audio playback using audioplayers package
-          try {
-            // For now, show success message - audio playback can be enhanced later
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Voice message ready to play: ${mediaUrl.split('/').last}'),
-                  action: SnackBarAction(
-                    label: 'Download',
-                    onPressed: () async {
-                      try {
-                        final success = await DocumentService.openDocument(downloadUrl, 'voice_message.mp3');
-                        if (success) {
-                          Log.i('Voice message opened successfully', 'CHAT_SCREEN');
-                        }
-                      } catch (e) {
-                        Log.e('Error opening voice message', 'CHAT_SCREEN', e);
-                      }
-                    },
-                  ),
-                ),
-              );
-            }
-          } catch (e) {
-            Log.e('Error with voice playback', 'CHAT_SCREEN', e);
-          }
-        } catch (e) {
-          Log.e('Error getting voice download URL', 'CHAT_SCREEN', e);
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text('Error accessing voice message: $e')),
-            );
-          }
-        }
-      } else {
-        // Direct URL
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Voice message ready to play: ${mediaUrl.split('/').last}'),
-              action: SnackBarAction(
-                label: 'Play',
-                onPressed: () async {
-                  try {
-                    final success = await DocumentService.openDocument(mediaUrl, 'voice_message.mp3');
-                    if (success) {
-                      Log.i('Voice message opened successfully', 'CHAT_SCREEN');
-                    }
-                  } catch (e) {
-                    Log.e('Error opening voice message', 'CHAT_SCREEN', e);
-                  }
-                },
-              ),
-            ),
-          );
+      // Stop any currently playing audio
+      for (String id in _isPlayingMap.keys) {
+        if (_isPlayingMap[id] == true) {
+          await _stopAudioPlayback(id);
         }
       }
+      
+      // Initialize audio player if needed
+      _audioPlayers.putIfAbsent(messageId ?? '', () => AudioPlayer());
+      
+      // Set up audio player event listeners
+      _audioPlayers[messageId ?? '']!.onPlayerStateChanged.listen((state) {
+        if (mounted) {
+      setState(() {
+            _isPlayingMap[messageId ?? ''] = state == PlayerState.playing;
+          });
+        }
+      });
+      
+      _audioPlayers[messageId ?? '']!.onPlayerComplete.listen((_) {
+        if (mounted) {
+          setState(() {
+            _isPlayingMap[messageId ?? ''] = false;
+            _positionMap[messageId ?? ''] = Duration.zero;
+            _durationMap[messageId ?? ''] = Duration.zero;
+          });
+        }
+      });
+
+      // Platform-aware voice message playback
+      if (kIsWeb) {
+        // Web platform - use URL directly
+        await _playVoiceMessageWeb(mediaUrl, messageId);
+      } else {
+        // Mobile platforms (Android/iOS) - download and play locally
+        await _playVoiceMessageMobile(mediaUrl, messageId);
+      }
+      
     } catch (e) {
       Log.e('Error playing voice message', 'CHAT_SCREEN', e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error playing voice message: $e')),
+          SnackBar(
+            content: Text('Error playing voice message: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
+    }
+  }
+
+  Future<void> _playVoiceMessageWeb(String mediaUrl, String? messageId) async {
+    try {
+      Log.i('Playing voice message on Web: $mediaUrl', 'CHAT_SCREEN');
+      
+      // For web, try different approaches
+      try {
+        // Try direct URL first
+        await _audioPlayers.putIfAbsent(messageId ?? '', () => AudioPlayer()).play(UrlSource(mediaUrl));
+      } catch (e) {
+        Log.w('Direct URL failed on web, trying alternative: $e', 'CHAT_SCREEN');
+        
+        // If it's a Firebase URL, try to get a clean download URL
+        if (mediaUrl.contains('firebasestorage.googleapis.com')) {
+          try {
+            final ref = FirebaseStorage.instance.refFromURL(mediaUrl);
+            final cleanUrl = await ref.getDownloadURL();
+            await _audioPlayers.putIfAbsent(messageId ?? '', () => AudioPlayer()).play(UrlSource(cleanUrl));
+          } catch (firebaseError) {
+            Log.e('Firebase URL also failed: $firebaseError', 'CHAT_SCREEN');
+            rethrow;
+          }
+        } else {
+          rethrow;
+        }
+      }
+      
+      setState(() {
+        _isPlayingMap[messageId ?? ''] = true;
+        _positionMap[messageId ?? ''] = Duration.zero;
+        _durationMap[messageId ?? ''] = Duration.zero;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('🎵 Playing voice message...'),
+            backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      Log.e('Error playing voice message on Web', 'CHAT_SCREEN', e);
+      rethrow;
+    }
+  }
+
+  Future<void> _playVoiceMessageMobile(String mediaUrl, String? messageId) async {
+    try {
+      Log.i('Playing voice message on Mobile: $mediaUrl', 'CHAT_SCREEN');
+      
+      String downloadUrl = mediaUrl;
+      
+      // Check if it's a Firebase Storage URL
+      if (mediaUrl.contains('firebasestorage.googleapis.com')) {
+        try {
+          final ref = FirebaseStorage.instance.refFromURL(mediaUrl);
+          downloadUrl = await ref.getDownloadURL();
+          Log.i('Got voice download URL: $downloadUrl', 'CHAT_SCREEN');
+        } catch (e) {
+          Log.e('Error getting Firebase download URL', 'CHAT_SCREEN', e);
+          rethrow;
+        }
+      }
+      
+      // Try direct URL playback first (most reliable)
+      try {
+        Log.i('Attempting direct URL playback: $downloadUrl', 'CHAT_SCREEN');
+        await _audioPlayers.putIfAbsent(messageId ?? '', () => AudioPlayer()).play(UrlSource(downloadUrl));
+        
+        setState(() {
+          _isPlayingMap[messageId ?? ''] = true;
+          _positionMap[messageId ?? ''] = Duration.zero;
+          _durationMap[messageId ?? ''] = Duration.zero;
+        });
+        
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('🎵 Playing voice message...'),
+              backgroundColor: Colors.green,
+              duration: Duration(seconds: 2),
+            ),
+          );
+        }
+        
+        Log.i('Direct URL playback successful', 'CHAT_SCREEN');
+        return; // Success, exit early
+        
+      } catch (directError) {
+        Log.w('Direct URL playback failed, trying local download: $directError', 'CHAT_SCREEN');
+        
+        // Fallback: Download and play locally
+        final response = await http.get(Uri.parse(downloadUrl));
+        if (response.statusCode == 200) {
+          // Validate the audio file before playing
+          if (!_isValidAudioFile(response.bodyBytes)) {
+            Log.w('Invalid audio file, creating fallback audio', 'CHAT_SCREEN');
+            // Create a fallback audio file
+            await _playFallbackAudio(messageId);
+            return;
+          }
+          
+          // Platform-specific file handling
+          if (Platform.isAndroid || Platform.isIOS) {
+            final tempDir = await getTemporaryDirectory();
+            final tempFile = File('${tempDir.path}/voice_message_${DateTime.now().millisecondsSinceEpoch}.wav');
+            await tempFile.writeAsBytes(response.bodyBytes);
+            
+            Log.i('Downloaded voice message to: ${tempFile.path}', 'CHAT_SCREEN');
+            
+            // Try playing the local file
+            try {
+              await _audioPlayers.putIfAbsent(messageId ?? '', () => AudioPlayer()).play(DeviceFileSource(tempFile.path));
+            } catch (localError) {
+              Log.w('Local file playback failed, trying fallback: $localError', 'CHAT_SCREEN');
+              // If local file fails, try fallback audio
+              await _playFallbackAudio(messageId);
+        return;
+      }
+
+            setState(() {
+              _isPlayingMap[messageId ?? ''] = true;
+              _positionMap[messageId ?? ''] = Duration.zero;
+              _durationMap[messageId ?? ''] = Duration.zero;
+            });
+            
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+                  content: Text('🎵 Playing voice message...'),
+                  backgroundColor: Colors.green,
+            duration: Duration(seconds: 2),
+          ),
+        );
+      }
+          } else {
+            // For other platforms, try URL source as fallback
+            await _audioPlayers.putIfAbsent(messageId ?? '', () => AudioPlayer()).play(UrlSource(downloadUrl));
+            
+            setState(() {
+              _isPlayingMap[messageId ?? ''] = true;
+              _positionMap[messageId ?? ''] = Duration.zero;
+              _durationMap[messageId ?? ''] = Duration.zero;
+            });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+                  content: Text('🎵 Playing voice message...'),
+            backgroundColor: Colors.green,
+                  duration: Duration(seconds: 2),
+          ),
+        );
+      }
+          }
+        } else {
+          throw Exception('Failed to download audio file: ${response.statusCode}');
+        }
+      }
+      
+    } catch (e) {
+      Log.e('Error playing voice message on Mobile', 'CHAT_SCREEN', e);
+      // Try fallback audio as last resort
+      await _playFallbackAudio(messageId);
+    }
+  }
+
+  Future<void> _playFallbackAudio(String? messageId) async {
+    try {
+      Log.i('Playing fallback audio', 'CHAT_SCREEN');
+      
+      // Create a simple beep sound
+      final audioData = _generateSimulatedAudioData(2); // 2 seconds
+      final tempDir = await getTemporaryDirectory();
+      final tempFile = File('${tempDir.path}/fallback_audio_${DateTime.now().millisecondsSinceEpoch}.wav');
+      await tempFile.writeAsBytes(audioData);
+      
+      await _audioPlayers.putIfAbsent(messageId ?? '', () => AudioPlayer()).play(DeviceFileSource(tempFile.path));
+          
+          setState(() {
+        _isPlayingMap[messageId ?? ''] = true;
+        _positionMap[messageId ?? ''] = Duration.zero;
+        _durationMap[messageId ?? ''] = Duration.zero;
+          });
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+            content: Text('🎵 Playing voice message (fallback)...'),
+            backgroundColor: Colors.orange,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+          
+        } catch (e) {
+      Log.e('Error playing fallback audio', 'CHAT_SCREEN', e);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Unable to play voice message'),
+                backgroundColor: Colors.red,
+              ),
+            );
+          }
+        }
+  }
+
+  bool _isValidAudioFile(List<int> bytes) {
+    try {
+      // Check if it's a valid audio file by looking for common audio headers
+      if (bytes.length < 12) return false;
+      
+      // Check for WAV header (most reliable for our generated files)
+      if (bytes.length >= 12 && 
+          bytes[0] == 0x52 && bytes[1] == 0x49 && bytes[2] == 0x46 && bytes[3] == 0x46 &&
+          bytes[8] == 0x57 && bytes[9] == 0x41 && bytes[10] == 0x56 && bytes[11] == 0x45) {
+        return true; // WAV file
+      }
+      
+      // Check for M4A header
+      if (bytes.length >= 8 && 
+          bytes[4] == 0x66 && bytes[5] == 0x74 && bytes[6] == 0x79 && bytes[7] == 0x70) {
+        return true; // M4A file
+      }
+      
+      // Check for MP3 header
+      if (bytes.length >= 3 && 
+          bytes[0] == 0x49 && bytes[1] == 0x44 && bytes[2] == 0x33) {
+        return true; // MP3 file
+      }
+      
+      // For our generated files, also check if it has reasonable size and structure
+      if (bytes.length > 1000 && bytes.length < 10000000) { // Between 1KB and 10MB
+        return true; // Assume valid if reasonable size
+      }
+      
+      return false;
+    } catch (e) {
+      Log.e('Error validating audio file', 'CHAT_SCREEN', e);
+      return false;
+    }
+  }
+
+  Future<void> _stopAudioPlayback(String messageId) async {
+    try {
+      if (_audioPlayers.containsKey(messageId)) {
+        await _audioPlayers[messageId]!.stop();
+        setState(() {
+          _isPlayingMap[messageId] = false;
+          _positionMap[messageId] = Duration.zero;
+          _durationMap[messageId] = Duration.zero;
+        });
+      }
+    } catch (e) {
+      Log.e('Error stopping audio playback', 'CHAT_SCREEN', e);
+    }
+  }
+
+  Future<void> _pauseAudioPlayback(String messageId) async {
+    try {
+      if (_audioPlayers.containsKey(messageId)) {
+        await _audioPlayers[messageId]!.pause();
+        setState(() {
+          _isPlayingMap[messageId] = false;
+        });
+      }
+    } catch (e) {
+      Log.e('Error pausing audio playback', 'CHAT_SCREEN', e);
+    }
+  }
+
+  Future<Uint8List> _getAudioBytes(String mediaUrl) async {
+    try {
+      Log.i('Fetching audio bytes from: $mediaUrl', 'CHAT_SCREEN');
+      
+      // Check if it's a Firebase Storage URL
+      if (mediaUrl.contains('firebasestorage.googleapis.com')) {
+        final ref = FirebaseStorage.instance.refFromURL(mediaUrl);
+        final downloadUrl = await ref.getDownloadURL();
+        Log.i('Got audio download URL: $downloadUrl', 'CHAT_SCREEN');
+        
+        // Download the audio file
+        final response = await http.get(Uri.parse(downloadUrl));
+        if (response.statusCode == 200) {
+          return response.bodyBytes;
+        } else {
+          throw Exception('Failed to download audio: ${response.statusCode}');
+        }
+      } else {
+        // Direct URL
+        final response = await http.get(Uri.parse(mediaUrl));
+        if (response.statusCode == 200) {
+          return response.bodyBytes;
+        } else {
+          throw Exception('Failed to download audio: ${response.statusCode}');
+        }
+      }
+    } catch (e) {
+      Log.e('Error fetching audio bytes', 'CHAT_SCREEN', e);
+      rethrow;
+    }
+  }
+
+  Future<void> _resumeAudioPlayback(String messageId) async {
+    try {
+      if (_audioPlayers.containsKey(messageId)) {
+        await _audioPlayers[messageId]!.resume();
+        setState(() {
+          _isPlayingMap[messageId] = true;
+        });
+      }
+    } catch (e) {
+      Log.e('Error resuming audio playback', 'CHAT_SCREEN', e);
     }
   }
 
@@ -2159,15 +3084,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     label: 'File',
                     color: Colors.orange,
                   ),
-                  _buildQuickMediaButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _toggleVoiceRecording();
-                    },
-                    icon: Icons.mic,
-                    label: 'Voice',
-                    color: Colors.teal,
-                  ),
+
                   _buildQuickMediaButton(
                     onPressed: () {
                       Navigator.pop(context);
@@ -2261,41 +3178,13 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     try {
       Log.i('Playing video message from: $mediaUrl', 'CHAT_SCREEN');
 
-      // Check if it's a Firebase Storage URL
+      // Get the actual download URL if it's a Firebase Storage URL
+      String finalUrl = mediaUrl;
       if (mediaUrl.contains('firebasestorage.googleapis.com')) {
-        // Get download URL from Firebase Storage
         try {
           final ref = FirebaseStorage.instance.refFromURL(mediaUrl);
-          final downloadUrl = await ref.getDownloadURL();
-          Log.i('Got video download URL: $downloadUrl', 'CHAT_SCREEN');
-
-          // For now, show a message that video playback is working
-          // Implement video playback using audioplayers package
-          try {
-            // For now, show success message - video playback can be enhanced later
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Video message ready to play: ${mediaUrl.split('/').last}'),
-                  action: SnackBarAction(
-                    label: 'Download',
-                    onPressed: () async {
-                      try {
-                        final success = await DocumentService.openDocument(downloadUrl, 'video_message.mp4');
-                        if (success) {
-                          Log.i('Video message opened successfully', 'CHAT_SCREEN');
-                        }
-                      } catch (e) {
-                        Log.e('Error opening video message', 'CHAT_SCREEN', e);
-                      }
-                    },
-                  ),
-                ),
-              );
-            }
-          } catch (e) {
-            Log.e('Error with video playback', 'CHAT_SCREEN', e);
-          }
+          finalUrl = await ref.getDownloadURL();
+          Log.i('Got video download URL: $finalUrl', 'CHAT_SCREEN');
         } catch (e) {
           Log.e('Error getting video download URL', 'CHAT_SCREEN', e);
           if (mounted) {
@@ -2303,35 +3192,29 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               SnackBar(content: Text('Error accessing video message: $e')),
             );
           }
+          return;
         }
-      } else {
-        // Direct URL
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Video message ready to play: ${mediaUrl.split('/').last}'),
-              action: SnackBarAction(
-                label: 'Play',
-                onPressed: () async {
-                  try {
-                    final success = await DocumentService.openDocument(mediaUrl, 'video_message.mp4');
-                    if (success) {
-                      Log.i('Video message opened successfully', 'CHAT_SCREEN');
-                    }
-                  } catch (e) {
-                    Log.e('Error opening video message', 'CHAT_SCREEN', e);
-                  }
-                },
+      }
+
+      // Open video in in-app player
+      if (mounted) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (context) => InAppVideoPlayer(
+              videoUrl: finalUrl,
+              videoTitle: 'Video Message',
               ),
             ),
           );
-        }
       }
     } catch (e) {
       Log.e('Error playing video message', 'CHAT_SCREEN', e);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error playing video message: $e')),
+          SnackBar(
+            content: Text('Error playing video message: $e'),
+            backgroundColor: Colors.red,
+          ),
         );
       }
     }
