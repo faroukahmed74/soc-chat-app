@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'logger_service.dart';
 
@@ -11,6 +12,15 @@ class UnifiedNotificationService {
 
   final FlutterLocalNotificationsPlugin _fln = FlutterLocalNotificationsPlugin();
   bool _initialized = false;
+  bool _channelsCreated = false;
+  String? _currentFcmToken;
+
+  // Default system channel used by test screens
+  static const String systemChannelId = 'chat_notifications';
+
+  /// Exposes the current FCM token (cached during initialize or status fetch)
+  String? get currentFcmToken => _currentFcmToken;
+  bool get isInitialized => _initialized;
 
   Future<void> initialize() async {
     if (_initialized) return;
@@ -38,9 +48,20 @@ class UnifiedNotificationService {
 
     // Create commonly used channels (MUST match IDs used by pushes)
     await _ensureChannels();
+    _channelsCreated = true;
 
     _initialized = true;
     Log.i('UnifiedNotificationService initialized', 'UNIFIED');
+
+    // Cache FCM token for quick access in test screens
+    try {
+      _currentFcmToken = await FirebaseMessaging.instance.getToken();
+      if (_currentFcmToken != null && _currentFcmToken!.isNotEmpty) {
+        Log.i('FCM token cached', 'UNIFIED');
+      }
+    } catch (e) {
+      Log.w('Unable to fetch FCM token during initialize', 'UNIFIED');
+    }
   }
 
   Future<void> _ensureChannels() async {
@@ -79,6 +100,37 @@ class UnifiedNotificationService {
     await android?.createNotificationChannel(broadcastChannel);
   }
 
+  /// Cross-platform request notification permission
+  Future<bool> requestPermission() async {
+    try {
+      // Web / iOS / macOS via FirebaseMessaging
+      if (kIsWeb || defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.macOS) {
+        final settings = await FirebaseMessaging.instance.requestPermission(
+          alert: true,
+          badge: true,
+          sound: true,
+          provisional: false,
+        );
+        return settings.authorizationStatus == AuthorizationStatus.authorized ||
+               settings.authorizationStatus == AuthorizationStatus.provisional;
+      }
+
+      // Android notification runtime permission via permission_handler
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final status = await Permission.notification.status;
+        if (status.isGranted) return true;
+        final result = await Permission.notification.request();
+        return result.isGranted;
+      }
+
+      // Other platforms: assume granted
+      return true;
+    } catch (e) {
+      Log.e('Error requesting notification permission', 'UNIFIED', e);
+      return false;
+    }
+  }
+
   Future<void> sendLocalNotification({
     required String title,
     required String body,
@@ -112,13 +164,65 @@ class UnifiedNotificationService {
       );
   }
 
+  /// Convenience: Send local notification for 1:1 chat message with sound
+  Future<void> sendChatMessageNotification({
+    required String title,
+    required String body,
+    required String chatId,
+    required String senderId,
+    required String senderName,
+    String? messageType,
+  }) async {
+    await sendLocalNotification(
+      title: title,
+      body: body,
+      payload: json.encode({
+        'type': 'chat_message',
+        'chatId': chatId,
+        'senderId': senderId,
+        'senderName': senderName,
+        'messageType': messageType ?? 'text',
+        'timestamp': DateTime.now().toIso8601String(),
+      }),
+      channelId: 'chat_notifications',
+    );
+  }
+
+  /// Convenience: Send local notification for group message with sound
+  Future<void> sendGroupMessageNotification({
+    required String title,
+    required String body,
+    required String groupId,
+    required String groupName,
+    required String senderId,
+    required String senderName,
+    String? messageType,
+  }) async {
+    await sendLocalNotification(
+      title: title,
+      body: body,
+      payload: json.encode({
+        'type': 'group_message',
+        'groupId': groupId,
+        'groupName': groupName,
+        'senderId': senderId,
+        'senderName': senderName,
+        'messageType': messageType ?? 'text',
+        'timestamp': DateTime.now().toIso8601String(),
+      }),
+      channelId: 'group_notifications',
+    );
+  }
+
   /// Send broadcast notification
   Future<bool> sendBroadcastNotification({
     required String title,
     required String body,
-    required String senderId,
-    required String senderName,
+    String? senderId,
+    String? senderName,
     String? messageType,
+    String? topic,
+    Map<String, dynamic>? data,
   }) async {
     try {
       await sendLocalNotification(
@@ -144,7 +248,8 @@ class UnifiedNotificationService {
   Future<bool> sendFcmNotification({
     required String title,
     required String body,
-    required List<String> tokens,
+    String? fcmToken,
+    List<String>? tokens,
     Map<String, dynamic>? data,
   }) async {
     try {
@@ -167,6 +272,16 @@ class UnifiedNotificationService {
     }
   }
 
+  /// Unsubscribe from FCM topic
+  Future<void> unsubscribeFromTopic(String topic) async {
+    try {
+      await FirebaseMessaging.instance.unsubscribeFromTopic(topic);
+      Log.i('Unsubscribed from topic: $topic', 'UNIFIED');
+    } catch (e) {
+      Log.e('Error unsubscribing from topic: $topic', 'UNIFIED', e);
+    }
+  }
+
   /// Request iOS notification permission
   Future<bool> requestIOSNotificationPermission() async {
     try {
@@ -180,6 +295,85 @@ class UnifiedNotificationService {
     } catch (e) {
       Log.e('Error requesting iOS notification permission', 'UNIFIED', e);
       return false;
+    }
+  }
+
+  /// Get a snapshot of notification status for diagnostics
+  Future<Map<String, dynamic>> getNotificationStatus() async {
+    try {
+      // Fetch latest token
+      try {
+        _currentFcmToken ??= await FirebaseMessaging.instance.getToken();
+      } catch (_) {}
+
+      // Fetch notification settings if supported
+      NotificationSettings? settings;
+      try {
+        settings = await FirebaseMessaging.instance.getNotificationSettings();
+      } catch (_) {}
+
+      // Compute permission flag across platforms
+      bool hasPermission = false;
+      try {
+        if (kIsWeb || defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.macOS) {
+          if (settings != null) {
+            hasPermission = settings.authorizationStatus == AuthorizationStatus.authorized ||
+                            settings.authorizationStatus == AuthorizationStatus.provisional;
+          }
+        } else if (defaultTargetPlatform == TargetPlatform.android) {
+          final status = await Permission.notification.status;
+          hasPermission = status.isGranted;
+        } else {
+          hasPermission = true;
+        }
+      } catch (_) {}
+
+      final platform = kIsWeb
+          ? 'web'
+          : defaultTargetPlatform == TargetPlatform.android
+              ? 'android'
+          : defaultTargetPlatform == TargetPlatform.iOS
+                  ? 'ios'
+                  : defaultTargetPlatform == TargetPlatform.macOS
+                      ? 'macos'
+                      : 'unknown';
+
+      return {
+        'initialized': _initialized,
+        'isInitialized': _initialized,
+        'hasNotificationPermission': hasPermission,
+        'platform': platform,
+        'authorizationStatus': settings != null
+            ? describeEnum(settings.authorizationStatus)
+            : 'unknown',
+        'fcmToken': _currentFcmToken,
+        'tokenPresent': (_currentFcmToken != null && _currentFcmToken!.isNotEmpty),
+        'channelsCreated': _channelsCreated,
+        'availableChannels': const [
+          'chat_notifications',
+          'group_notifications',
+          'broadcast_notifications',
+        ],
+        'systemChannelId': systemChannelId,
+      };
+    } catch (e) {
+      Log.e('Error getting notification status', 'UNIFIED', e);
+      return {
+        'initialized': _initialized,
+        'isInitialized': _initialized,
+        'hasNotificationPermission': false,
+        'platform': 'unknown',
+        'authorizationStatus': 'unknown',
+        'fcmToken': _currentFcmToken,
+        'tokenPresent': (_currentFcmToken != null && _currentFcmToken!.isNotEmpty),
+        'channelsCreated': _channelsCreated,
+        'availableChannels': const [
+          'chat_notifications',
+          'group_notifications',
+          'broadcast_notifications',
+        ],
+        'systemChannelId': systemChannelId,
+      };
     }
   }
 

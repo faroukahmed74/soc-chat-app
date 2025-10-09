@@ -1,0 +1,13 @@
+{
+  "mongodb": {
+    "username": "farouk_admin",
+    "database": "soc_chat_app",
+    "uri": "mongodb://farouk_admin:***@localhost:27017/soc_chat_app?authSource=soc_chat_app"
+  },
+  "admin": {
+    "email": "farouk@soc.com",
+    "name": "AhmedFarouk",
+    "role": "admin"
+  },
+  "setupDate": "2025-10-08T11:21:18.122Z"
+}

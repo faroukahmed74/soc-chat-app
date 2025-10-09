@@ -6,11 +6,15 @@
 // and proper error handling for various authentication scenarios.
 
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 
 import '../services/localization_service.dart';
 import '../services/theme_service.dart';
+import '../services/physical_auth_service.dart';
+import '../config/database_config.dart';
+import '../services/logger_service.dart';
 
 // =============================================================================
 // LOGIN SCREEN WIDGET
@@ -98,7 +102,7 @@ class _LoginScreenState extends State<LoginScreen> {
   // =============================================================================
   
   /// Handles the user sign-in process
-  /// This method validates input, attempts Firebase authentication,
+  /// This method validates input, attempts local API authentication,
   /// and checks for account locking status
   Future<void> _signIn() async {
     // Validate input fields
@@ -115,68 +119,29 @@ class _LoginScreenState extends State<LoginScreen> {
     });
 
     try {
-      // Attempt Firebase authentication
-      final userCredential = await FirebaseAuth.instance.signInWithEmailAndPassword(
-        email: _emailController.text.trim(),
-        password: _passwordController.text,
+      // Use physical server authentication only
+      final result = await PhysicalAuthService().login(
+        _emailController.text.trim(),
+        _passwordController.text,
       );
 
-      final user = userCredential.user;
-      if (user != null) {
-        // Check if account is locked in Firestore
-        final doc = await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user.uid)
-            .get();
-
-        if (doc.exists && doc.data()?['disabled'] == true) {
-          // Account is locked - sign out and show locked message
-          await FirebaseAuth.instance.signOut();
-          setState(() {
-            _isAccountLocked = true;
-            _lockedAccountEmail = user.email;
-            _isLoading = false;
-          });
-          return;
-        }
-
-        // Account not locked - proceed to main app
+      if (result['success']) {
+        // Login successful - navigate to main app
+        Log.i('Login successful, navigating to main app', 'LOGIN_SCREEN');
         if (mounted) {
-          Navigator.pushReplacementNamed(context, '/chats');
+          Navigator.of(context).pushReplacementNamed('/chats');
         }
+      } else {
+        setState(() {
+          _error = result['error'] ?? 'Login failed.';
+          _isLoading = false;
+        });
       }
-    } on FirebaseAuthException catch (e) {
-      // Handle Firebase authentication errors
-      String errorMessage = 'Login failed.';
-      
-      switch (e.code) {
-        case 'user-not-found':
-          errorMessage = 'No user found with that email address.';
-          break;
-        case 'wrong-password':
-          errorMessage = 'Wrong password provided.';
-          break;
-        case 'invalid-email':
-          errorMessage = 'Please provide a valid email address.';
-          break;
-        case 'user-disabled':
-          errorMessage = 'This account has been disabled.';
-          break;
-        case 'too-many-requests':
-          errorMessage = 'Too many failed attempts. Please try again later.';
-          break;
-        default:
-          errorMessage = 'Authentication failed: ${e.message}';
-      }
-      
-      setState(() {
-        _error = errorMessage;
-        _isLoading = false;
-      });
     } catch (e) {
-      // Handle general errors
+      // Handle authentication errors
+      Log.e('Login error', 'LOGIN_SCREEN', e);
       setState(() {
-        _error = 'An unexpected error occurred: $e';
+        _error = 'Login failed. Please check your credentials.';
         _isLoading = false;
       });
     }
@@ -614,4 +579,4 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
-} 
+}

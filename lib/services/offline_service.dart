@@ -26,6 +26,8 @@ import 'package:flutter/foundation.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../config/database_config.dart';
+import 'package:dio/dio.dart';
 
 import 'package:firebase_storage/firebase_storage.dart';
 import 'logger_service.dart';
@@ -602,33 +604,79 @@ class OfflineService {
       final fileName = mediaData['fileName'];
       final filePath = mediaData['filePath'];
       final fileType = mediaData['fileType'];
-      
-      // Upload to Firebase Storage
+      final chatId = mediaData['chatId'];
+      final messageId = mediaData['messageId'];
+      final caption = mediaData['caption'] ?? mediaData['text'] ?? mediaData['content'];
+
       final file = File(filePath);
-      if (await file.exists()) {
-        final storageRef = FirebaseStorage.instance.ref().child('chat_media/$fileName');
-        await storageRef.putFile(file);
-        
-        // Get download URL
-        final downloadUrl = await storageRef.getDownloadURL();
-        
-        // Update message with media URL
-        final messageId = mediaData['messageId'];
-        final chatId = mediaData['chatId'];
-        
-        await FirebaseFirestore.instance
-            .collection('chats')
-            .doc(chatId)
-            .collection('messages')
-            .doc(messageId)
-            .update({
-          'mediaUrl': downloadUrl,
-          'mediaType': fileType,
-          'synced': true,
-        });
-        
-        Log.i('Media synced: $fileName', 'OFFLINE_SERVICE');
+      if (!await file.exists()) {
+        Log.w('Offline media file missing: $filePath', 'OFFLINE_SERVICE');
+        return;
       }
+
+      if (DatabaseConfig.isPhysicalServerEnabled) {
+        // Upload via local API
+        final baseUrl = DatabaseConfig.physicalServerUrl;
+        final token = await DatabaseConfig.getStoredAuthToken();
+        final dio = Dio(BaseOptions(
+          baseUrl: baseUrl,
+          headers: {
+            if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+          },
+          connectTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 60),
+          sendTimeout: const Duration(seconds: 60),
+        ));
+
+        final bytes = await file.readAsBytes();
+        final formData = FormData.fromMap({
+          'chatId': chatId,
+          'type': fileType,
+          'file': MultipartFile.fromBytes(bytes, filename: fileName),
+          if (caption != null && (caption as String).isNotEmpty) 'caption': caption,
+        });
+
+        final response = await dio.post('/api/media/upload', data: formData);
+        if (response.statusCode == 201 && response.data is Map) {
+          final data = response.data as Map;
+          final mediaUrl = data['mediaUrl'] as String?;
+          if (mediaUrl != null && mediaUrl.isNotEmpty) {
+            await FirebaseFirestore.instance
+                .collection('chats')
+                .doc(chatId)
+                .collection('messages')
+                .doc(messageId)
+                .update({
+              'mediaUrl': mediaUrl,
+              'mediaType': fileType,
+              'synced': true,
+            });
+            Log.i('Media synced via local API: $fileName', 'OFFLINE_SERVICE');
+            return;
+          }
+          throw Exception('Local API upload succeeded but no mediaUrl returned');
+        } else {
+          final code = response.statusCode ?? 0;
+          final msg = response.statusMessage ?? 'Unknown error';
+          throw Exception('Local API upload failed: HTTP $code $msg');
+        }
+      }
+
+      // Fallback to Firebase Storage
+      final storageRef = FirebaseStorage.instance.ref().child('chat_media/$fileName');
+      await storageRef.putFile(file);
+      final downloadUrl = await storageRef.getDownloadURL();
+      await FirebaseFirestore.instance
+          .collection('chats')
+          .doc(chatId)
+          .collection('messages')
+          .doc(messageId)
+          .update({
+        'mediaUrl': downloadUrl,
+        'mediaType': fileType,
+        'synced': true,
+      });
+      Log.i('Media synced via Firebase: $fileName', 'OFFLINE_SERVICE');
     } catch (e) {
       Log.e('Error syncing media', 'OFFLINE_SERVICE', e);
       throw e;

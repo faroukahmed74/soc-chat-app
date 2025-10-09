@@ -47,6 +47,8 @@ import '../services/logger_service.dart';
 import '../widgets/update_dialog.dart';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../services/local_auth_service.dart';
+import '../config/database_config.dart';
 
 class SettingsScreen extends StatefulWidget {
   final Function(bool)? onThemeChanged;
@@ -234,6 +236,26 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ],
               ),
               
+              const SizedBox(height: 16),
+
+              // Server Configuration
+              _buildSettingsCard(
+                title: 'Server Configuration',
+                icon: Icons.cloud,
+                iconColor: Colors.blueGrey,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.settings_ethernet),
+                    title: const Text('Mode'),
+                    subtitle: Text(DatabaseConfig.usePhysicalServer ? 'Physical Server' : 'Firebase'),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.link),
+                    title: const Text('Server URL'),
+                    subtitle: Text(DatabaseConfig.physicalServerUrl),
+                  ),
+                ],
+              ),
               const SizedBox(height: 16),
               
               // Language Settings
@@ -495,7 +517,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       );
                       
                       if (confirmed == true && mounted) {
-                        await FirebaseAuth.instance.signOut();
+                        if (DatabaseConfig.usePhysicalServer) {
+                          await LocalAuthService.logout();
+                        } else {
+                          await FirebaseAuth.instance.signOut();
+                        }
                         if (mounted) {
                           Navigator.of(context).pushNamedAndRemoveUntil(
                             '/login',
@@ -549,4 +575,4 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-} 
+}

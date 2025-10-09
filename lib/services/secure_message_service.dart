@@ -7,8 +7,9 @@ import 'unified_notification_service.dart';
 import 'logger_service.dart';
 
 class SecureMessageService {
-  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  static final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Lazy accessors to avoid import-time Firebase initialization
+  static FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  static FirebaseAuth get _auth => FirebaseAuth.instance;
   
   // Background cleanup timer
   static Timer? _cleanupTimer;

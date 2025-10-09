@@ -1,68 +1,69 @@
-# Flutter/Dart specific
+# Flutter/Dart
 .dart_tool/
-.flutter-plugins
-.flutter-plugins-dependencies
 .packages
 .pub-cache/
 .pub/
 build/
-*.lock
+flutter_*.png
+linked_*.ds
+unlinked.ds
+unlinked_spec.ds
 
-# Android
-**/android/**/gradle-wrapper.jar
-**/android/.gradle
-**/android/captures/
-**/android/gradlew
-**/android/gradlew.bat
-**/android/local.properties
-**/android/**/GeneratedPluginRegistrant.java
-**/android/key.properties
-*.jks
+# Flutter Web
+build/web/
 
-# iOS
-**/ios/**/*.mode1v3
-**/ios/**/*.mode2v3
-**/ios/**/*.moved-aside
-**/ios/**/*.pbxuser
-**/ios/**/*.perspectivev3
-**/ios/**/*sync/
-**/ios/**/.sconsign.dblite
-**/ios/**/.tags*
-**/ios/**/.vagrant/
-**/ios/**/DerivedData/
-**/ios/**/Icon?
-**/ios/**/Pods/
-**/ios/**/.symlinks/
-**/ios/**/profile
-**/ios/**/xcuserdata
-**/ios/.generated/
-**/ios/Flutter/App.framework
-**/ios/Flutter/Flutter.framework
-**/ios/Flutter/Flutter.podspec
-**/ios/Flutter/Generated.xcconfig
-**/ios/Flutter/app.flx
-**/ios/Flutter/app.zip
-**/ios/Flutter/flutter_assets/
-**/ios/Flutter/flutter_export_environment.sh
-**/ios/ServiceDefinitions.json
-**/ios/Runner/GeneratedPluginRegistrant.*
+# Flutter Android
+android/app/debug
+android/app/profile
+android/app/release
 
-# Firebase service account keys (keep these secure!)
-assets/service-account/*.json
-functions/service-account.json
-soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json
-servers/assets/service-account/*.json
-*.json
-!pubspec.json
-!package.json
-!package-lock.json
-!firebase.json
-!firestore.indexes.json
-!firestore.rules
+# Flutter iOS
+ios/Flutter/App.framework
+ios/Flutter/Flutter.framework
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/ephemeral/
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/Flutter/flutter_assets/
+ios/ServiceDefinitions.json
+ios/Runner/GeneratedPluginRegistrant.*
 
-# FCM server files (optional - you might want to keep these)
-# fcm_server.js
-# test_fcm.js
+# Flutter macOS
+macos/Flutter/GeneratedPluginRegistrant.swift
+
+# Flutter Linux
+linux/flutter/generated_plugin_registrant.cc
+linux/flutter/generated_plugin_registrant.h
+linux/flutter/generated_plugins.cmake
+
+# Flutter Windows
+windows/flutter/generated_plugin_registrant.cc
+windows/flutter/generated_plugin_registrant.h
+windows/flutter/generated_plugins.cmake
+
+# Node.js
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+yarn.lock
+
+# Server files
+servers/node_modules/
+servers/uploads/
+servers/logs/
+servers/.env
+servers/dist/
+servers/build/
+
+# Environment variables
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
 
 # IDE
 .vscode/
@@ -82,17 +83,174 @@ Thumbs.db
 
 # Logs
 *.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+logs/
+log/
 
-# Node.js (if you keep FCM server)
-node_modules/
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+# Runtime data
+pids
+*.pid
+*.seed
+*.pid.lock
+
+# Coverage directory used by tools like istanbul
+coverage/
+*.lcov
+
+# nyc test coverage
+.nyc_output
+
+# Dependency directories
+jspm_packages/
+
+# Optional npm cache directory
+.npm
+
+# Optional eslint cache
+.eslintcache
+
+# Optional REPL history
+.node_repl_history
+
+# Output of 'npm pack'
+*.tgz
+
+# Yarn Integrity file
+.yarn-integrity
+
+# dotenv environment variables file
 .env
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+
+# parcel-bundler cache (https://parceljs.org/)
+.cache
+.parcel-cache
+
+# next.js build output
+.next
+
+# nuxt.js build output
+.nuxt
+
+# vuepress build output
+.vuepress/dist
+
+# Serverless directories
+.serverless
+
+# FuseBox cache
+.fusebox/
+
+# DynamoDB Local files
+.dynamodb/
+
+# TernJS port file
+.tern-port
+
+# Stores VSCode versions used for testing VSCode extensions
+.vscode-test
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+*.temp
+
+# APK files
+*.apk
+*.aab
+
+# Build artifacts
+build/
+dist/
+out/
+
+# Database files
+*.db
+*.sqlite
+*.sqlite3
+
+# Backup files
+*.backup
+*.bak
+*.old
+
+# Test files
+test-results/
+coverage/
+
+# Documentation build
+docs/_build/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ngrok
+ngrok.yml
+ngrok_*.yml
+
+# PM2
+.pm2/
+
+# MongoDB
+data/
+mongodb/
+
+# Certificates
+*.pem
+*.key
+*.crt
+*.csr
+
+# Local development
+local/
+dev/
+development/
+
+# Analysis
+analyze_output.txt
+flutter_analyze_logs.txt
+android/build_logs.txt
+android/flutter_build_logs.txt
+
+# APK directories
+APK_FOR_*/
+
+# Batch files analysis
+*_ANALYSIS.md
+SERVICE_FLOW_ANALYSIS.md
+
+# Clear cache files
+clear_web_cache.html
+
+# Database admin tools
+database_admin_tool.js
+
+# DevTools
+devtools_options.yaml
+
+# Package files
+package.json
+package-lock.json
+
+# Backup main files
+lib/main_*.dart
+
+# Firebase (not used but keeping for reference)
+firebase_options.dart
+google-services.json
+GoogleService-Info.plist
+
+# Generated files
+generated_plugin_registrant.dart
+generated_plugin_registrant.h
+generated_plugin_registrant.cc
+generated_plugins.cmake
+GeneratedPluginRegistrant.swift

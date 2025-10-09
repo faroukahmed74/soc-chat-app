@@ -2,11 +2,15 @@ import 'dart:typed_data';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:dio/dio.dart';
+import '../config/database_config.dart';
+import 'local_auth_service.dart';
 
 class SecureMediaService {
-  static final FirebaseStorage _storage = FirebaseStorage.instance;
-  static final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  static final FirebaseAuth _auth = FirebaseAuth.instance;
+  // Lazy accessors to avoid import-time Firebase initialization
+  static FirebaseStorage get _storage => FirebaseStorage.instance;
+  static FirebaseFirestore get _firestore => FirebaseFirestore.instance;
+  static FirebaseAuth get _auth => FirebaseAuth.instance;
 
   /// Upload media to Firebase Storage and return download URL
   static Future<String> uploadMediaToStorage(
@@ -16,6 +20,43 @@ class SecureMediaService {
     String chatId,
   ) async {
     try {
+      // If physical server is enabled, upload using local API
+      if (DatabaseConfig.isPhysicalServerEnabled) {
+        final baseUrl = DatabaseConfig.physicalServerUrl;
+        final token = await DatabaseConfig.getStoredAuthToken();
+        final dio = Dio(BaseOptions(
+          baseUrl: baseUrl,
+          headers: {
+            if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+          },
+          connectTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 60),
+          sendTimeout: const Duration(seconds: 60),
+        ));
+
+        final serverType = _mapMimeTypeToType(mimeType);
+        final formData = FormData.fromMap({
+          'chatId': chatId,
+          'type': serverType,
+          'file': MultipartFile.fromBytes(mediaBytes, filename: fileName),
+        });
+
+        final response = await dio.post('/api/media/upload', data: formData);
+        if (response.statusCode == 201 && response.data is Map) {
+          final data = response.data as Map;
+          final mediaUrl = data['mediaUrl'] as String?;
+          if (mediaUrl != null && mediaUrl.isNotEmpty) {
+            print('[SecureMedia] Media uploaded to server: $mediaUrl');
+            return mediaUrl;
+          }
+          throw Exception('Upload succeeded but no mediaUrl returned');
+        } else {
+          final code = response.statusCode ?? 0;
+          final msg = response.statusMessage ?? 'Unknown error';
+          throw Exception('Upload failed: HTTP $code $msg');
+        }
+      }
+
       final user = _auth.currentUser;
       if (user == null) throw Exception('User not authenticated');
 
@@ -51,6 +92,12 @@ class SecureMediaService {
     try {
       if (mediaUrl.isEmpty) return;
       
+      // Skip deletion for server-hosted media (no API yet)
+      if (DatabaseConfig.isPhysicalServerEnabled && mediaUrl.startsWith(DatabaseConfig.physicalServerUrl)) {
+        print('[SecureMedia] Server media deletion skipped: $mediaUrl');
+        return;
+      }
+      
       // Extract file path from URL
       final uri = Uri.parse(mediaUrl);
       final pathSegments = uri.pathSegments;
@@ -77,16 +124,16 @@ class SecureMediaService {
     String? fileType,
     String? fileName,
   }) async {
-    final user = _auth.currentUser;
-    if (user == null) throw Exception('User not authenticated');
+    final currentUser = await LocalAuthService.getCurrentUser();
+    if (currentUser == null) throw Exception('User not authenticated');
 
     return {
       'type': type,
       'mediaUrl': mediaUrl, // Store URL instead of binary data
       'mimeType': mimeType,
-      'senderId': user.uid,
-      'senderName': user.displayName ?? 'Unknown User',
-      'timestamp': FieldValue.serverTimestamp(),
+      'senderId': currentUser['id'] ?? currentUser['_id'] ?? '',
+      'senderName': currentUser['name'] ?? 'Unknown User',
+      'timestamp': DateTime.now(),
       'isPinned': false,
       'reactions': {},
       'text': type == 'image' ? '📷 Image' : 
@@ -153,5 +200,13 @@ class SecureMediaService {
   static bool hasMessageExpired(DateTime? expiresAt) {
     if (expiresAt == null) return false;
     return DateTime.now().isAfter(expiresAt);
+  }
+
+  /// Map MIME type to server-supported media type
+  static String _mapMimeTypeToType(String mimeType) {
+    if (mimeType.startsWith('image/')) return 'image';
+    if (mimeType.startsWith('video/')) return 'video';
+    if (mimeType.startsWith('audio/')) return 'audio';
+    return 'document';
   }
 }

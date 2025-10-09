@@ -5,19 +5,23 @@
 // It handles message sending, media uploads, real-time updates, and group management.
 
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+// Removed Firebase/Firestore - using physical server only
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
 import '../services/theme_service.dart';
+import '../services/database_service.dart' as db;
+import '../config/database_config.dart';
+import '../services/local_auth_service.dart';
 
 import '../services/enhanced_media_service.dart';
 import '../services/document_service.dart';
 import '../services/logger_service.dart';
 import '../services/chat_management_service.dart';
 import '../services/fcm_notification_service.dart';
+import '../services/secure_media_service.dart';
 import '../utils/responsive_utils.dart';
 import '../widgets/enhanced_media_preview.dart';
 import '../widgets/voice_message_player.dart';
@@ -87,6 +91,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   final Map<String, String> _messageStatuses = {};
   final Map<String, Map<String, dynamic>> _messageCache = {};
   StreamSubscription<QuerySnapshot>? _messagesSubscription;
+  // Server-mode pagination state
+  List<db.DocumentSnapshot> _serverMessages = [];
+  int _serverOffset = 0;
+  Timer? _localPollingTimer;
   
   // FCM Notification Service
   final FCMNotificationService _fcmService = FCMNotificationService();
@@ -107,7 +115,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void initState() {
     super.initState();
     _themeService = ThemeService.instance;
-    _currentUserId = FirebaseAuth.instance.currentUser?.uid ?? '';
+    _initializeUserId();
     
     // Initialize animation controllers
     _fadeController = AnimationController(
@@ -151,6 +159,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     _searchController.dispose();
 
     _messagesSubscription?.cancel();
+    _localPollingTimer?.cancel();
     
     // Dispose animation controllers
     _fadeController.dispose();
@@ -161,11 +170,21 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  Future<void> _initializeUserId() async {
+    if (DatabaseConfig.usePhysicalServer) {
+      _currentUserId = await LocalAuthService.getCurrentUserId() ?? '';
+    } else {
+      _currentUserId = DatabaseConfig.usePhysicalServer 
+          ? (await LocalAuthService.getCurrentUserId() ?? '')
+          : (FirebaseAuth.instance.currentUser?.uid ?? '');
+    }
+  }
+
   Future<void> _initializeChat() async {
     try {
-      _loadCurrentUserInfo();
+      await _loadCurrentUserInfo();
       if (widget.isGroupChat && widget.userIds != null) {
-        _loadGroupInfo();
+        await _loadGroupInfo();
       }
       _startMessageStream();
     } catch (e) {
@@ -175,16 +194,28 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _loadCurrentUserInfo() async {
     try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(_currentUserId)
-          .get();
-      
-      if (userDoc.exists && mounted) {
-        final userData = userDoc.data() as Map<String, dynamic>;
-        setState(() {
-          _currentUserDisplayName = userData['displayName'] ?? 'User';
-        });
+      if (DatabaseConfig.usePhysicalServer) {
+        final databaseService = await DatabaseConfig.getDatabaseService();
+        final userDoc = await databaseService.getUser(_currentUserId);
+        
+        if (userDoc != null && mounted) {
+          final userData = userDoc.data() as Map<String, dynamic>;
+          setState(() {
+            _currentUserDisplayName = userData['displayName'] ?? 'User';
+          });
+        }
+      } else {
+        final userDoc = await FirebaseFirestore.instance
+            .collection('users')
+            .doc(_currentUserId)
+            .get();
+        
+        if (userDoc.exists && mounted) {
+          final userData = userDoc.data() as Map<String, dynamic>;
+          setState(() {
+            _currentUserDisplayName = userData['displayName'] ?? 'User';
+          });
+        }
       }
     } catch (e) {
       Log.e('Error loading current user info', 'CHAT_SCREEN', e);
@@ -193,6 +224,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _loadGroupInfo() async {
     try {
+      if (DatabaseConfig.usePhysicalServer) {
+        // Skip Firebase group info in physical server mode; handled by local DB flows elsewhere
+        return;
+      }
       final groupDoc = await FirebaseFirestore.instance
           .collection('groups')
           .doc(widget.chatId)
@@ -220,9 +255,18 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
-  void _startMessageStream() {
-    _messagesSubscription?.cancel();
-    
+ void _startMessageStream() {
+   _messagesSubscription?.cancel();
+    _localPollingTimer?.cancel();
+   
+   if (DatabaseConfig.usePhysicalServer) {
+     _startLocalMessageStream();
+   } else {
+     _startFirebaseMessageStream();
+   }
+ }
+
+  void _startFirebaseMessageStream() {
     final query = FirebaseFirestore.instance
         .collection('chats')
         .doc(widget.chatId)
@@ -253,7 +297,181 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
-  void _onScroll() {
+ void _startLocalMessageStream() {
+    // Initial load of messages with proper pagination
+    _loadInitialServerMessages();
+    
+    // Set up polling for new messages
+    _localPollingTimer = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      if (!mounted) {
+        timer.cancel();
+        return;
+      }
+      
+      try {
+        final databaseService = await DatabaseConfig.getDatabaseService();
+        // Poll for messages with current pagination state
+        final combinedMessages = await databaseService.getChatMessages(
+          widget.chatId,
+          limit: _serverOffset + _messageLimit,
+          offset: 0,
+        );
+        
+        if (mounted) {
+          setState(() {
+            _serverMessages = combinedMessages;
+            _hasMoreMessages = combinedMessages.length >= _serverOffset + _messageLimit;
+          });
+          
+          if (combinedMessages.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _markMessagesAsRead(combinedMessages.take(_messageLimit).toList());
+            });
+          }
+        }
+      } catch (e) {
+        Log.e('Error in local message stream', 'CHAT_SCREEN', e);
+      }
+    });
+  }
+  
+ Future<void> _loadInitialServerMessages() async {
+   try {
+     final databaseService = await DatabaseConfig.getDatabaseService();
+     final messages = await databaseService.getChatMessages(
+       widget.chatId,
+       limit: _messageLimit,
+       offset: 0,
+     );
+     
+     if (mounted) {
+       setState(() {
+         _serverMessages = messages;
+         _serverOffset = 0;
+         _hasMoreMessages = messages.length >= _messageLimit;
+       });
+       
+       if (messages.isNotEmpty) {
+         WidgetsBinding.instance.addPostFrameCallback((_) {
+           _markMessagesAsRead(messages);
+         });
+       }
+     }
+   } catch (e) {
+     Log.e('Error loading initial server messages', 'CHAT_SCREEN', e);
+   }
+ }
+ 
+  Widget _buildServerMessageList(BuildContext context, ThemeData theme, bool isDark) {
+    return FadeTransition(
+      opacity: _fadeAnimation,
+      child: Builder(
+        builder: (context) {
+          final messages = _serverMessages;
+          
+          if (messages.isEmpty) {
+            return LayoutBuilder(
+              builder: (context, constraints) {
+                final availableHeight = constraints.maxHeight;
+                final isMobile = ResponsiveUtils.isMobile(context);
+                
+                final iconSize = availableHeight > 400 ? 64.0 : (availableHeight > 300 ? 48.0 : 32.0);
+                final iconPadding = availableHeight > 400 ? 24.0 : (availableHeight > 300 ? 16.0 : 12.0);
+                final titleFontSize = availableHeight > 400 ? 24.0 : (availableHeight > 300 ? 20.0 : 16.0);
+                final subtitleFontSize = availableHeight > 400 ? 16.0 : (availableHeight > 300 ? 14.0 : 12.0);
+                final spacing = availableHeight > 400 ? 24.0 : (availableHeight > 300 ? 16.0 : 8.0);
+                
+                return Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: EdgeInsets.all(iconPadding),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(
+                          Icons.chat_bubble_outline,
+                          size: iconSize,
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                      SizedBox(height: spacing),
+                      Text(
+                        'No messages yet',
+                        style: TextStyle(
+                          fontSize: titleFontSize,
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      SizedBox(height: spacing / 2),
+                      Text(
+                        'Start the conversation!',
+                        style: TextStyle(
+                          fontSize: subtitleFontSize,
+                          color: isDark ? Colors.white70 : Colors.grey[600],
+                        ),
+                      ),
+                      if (availableHeight > 350) ...[
+                        SizedBox(height: spacing),
+                        Container(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: isMobile ? 16 : 24, 
+                            vertical: isMobile ? 8 : 12,
+                          ),
+                          decoration: BoxDecoration(
+                            color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(isMobile ? 20 : 25),
+                            border: Border.all(
+                              color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                            ),
+                          ),
+                          child: Text(
+                            '👋 Say hello to get started!',
+                            style: TextStyle(
+                              fontSize: isMobile ? 12 : 14,
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                );
+              },
+            );
+          }
+          
+          return ListView.builder(
+            reverse: true,
+            controller: _scrollController,
+            itemCount: messages.length + _sendingMessages.length + (_hasMoreMessages ? 1 : 0),
+            itemBuilder: (context, index) {
+              if (index == messages.length + _sendingMessages.length) {
+                return _buildLoadMoreIndicator();
+              }
+              
+              if (index >= messages.length) {
+                final sendingIndex = index - messages.length;
+                final sendingMessageId = _sendingMessages.keys.elementAt(sendingIndex);
+                final sendingText = _sendingMessageIds[sendingMessageId] ?? '';
+                return _buildSendingMessageBubble(sendingMessageId, sendingText);
+              }
+              
+              final message = messages[index];
+              return _buildMessageBubble(message);
+            },
+          );
+        },
+      ),
+    );
+  }
+  
+ void _onScroll() {
     if (_scrollController.position.pixels >= 
         _scrollController.position.maxScrollExtent - 200) {
       _loadMoreMessages();
@@ -261,7 +479,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   Future<void> _loadMoreMessages() async {
-    if (_isLoadingMoreMessages || !_hasMoreMessages || _lastMessage == null) {
+    if (_isLoadingMoreMessages || !_hasMoreMessages) {
       return;
     }
 
@@ -270,24 +488,49 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     });
 
     try {
-      final query = FirebaseFirestore.instance
-          .collection('chats')
-          .doc(widget.chatId)
-          .collection('messages')
-          .orderBy('timestamp', descending: true)
-          .startAfterDocument(_lastMessage!)
-          .limit(_messageLimit);
+      if (DatabaseConfig.usePhysicalServer) {
+        final databaseService = await DatabaseConfig.getDatabaseService();
+        final nextOffset = _serverOffset + _messageLimit;
+        final messages = await databaseService.getChatMessages(
+          widget.chatId,
+          limit: _messageLimit,
+          offset: nextOffset,
+        );
+        
+        if (mounted) {
+          setState(() {
+            _serverMessages.addAll(messages);
+            _serverOffset = nextOffset;
+            _hasMoreMessages = messages.length >= _messageLimit;
+            _isLoadingMoreMessages = false;
+          });
+        }
+      } else {
+        if (_lastMessage == null) {
+          setState(() {
+            _isLoadingMoreMessages = false;
+          });
+          return;
+        }
+        final query = FirebaseFirestore.instance
+            .collection('chats')
+            .doc(widget.chatId)
+            .collection('messages')
+            .orderBy('timestamp', descending: true)
+            .startAfterDocument(_lastMessage!)
+            .limit(_messageLimit);
 
-      final snapshot = await query.get();
-      
-      if (mounted) {
-        setState(() {
-          _hasMoreMessages = snapshot.docs.length >= _messageLimit;
-          if (snapshot.docs.length > 0) {
-            _lastMessage = snapshot.docs.last;
-          }
-          _isLoadingMoreMessages = false;
-        });
+        final snapshot = await query.get();
+        
+        if (mounted) {
+          setState(() {
+            _hasMoreMessages = snapshot.docs.length >= _messageLimit;
+            if (snapshot.docs.length > 0) {
+              _lastMessage = snapshot.docs.last;
+            }
+            _isLoadingMoreMessages = false;
+          });
+        }
       }
     } catch (e) {
       Log.e('Error loading more messages', 'CHAT_SCREEN', e);
@@ -304,7 +547,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       if (_messageCache.containsKey(userId)) {
         return _messageCache[userId]!['displayName'] ?? 'Unknown User';
       }
-      
+      if (DatabaseConfig.usePhysicalServer) {
+        final databaseService = await DatabaseConfig.getDatabaseService();
+        final userDoc = await databaseService.getUser(userId);
+        if (userDoc != null) {
+          final userData = userDoc.data() as Map<String, dynamic>;
+          final displayName = userData['displayName'] ?? 'Unknown User';
+          _messageCache[userId] = {'displayName': displayName};
+          return displayName;
+        }
+        return 'Unknown User';
+      }
       final userDoc = await FirebaseFirestore.instance
           .collection('users')
           .doc(userId)
@@ -483,15 +736,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               ],
               
               Expanded(
-                child: StreamBuilder<QuerySnapshot>(
-                  stream: FirebaseFirestore.instance
-                      .collection('chats')
-                      .doc(widget.chatId)
-                      .collection('messages')
-                      .orderBy('timestamp', descending: true)
-                      .limit(_messageLimit)
-                      .snapshots(),
-                  builder: (context, snapshot) {
+                child: DatabaseConfig.usePhysicalServer
+                    ? _buildServerMessageList(context, theme, isDark)
+                    : StreamBuilder<QuerySnapshot>(
+                        stream: FirebaseFirestore.instance
+                            .collection('chats')
+                            .doc(widget.chatId)
+                            .collection('messages')
+                            .orderBy('timestamp', descending: true)
+                            .limit(_messageLimit)
+                            .snapshots(),
+                        builder: (context, snapshot) {
                     if (snapshot.hasError) {
                       return FadeTransition(
                         opacity: _fadeAnimation,
@@ -649,29 +904,28 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       );
                     }
                     
-                    return ListView.builder(
-                      reverse: true,
-                      controller: _scrollController,
-                      itemCount: messages.length + _sendingMessages.length + (_hasMoreMessages ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == messages.length + _sendingMessages.length) {
-                          return _buildLoadMoreIndicator();
-                        }
-                        
-                        if (index >= messages.length) {
-                          // Show sending messages
-                          final sendingIndex = index - messages.length;
-                          final sendingMessageId = _sendingMessages.keys.elementAt(sendingIndex);
-                          final sendingText = _sendingMessageIds[sendingMessageId] ?? '';
-                          return _buildSendingMessageBubble(sendingMessageId, sendingText);
-                        }
-                        
-                        final message = messages[index];
-                        return _buildMessageBubble(message);
-                      },
-                    );
-                  },
-                ),
+                            return ListView.builder(
+                              reverse: true,
+                              controller: _scrollController,
+                              itemCount: messages.length + _sendingMessages.length + (_hasMoreMessages ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                if (index == messages.length + _sendingMessages.length) {
+                                  return _buildLoadMoreIndicator();
+                                }
+                                
+                                if (index >= messages.length) {
+                                  final sendingIndex = index - messages.length;
+                                  final sendingMessageId = _sendingMessages.keys.elementAt(sendingIndex);
+                                  final sendingText = _sendingMessageIds[sendingMessageId] ?? '';
+                                  return _buildSendingMessageBubble(sendingMessageId, sendingText);
+                                }
+                                
+                                final message = messages[index];
+                                return _buildMessageBubble(message);
+                              },
+                            );
+                          },
+                        ),
               ),
               
               Container(
@@ -1910,35 +2164,49 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
-  Future<void> _markMessagesAsRead(List<DocumentSnapshot> messages) async {
+  Future<void> _markMessagesAsRead(List<db.DocumentSnapshot> messages) async {
     try {
-      final unreadMessages = messages.where((doc) {
-        final data = doc.data() as Map<String, dynamic>;
-        return data['senderId'] != _currentUserId && 
-               (data['readBy'] == null || !data['readBy'].contains(_currentUserId));
-      }).toList();
-
-      if (unreadMessages.isNotEmpty) {
-        final batch = FirebaseFirestore.instance.batch();
-        
-        for (final message in unreadMessages) {
-          final messageRef = FirebaseFirestore.instance
-              .collection('chats')
-              .doc(widget.chatId)
-              .collection('messages')
-              .doc(message.id);
-          
-          batch.update(messageRef, {
-            'readBy': FieldValue.arrayUnion([_currentUserId]),
-            'status': 'read',
-          });
-        }
-        
-        await batch.commit();
+      if (DatabaseConfig.usePhysicalServer) {
+        await _markLocalMessagesAsRead(messages);
+      } else {
+        await _markFirebaseMessagesAsRead(messages);
       }
     } catch (e) {
       Log.e('Error marking messages as read', 'CHAT_SCREEN', e);
     }
+  }
+
+  Future<void> _markFirebaseMessagesAsRead(List<db.DocumentSnapshot> messages) async {
+    final unreadMessages = messages.where((doc) {
+      final data = doc.data() as Map<String, dynamic>;
+      return data['senderId'] != _currentUserId && 
+             (data['readBy'] == null || !data['readBy'].contains(_currentUserId));
+    }).toList();
+
+    if (unreadMessages.isNotEmpty) {
+      final batch = FirebaseFirestore.instance.batch();
+      
+      for (final message in unreadMessages) {
+        final messageRef = FirebaseFirestore.instance
+            .collection('chats')
+            .doc(widget.chatId)
+            .collection('messages')
+            .doc(message.id);
+        
+        batch.update(messageRef, {
+          'readBy': FieldValue.arrayUnion([_currentUserId]),
+          'status': 'read',
+        });
+      }
+      
+      await batch.commit();
+    }
+  }
+
+  Future<void> _markLocalMessagesAsRead(List<db.DocumentSnapshot> messages) async {
+    // For local database, we'll implement message read status later
+    // This is a placeholder for now
+    Log.i('Marking local messages as read (placeholder)', 'CHAT_SCREEN');
   }
 
   Future<void> _sendMessage() async {
@@ -1958,34 +2226,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       // Trigger send animation
       _scaleController.forward().then((_) => _scaleController.reverse());
 
-      final messageData = {
-        'text': messageText,
-        'senderId': _currentUserId,
-        'senderName': _currentUserDisplayName ?? 'User',
-        'timestamp': FieldValue.serverTimestamp(),
-        'type': 'text',
-        'status': 'sent',
-        'readBy': [_currentUserId],
-      };
-
-      final docRef = await FirebaseFirestore.instance
-          .collection('chats')
-          .doc(widget.chatId)
-          .collection('messages')
-          .add(messageData);
-
-      // Update chat metadata with last message information
-      await ChatManagementService.updateChatMetadata(
-        widget.chatId,
-        messageText,
-        _currentUserDisplayName ?? 'User',
-      );
-
-      // Send FCM notification to other users
-      await _sendFCMNotificationForMessage(
-        messageText: messageText,
-        messageType: 'text',
-      );
+      if (DatabaseConfig.usePhysicalServer) {
+        await _sendLocalMessage(messageText);
+      } else {
+        await _sendFirebaseMessage(messageText);
+      }
 
       _messageController.clear();
       
@@ -2045,6 +2290,53 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         );
       }
     }
+  }
+
+  Future<void> _sendFirebaseMessage(String messageText) async {
+    final messageData = {
+      'text': messageText,
+      'senderId': _currentUserId,
+      'senderName': _currentUserDisplayName ?? 'User',
+      'timestamp': FieldValue.serverTimestamp(),
+      'type': 'text',
+      'status': 'sent',
+      'readBy': [_currentUserId],
+    };
+
+    final docRef = await FirebaseFirestore.instance
+        .collection('chats')
+        .doc(widget.chatId)
+        .collection('messages')
+        .add(messageData);
+
+    // Update chat metadata with last message information
+    await ChatManagementService.updateChatMetadata(
+      widget.chatId,
+      messageText,
+      _currentUserDisplayName ?? 'User',
+    );
+
+    // Send FCM notification to other users
+    await _sendFCMNotificationForMessage(
+      messageText: messageText,
+      messageType: 'text',
+    );
+  }
+
+  Future<void> _sendLocalMessage(String messageText) async {
+    final databaseService = await DatabaseConfig.getDatabaseService();
+    
+    await databaseService.sendMessage(
+      widget.chatId,
+      messageText,
+      messageType: 'text',
+    );
+
+    // Send FCM notification to other users
+    await _sendFCMNotificationForMessage(
+      messageText: messageText,
+      messageType: 'text',
+    );
   }
 
   /// Send FCM notification for new message
@@ -2194,97 +2486,199 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     try {
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_${type}_${extension ?? 'file'}';
       final uploadId = '${DateTime.now().millisecondsSinceEpoch}_${type}';
-      
-      // Start progress tracking
-      final ref = FirebaseStorage.instance
-          .ref()
-          .child('chat_media')
-          .child(widget.chatId)
-          .child(fileName);
-      
-      // Create upload task with progress tracking
-      final uploadTask = ref.putData(bytes);
-      final progressTask = ProgressTrackingUploadTask(
-        uploadId: uploadId,
-        uploadTask: uploadTask,
-      );
-      
-      // Start monitoring progress
-      progressTask.startMonitoring();
-      
-      // Wait for upload to complete
-      await uploadTask;
-      final downloadUrl = await ref.getDownloadURL();
-      
-      // Mark upload as completed
-      UploadProgressService.markCompleted(uploadId);
-      
-      final messageData = {
-        'text': text,
-        'senderId': _currentUserId,
-        'senderName': _currentUserDisplayName ?? 'User',
-        'timestamp': FieldValue.serverTimestamp(),
-        'type': type,
-        'mediaUrl': downloadUrl,
-        'status': 'sent',
-        'readBy': [_currentUserId],
-        if (extension != null) 'extension': extension,
-        if (mimeType != null) 'mimeType': mimeType,
-      };
 
-      await FirebaseFirestore.instance
-          .collection('chats')
-          .doc(widget.chatId)
-          .collection('messages')
-          .add(messageData);
+      if (DatabaseConfig.usePhysicalServer) {
+        // Physical server path: upload via SecureMediaService and send via HTTP API
+        try {
+          // Upload media to physical server
+          final mediaUrl = await SecureMediaService.uploadMediaToStorage(
+            bytes,
+            fileName,
+            mimeType ?? 'application/octet-stream',
+            widget.chatId,
+          );
 
-      // Update chat metadata with last message information
-      await ChatManagementService.updateChatMetadata(
-        widget.chatId,
-        text,
-        _currentUserDisplayName ?? 'User',
-      );
-      
-      // Clean up progress tracking
-      progressTask.dispose();
-      
-      // Remove from sending messages
-      setState(() {
-        _sendingMessages.remove(tempMessageId);
-        _sendingMessageIds.remove(tempMessageId);
-      });
-      
-      // Show "Send successfully" popup
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                const Icon(
-                  Icons.check_circle,
-                  color: Colors.white,
-                  size: 20,
+          // Send message through DatabaseService
+          final databaseService = await DatabaseConfig.getDatabaseService();
+          await databaseService.sendMessage(
+            widget.chatId,
+            text,
+            mediaUrl: mediaUrl,
+            messageType: type,
+          );
+
+          // Remove from sending messages
+          setState(() {
+            _sendingMessages.remove(tempMessageId);
+            _sendingMessageIds.remove(tempMessageId);
+          });
+
+          // Success popup
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: const [
+                    Icon(
+                      Icons.check_circle,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    SizedBox(width: 12),
+                    Text(
+                      'Send successfully',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(width: 12),
-                const Text(
-                  'Send successfully',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 2),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            duration: const Duration(seconds: 2),
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            margin: const EdgeInsets.all(16),
-          ),
+                margin: const EdgeInsets.all(16),
+              ),
+            );
+          }
+        } catch (e) {
+          Log.e('Error uploading/sending media to server', 'CHAT_SCREEN', e);
+          // Remove from sending messages on error
+          setState(() {
+            _sendingMessages.remove(tempMessageId);
+            _sendingMessageIds.remove(tempMessageId);
+          });
+          // Error popup
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Row(
+                  children: [
+                    const Icon(
+                      Icons.error,
+                      color: Colors.white,
+                      size: 20,
+                    ),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Error sending message: $e',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ],
+                ),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+                behavior: SnackBarBehavior.floating,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                margin: const EdgeInsets.all(16),
+              ),
+            );
+          }
+        }
+      } else {
+        // Firebase path: keep existing behavior
+        
+        // Start progress tracking
+        final ref = FirebaseStorage.instance
+            .ref()
+            .child('chat_media')
+            .child(widget.chatId)
+            .child(fileName);
+        
+        // Create upload task with progress tracking
+        final uploadTask = ref.putData(bytes);
+        final progressTask = ProgressTrackingUploadTask(
+          uploadId: uploadId,
+          uploadTask: uploadTask,
         );
+        
+        // Start monitoring progress
+        progressTask.startMonitoring();
+        
+        // Wait for upload to complete
+        await uploadTask;
+        final downloadUrl = await ref.getDownloadURL();
+        
+        // Mark upload as completed
+        UploadProgressService.markCompleted(uploadId);
+        
+        final messageData = {
+          'text': text,
+          'senderId': _currentUserId,
+          'senderName': _currentUserDisplayName ?? 'User',
+          'timestamp': FieldValue.serverTimestamp(),
+          'type': type,
+          'mediaUrl': downloadUrl,
+          'status': 'sent',
+          'readBy': [_currentUserId],
+          if (extension != null) 'extension': extension,
+          if (mimeType != null) 'mimeType': mimeType,
+        };
+
+        await FirebaseFirestore.instance
+            .collection('chats')
+            .doc(widget.chatId)
+            .collection('messages')
+            .add(messageData);
+
+        // Update chat metadata with last message information
+        await ChatManagementService.updateChatMetadata(
+          widget.chatId,
+          text,
+          _currentUserDisplayName ?? 'User',
+        );
+        
+        // Clean up progress tracking
+        progressTask.dispose();
+        
+        // Remove from sending messages
+        setState(() {
+          _sendingMessages.remove(tempMessageId);
+          _sendingMessageIds.remove(tempMessageId);
+        });
+        
+        // Show "Send successfully" popup
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: const [
+                  Icon(
+                    Icons.check_circle,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                  SizedBox(width: 12),
+                  Text(
+                    'Send successfully',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 2),
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(10),
+              ),
+              margin: const EdgeInsets.all(16),
+            ),
+          );
+        }
       }
       
     } catch (e) {
@@ -2298,19 +2692,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       
       // Show error popup
       if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
+        ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Row(
-              children: [
-                const Icon(
+              children: const [
+                Icon(
                   Icons.error,
                   color: Colors.white,
                   size: 20,
                 ),
-                const SizedBox(width: 12),
+                SizedBox(width: 12),
                 Text(
-                  'Error sending message: $e',
-                  style: const TextStyle(
+                  'Error sending message',
+                  style: TextStyle(
                     color: Colors.white,
                     fontSize: 14,
                     fontWeight: FontWeight.w500,
@@ -2757,8 +3151,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           throw Exception('Failed to download audio: ${response.statusCode}');
         }
       } else {
-        // Direct URL
-        final response = await http.get(Uri.parse(mediaUrl));
+        // Direct URL (server media may require Authorization)
+        http.Response response;
+        if (DatabaseConfig.usePhysicalServer) {
+          final token = await DatabaseConfig.getStoredAuthToken();
+          response = await http.get(
+            Uri.parse(mediaUrl),
+            headers: {
+              'Authorization': 'Bearer $token',
+            },
+          );
+        } else {
+          response = await http.get(Uri.parse(mediaUrl));
+        }
         if (response.statusCode == 200) {
           return response.bodyBytes;
         } else {
@@ -3231,4 +3636,4 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       ),
     );
   }
-} 
+}

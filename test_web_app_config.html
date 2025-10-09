@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Web App Configuration Test</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>Web App Configuration Test</h1>
+    <p>Testing what API URL the web app is configured to use...</p>
+    
+    <div id="status">Loading...</div>
+    <div id="details"></div>
+    
+    <script>
+        async function testWebAppConfig() {
+            const statusDiv = document.getElementById('status');
+            const detailsDiv = document.getElementById('details');
+            
+            // Test different API URLs to see which one works
+            const apiUrls = [
+                'http://localhost:3003/health',
+                'http://10.120.4.230:3003/health',
+                'http://192.168.0.117:3003/health'
+            ];
+            
+            let workingUrl = null;
+            let results = [];
+            
+            for (const url of apiUrls) {
+                try {
+                    const response = await fetch(url, {
+                        method: 'GET',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        credentials: 'include'
+                    });
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        results.push(`✅ ${url} - Working (${data.status})`);
+                        if (!workingUrl) workingUrl = url;
+                    } else {
+                        results.push(`❌ ${url} - Error ${response.status}`);
+                    }
+                } catch (error) {
+                    results.push(`❌ ${url} - Failed: ${error.message}`);
+                }
+            }
+            
+            if (workingUrl) {
+                statusDiv.innerHTML = '<span style="color: green;">✅ Found Working API URL!</span>';
+                detailsDiv.innerHTML = `
+                    <h3>API URL Test Results:</h3>
+                    <ul>
+                        ${results.map(r => `<li>${r}</li>`).join('')}
+                    </ul>
+                    <hr>
+                    <h3>Working Configuration:</h3>
+                    <p><strong>API URL:</strong> ${workingUrl}</p>
+                    <p><strong>Web App URL:</strong> ${window.location.origin}</p>
+                    <hr>
+                    <h3>Next Steps:</h3>
+                    <p>✅ The web app should be configured to use: <code>${workingUrl.replace('/health', '')}</code></p>
+                    <p>🌐 Try accessing the main web app: <a href="${window.location.origin}" target="_blank">${window.location.origin}</a></p>
+                `;
+            } else {
+                statusDiv.innerHTML = '<span style="color: red;">❌ No Working API URL Found</span>';
+                detailsDiv.innerHTML = `
+                    <h3>API URL Test Results:</h3>
+                    <ul>
+                        ${results.map(r => `<li>${r}</li>`).join('')}
+                    </ul>
+                    <hr>
+                    <h3>Troubleshooting:</h3>
+                    <p>1. Make sure the API server is running</p>
+                    <p>2. Check if ports 3003 and 8082 are open</p>
+                    <p>3. Verify firewall settings</p>
+                    <p>4. Try restarting all services</p>
+                `;
+            }
+        }
+        
+        // Run test when page loads
+        testWebAppConfig();
+    </script>
+</body>
+</html>

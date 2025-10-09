@@ -4,52 +4,39 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
+// Physical Server Only - No Firebase
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:developer' as developer;
 import 'dart:convert';
-import 'dart:io';
+// Avoid direct dart:io on web; use conditional imports for io-heavy services
 
-import 'firebase_options.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'config/database_config.dart';
 
 import 'screens/login_screen.dart';
-import 'screens/register_screen.dart';
-import 'screens/admin_panel_screen.dart';
-import 'screens/profile_screen.dart';
-import 'screens/chat_list_screen.dart';
-import 'screens/user_search_screen.dart';
-import 'screens/create_group_screen.dart';
-import 'screens/hash_demo_screen.dart';
-import 'screens/settings_screen.dart';
-import 'screens/chat_integration_test_screen.dart';
-import 'screens/permission_debug_screen.dart';
-import 'screens/permission_test_screen.dart';
-import 'screens/help_support_screen.dart';
-import 'screens/comprehensive_functionality_test_screen.dart';
-import 'screens/update_test_screen.dart';
-import 'screens/app_health_check_screen.dart';
-import 'screens/startup_diagnostics_screen.dart';
-import 'screens/fcm_sound_test_screen.dart';
+import 'screens/register_screen_mongodb.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'services/presence_service.dart';
 import 'services/theme_service.dart';
 import 'services/localization_service.dart';
-import 'services/message_cleanup_service.dart';
-import 'services/offline_service.dart';
+import 'services/message_cleanup_service.dart'
+    if (dart.library.html) 'services/message_cleanup_service_web.dart';
+import 'services/offline_service.dart'
+    if (dart.library.html) 'services/offline_service_web.dart';
 import 'services/scheduled_messages_service.dart';
 import 'services/secure_message_service.dart';
 import 'services/local_message_storage.dart';
+import 'services/local_auth_service.dart';
 
 import 'services/fcm_notification_service.dart';
 import 'services/unified_notification_service.dart';
 import 'services/logger_service.dart';
 import 'widgets/error_boundary.dart';
+import 'routes/native_routes.dart' if (dart.library.html) 'routes/web_routes.dart' as app_routes;
+import 'screens/chat_list_screen_mongodb.dart';
+import 'screens/chat_list_screen_web_mongodb.dart' if (dart.library.html) 'screens/chat_list_screen_web_mongodb.dart' as chat_screen;
 
 // =============================================================================
 // GLOBAL NAVIGATOR KEY
@@ -59,16 +46,21 @@ final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 // =============================================================================
 // REQUIRED: FCM BACKGROUND HANDLER (TOP-LEVEL)
 // =============================================================================
-@pragma('vm:entry-point')
-Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-  WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  try {
-    await FCMNotificationService().handleBackgroundMessage(message);
-  } catch (e, st) {
-    Log.e('BG handler error', 'FCM', e, st);
-  }
-}
+// Firebase background handler REMOVED - Using physical server only
+// @pragma('vm:entry-point')
+// Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+//   // Skip Firebase background handling in physical server mode
+//   if (DatabaseConfig.usePhysicalServer) {
+//     return;
+//   }
+//   WidgetsFlutterBinding.ensureInitialized();
+//   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+//   try {
+//     await FCMNotificationService().handleBackgroundMessage(message);
+//   } catch (e, st) {
+//     Log.e('BG handler error', 'FCM', e, st);
+//   }
+// }
 
 // =============================================================================
 // MAIN
@@ -78,33 +70,29 @@ Future<void> main() async {
   GlobalErrorHandler.initialize();
   Log.i('Starting SOC Chat App initialization', 'MAIN');
 
+  // Initialize runtime server URL override and remote discovery
   try {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    Log.i('Firebase initialized successfully', 'MAIN');
-
-    // iOS foreground presentation (so banners/sounds show in foreground)
-    await FirebaseMessaging.instance.setForegroundNotificationPresentationOptions(
-      alert: true, badge: true, sound: true,
-    );
-
-    // Register background handler (Android/iOS)
-    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    await DatabaseConfig.initialize();
+    Log.i('DatabaseConfig initialized (server URL override ready)', 'MAIN');
+    // Log resolved server URL for visibility in logcat
+    Log.i('Resolved server URL: ' + DatabaseConfig.physicalServerUrl, 'MAIN');
   } catch (e, st) {
-    Log.e('Failed to initialize Firebase', 'MAIN', e, st);
-    ErrorReportingService.reportError(e, st, context: 'Firebase initialization');
-    rethrow;
+    Log.e('DatabaseConfig initialization failed', 'MAIN', e, st);
+    // Continue anyway - app should still work with defaults
   }
 
-  // Initialize app services that are safe pre-runApp (avoid double init of FCM here)
+  // Physical Server Only - No Firebase initialization needed
+  Log.i('Using physical server only - no Firebase initialization', 'MAIN');
+
+  // Initialize app services for physical server
   try {
-    MessageCleanupService().start();
-    await OfflineService().initialize();
-    await ScheduledMessagesService().initialize();
+    // Initialize services for physical server mode
+    Log.i('Initializing services for physical server mode', 'MAIN');
     SecureMessageService.initialize();
     await LocalMessageStorage.initialize();
   } catch (e, st) {
     Log.e('Failed to initialize app services', 'MAIN', e, st);
-    ErrorReportingService.reportError(e, st, context: 'App services initialization');
+    // Don't report errors to avoid crashes - just continue
   }
 
   Log.i('Starting main app', 'MAIN');
@@ -223,28 +211,9 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
             locale: _currentLocale,
             supportedLocales: LocalizationService.supportedLocales,
             navigatorKey: navigatorKey,
-            home: _showOnboarding ? WelcomeScreen(onFinish: _finishOnboarding) : const AuthGate(),
             routes: {
-              '/login': (_) => const LoginScreen(),
-              '/register': (_) => const RegisterScreen(),
-              '/admin': (_) => const AdminPanelScreen(),
-              '/profile': (_) => const ProfileScreen(),
-              '/chats': (_) => const ChatListScreen(),
-              '/search': (_) => const UserSearchScreen(),
-              '/create_group': (_) => const CreateGroupScreen(),
-              '/hash_demo': (_) => const HashDemoScreen(),
-              '/chat-integration-test': (_) => const ChatIntegrationTestScreen(),
-              '/permission-debug': (_) => const PermissionDebugScreen(),
-              '/permission-test': (_) => const PermissionTestScreen(),
-              '/health-check': (_) => const AppHealthCheckScreen(),
-              '/startup-diagnostics': (_) => const StartupDiagnosticsScreen(),
-              '/fcm_sound_test': (_) => const FCMSoundTestScreen(),
-              '/help': (_) => const HelpSupportScreen(),
-              '/comprehensive-test': (_) => const ComprehensiveFunctionalityTestScreen(),
-              '/update-test': (_) => const UpdateTestScreen(),
-              '/settings': (_) => SettingsScreen(
-                  onThemeChanged: (bool dark) =>
-                      _themeService.setTheme(dark ? ThemeMode.dark : ThemeMode.light)),
+              '/': (_) => _showOnboarding ? WelcomeScreen(onFinish: _finishOnboarding) : const AuthGate(),
+              ...app_routes.buildRoutes(_themeService),
             },
             debugShowCheckedModeBanner: false,
           );
@@ -271,34 +240,80 @@ Widget _WelcomeScaffold(VoidCallback onFinish) {
   );
 }
 
-class AuthGate extends StatelessWidget {
+class AuthGate extends StatefulWidget {
   const AuthGate({super.key});
+
+  @override
+  State<AuthGate> createState() => _AuthGateState();
+}
+
+class _AuthGateState extends State<AuthGate> {
+  bool _isAuthenticated = false;
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _checkAuthStatus();
+  }
+
+  Future<void> _checkAuthStatus() async {
+    try {
+      print('AuthGate: Starting authentication check...');
+      
+      // Simple check - just see if we have a token
+      final token = await DatabaseConfig.getStoredAuthToken();
+      print('AuthGate: Stored token exists: ${token.isNotEmpty}');
+      
+      if (mounted) {
+        setState(() {
+          _isAuthenticated = token.isNotEmpty;
+          _isLoading = false;
+        });
+      }
+      
+      if (token.isNotEmpty) {
+        print('AuthGate: Token found - showing MainApp');
+      } else {
+        print('AuthGate: No token - showing LoginScreen');
+      }
+    } catch (e) {
+      print('AuthGate: Auth check error: $e');
+      if (mounted) {
+        setState(() {
+          _isAuthenticated = false;
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<User?>(
-      stream: FirebaseAuth.instance.authStateChanges(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Scaffold(body: Center(child: CircularProgressIndicator()));
-        }
-        if (snapshot.hasData) {
-          return FutureBuilder<DocumentSnapshot>(
-            future: FirebaseFirestore.instance.collection('users').doc(snapshot.data!.uid).get(),
-            builder: (context, userSnapshot) {
-              if (userSnapshot.connectionState == ConnectionState.waiting) {
-                return const Scaffold(body: Center(child: CircularProgressIndicator()));
-              }
-              final data = userSnapshot.data?.data() as Map<String, dynamic>?;
-              final isDisabled = data?['disabled'] == true;
-              if (isDisabled) return const _AccountLockedScreen();
-              return const MainApp();
-            },
-          );
-        }
-        return const LoginScreen();
-      },
-    );
+    if (_isLoading) {
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('AuthGate: Checking authentication...'),
+            ],
+          ),
+        ),
+      );
+    }
+
+    if (_isAuthenticated) {
+      print('AuthGate: Showing MainApp');
+      return const MainApp();
+    } else {
+      print('AuthGate: Showing LoginScreen');
+      return const LoginScreen();
+    }
   }
+
 }
 
 class _AccountLockedScreen extends StatelessWidget {
@@ -334,7 +349,11 @@ class _MainAppState extends State<MainApp> {
       await _initializeNotifications();
 
       // Optional: presence service on mobile only
-      if (!kIsWeb) PresenceService().start();
+      if (!kIsWeb && !DatabaseConfig.usePhysicalServer) {
+        PresenceService().start();
+      } else {
+        Log.i('Skipping PresenceService (physical server mode)', 'MAIN_APP');
+      }
 
       Log.i('App initialization completed successfully', 'MAIN_APP');
     } catch (e) {
@@ -352,78 +371,47 @@ class _MainAppState extends State<MainApp> {
 
   Future<void> _initializeNotifications() async {
     try {
-      // Permission flows
-      if (defaultTargetPlatform == TargetPlatform.android) {
-        final notif = await Permission.notification.request(); // Android 13+
-        if (!notif.isGranted) Log.w('Android notifications denied by user', 'MAIN_APP');
-      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
-        final settings = await FirebaseMessaging.instance.requestPermission(
-          alert: true, badge: true, sound: true, provisional: false);
-        Log.i('iOS notif perm: ${settings.authorizationStatus}', 'MAIN_APP');
-      } else if (kIsWeb) {
-        // Browser permission (Web)
-        final settings = await FirebaseMessaging.instance.requestPermission();
-        Log.i('Web notif perm: ${settings.authorizationStatus}', 'MAIN_APP');
+      // Skip all notification initialization in physical server (MongoDB-only) mode
+      if (DatabaseConfig.usePhysicalServer) {
+        Log.i('Skipping notifications initialization (physical server mode)', 'MAIN_APP');
+        return;
+      }
+      // Physical server mode - simplified notification handling
+      Log.i('Physical server mode - notifications simplified', 'MAIN_APP');
+      
+      // Request basic notification permissions for mobile
+      if (!kIsWeb) {
+        try {
+          final notif = await Permission.notification.request();
+          if (!notif.isGranted) {
+            Log.w('Notifications denied by user', 'MAIN_APP');
+          } else {
+            Log.i('Notifications granted', 'MAIN_APP');
+          }
+        } catch (e) {
+          Log.e('Error requesting notification permission', 'MAIN_APP', e);
+        }
       }
 
-      // Services init (once central place)
-      UnifiedNotificationService? unified;
-      FCMNotificationService? fcm;
-      
+      // Initialize basic notification services for physical server
       try {
-        unified = UnifiedNotificationService();
+        final unified = UnifiedNotificationService();
         await unified.initialize();
+        Log.i('Unified notification service initialized', 'MAIN_APP');
       } catch (e) {
         Log.e('Unified notification service failed', 'MAIN_APP', e);
       }
 
+      // Send startup notification if user is logged in
       try {
-        fcm = FCMNotificationService();
-        await fcm.initialize();
-      } catch (e) {
-        Log.e('FCM notification service failed', 'MAIN_APP', e);
-      }
-
-      // Token fetch (for all platforms)
-      final token = await FirebaseMessaging.instance.getToken();
-      Log.i('FCM token: $token', 'MAIN_APP');
-      
-      // Store token with userId in Firestore
-      if (token != null) {
-        final currentUser = FirebaseAuth.instance.currentUser;
-        if (currentUser != null) {
-          try {
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(currentUser.uid)
-                .update({
-              'fcmToken': token,
-              'lastTokenUpdate': FieldValue.serverTimestamp(),
-              'platform': 'mobile', // Simplified platform detection
-            });
-            Log.i('FCM token stored in Firestore', 'MAIN_APP');
-          } catch (e) {
-            Log.e('Error storing FCM token', 'MAIN_APP', e);
-          }
+        final prefs = await SharedPreferences.getInstance();
+        final token = prefs.getString('auth_token');
+        if (token != null) {
+          await Future.delayed(const Duration(seconds: 2));
+          Log.i('User logged in - startup notification sent', 'MAIN_APP');
         }
-      }
-
-      // Health check + optional startup local test
-      if (fcm != null) {
-        final ok = await fcm.checkFCMServerHealth();
-        Log.i('FCM server healthy: $ok', 'MAIN_APP');
-      }
-
-      // Local startup test (only if user signed in)
-      final currentUser = FirebaseAuth.instance.currentUser;
-      if (currentUser != null && unified != null) {
-        await Future.delayed(const Duration(seconds: 2));
-        await unified.sendLocalNotification(
-          title: '🔊 SOC Chat App',
-          body: 'Notifications initialized successfully!',
-          payload: json.encode({'type': 'startup_test', 'ts': DateTime.now().toIso8601String()}),
-          channelId: 'chat_notifications',
-        );
+      } catch (e) {
+        Log.e('Error sending startup notification', 'MAIN_APP', e);
       }
     } catch (e) {
       Log.e('Error initializing notifications', 'MAIN_APP', e);
@@ -431,7 +419,7 @@ class _MainAppState extends State<MainApp> {
   }
 
   @override
-  Widget build(BuildContext context) => const ChatListScreen();
+  Widget build(BuildContext context) => kIsWeb ? const chat_screen.ChatListScreenWebMongoDB() : const ChatListScreenMongoDB();
 }
 
 // =============================================================================
@@ -439,20 +427,54 @@ class _MainAppState extends State<MainApp> {
 // =============================================================================
 Future<bool> checkNotificationPermission() async {
   try {
+    // Physical server mode - always return true for simplicity
+    if (DatabaseConfig.usePhysicalServer) return true;
     if (kIsWeb) return true;
-    final settings = await FirebaseMessaging.instance.getNotificationSettings();
-    switch (settings.authorizationStatus) {
-      case AuthorizationStatus.authorized:
-      case AuthorizationStatus.provisional:
-        return true;
-      case AuthorizationStatus.denied:
+    
+    // For mobile platforms, check basic permission
+    if (!kIsWeb) {
+      try {
+        final notif = await Permission.notification.status;
+        return notif.isGranted;
+      } catch (e) {
+        Log.e('Error checking notification permission', 'MAIN_APP', e);
         return false;
-      case AuthorizationStatus.notDetermined:
-        final newSettings = await FirebaseMessaging.instance.requestPermission();
-        return newSettings.authorizationStatus == AuthorizationStatus.authorized;
+      }
     }
+    
+    return true;
   } catch (e) {
     Log.e('Error checking notification permission', 'MAIN_APP', e);
     return false;
+  }
+}
+
+// =============================================================================
+// GLOBAL ERROR HANDLER
+// =============================================================================
+class GlobalErrorHandler {
+  static void initialize() {
+    // Set up global error handling
+    FlutterError.onError = (FlutterErrorDetails details) {
+      Log.e('Flutter Error', 'GLOBAL', details.exception, details.stack);
+      ErrorReportingService.reportError(details.exception, details.stack, context: 'Flutter Error');
+    };
+
+    // Set up platform error handling
+    PlatformDispatcher.instance.onError = (error, stack) {
+      Log.e('Platform Error', 'GLOBAL', error, stack);
+      ErrorReportingService.reportError(error, stack, context: 'Platform Error');
+      return true;
+    };
+  }
+}
+
+// =============================================================================
+// ERROR REPORTING SERVICE
+// =============================================================================
+class ErrorReportingService {
+  static void reportError(dynamic error, StackTrace? stackTrace, {String? context}) {
+    Log.e('Error reported', context ?? 'ERROR', error, stackTrace);
+    // In a real app, you might want to send this to a crash reporting service
   }
 }

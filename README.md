@@ -1,213 +1,342 @@
-# SOC Chat App
+# SOC Chat App - MongoDB Edition
 
-A secure, cross-platform chat application built with Flutter, featuring real-time messaging, media sharing, and comprehensive notification systems.
+A modern, cross-platform chat application built with Flutter and MongoDB. This app provides real-time messaging, group chats, user management, and admin functionality without any Firebase dependencies.
 
-## 🏗️ Project Organization
+## 🚀 Features
 
-This project has been organized for enhanced readability and maintainability:
+### Core Features
+- **Real-time Messaging**: Instant messaging with MongoDB backend
+- **Group Chats**: Create and manage group conversations
+- **User Search**: Find and connect with other users
+- **Admin Panel**: Comprehensive user and system management
+- **Cross-Platform**: Works on Web, Android, and iOS
+- **Media Sharing**: Send images, videos, and files
+- **Offline Support**: Local message storage and sync
 
-### 📁 Directory Structure
+### Technical Features
+- **MongoDB Backend**: No Firebase/Firestore dependencies
+- **JWT Authentication**: Secure token-based authentication
+- **RESTful API**: Clean API design with Express.js
+- **Rate Limiting**: Built-in protection against abuse
+- **CORS Support**: Cross-origin resource sharing
+- **Local Network Access**: Works on local networks
+- **ngrok Integration**: Public tunnel access for mobile testing
+
+## 🏗️ Architecture
 
 ```
-soc_chat_app/
-├── 📱 android/                 # Android platform-specific code
-├── 🍎 ios/                     # iOS platform-specific code
-├── 🐧 linux/                   # Linux platform-specific code
-├── 🪟 windows/                 # Windows platform-specific code
-├── 🖥️ macos/                   # macOS platform-specific code
-├── 🌐 web/                     # Web platform-specific code
-├── 📦 lib/                     # Main Flutter application code
-├── 🧪 test/                    # Flutter widget tests
-├── 📚 docs/                    # Project documentation
-├── 🔧 build-scripts/           # Build and execution scripts
-├── 🧪 testing/                 # Custom test files
-├── ⚙️ config/                  # Configuration files
-├── 🖥️ servers/                 # Server-side code and dependencies
-├── 🎨 assets/                  # App assets (images, fonts, etc.)
-├── 🚀 functions/               # Firebase Cloud Functions
-└── 📋 Project files           # Root-level project files
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Flutter App   │    │   Express API    │    │    MongoDB      │
+│                 │    │                 │    │                 │
+│ • Web (8082)    │◄──►│ • REST API      │◄──►│ • User Data     │
+│ • Android       │    │ • JWT Auth       │    │ • Chat Data     │
+│ • iOS           │    │ • Rate Limiting  │    │ • Messages      │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
-### 📚 Documentation (`docs/`)
+## 📋 Prerequisites
 
-All project documentation is organized in the `docs/` directory:
+- **Flutter SDK** (3.0+)
+- **Node.js** (16+)
+- **MongoDB** (4.4+)
+- **Git**
+- **ngrok** (for mobile testing)
 
-- **Build & Testing**: Build status, testing reports, and testing guides
-- **Platform Guides**: Platform-specific setup and permission guides
-- **Legal & Compliance**: Privacy policy, terms of service, and compliance documents
-- **Feature Documentation**: Comprehensive guides for app features
-- **Setup & Deployment**: Setup guides and deployment instructions
+## 🛠️ Installation
 
-### 🔧 Build Scripts (`build-scripts/`)
+### 1. Clone the Repository
+```bash
+git clone https://github.com/yourusername/soc-chat-app-mongodb.git
+cd soc-chat-app-mongodb
+```
 
-Platform-specific build and execution scripts:
+### 2. Backend Setup
 
-- **Windows**: `.bat` and `.ps1` scripts for Windows builds
-- **Cross-platform**: Shell scripts for various build operations
-- **App Execution**: Scripts to run the built application
+#### Install Dependencies
+```bash
+cd servers
+npm install
+```
 
-### 🧪 Testing (`testing/`)
+#### Configure Environment
+```bash
+cp env.example .env
+```
 
-Custom test files for various app functionalities:
+Edit `.env` file:
+```env
+PORT=3003
+MONGO_URI=mongodb://localhost:27017/soc_chat_app
+JWT_SECRET=your_jwt_secret_here
+```
 
-- **Permission Tests**: Platform-specific permission testing
-- **Notification Tests**: Notification system verification
-- **Performance Tests**: App performance and functionality testing
+#### Start MongoDB
+```bash
+# Windows
+mongod --dbpath "C:\data\db"
 
-### ⚙️ Configuration (`config/`)
+# macOS/Linux
+mongod
+```
 
-Project configuration files:
+#### Start API Server
+```bash
+npm start
+```
 
-- **Firebase**: Firebase configuration and rules
-- **Analysis**: Dart analysis options
-- **Build**: Platform-specific build configurations
+### 3. Frontend Setup
 
-### 🖥️ Servers (`servers/`)
+#### Install Flutter Dependencies
+```bash
+flutter pub get
+```
 
-Server-side components:
+#### Configure Database Connection
+Edit `lib/config/database_config.dart`:
+```dart
+static const String webServerUrl = 'http://your-server-ip:3003';
+static const String mobileServerUrl = 'https://your-ngrok-url.ngrok-free.app';
+```
 
-- **FCM Server**: Firebase Cloud Messaging server
-- **Node.js Dependencies**: Server package management
-- **Server Scripts**: Server-side utilities and tests
+#### Build and Run
+
+**Web:**
+```bash
+flutter build web --release
+cd build/web
+python -m http.server 8082 --bind 0.0.0.0
+```
+
+**Android:**
+```bash
+flutter build apk --release
+flutter install --device-id=your-device-id
+```
+
+**iOS:**
+```bash
+flutter build ios --release
+flutter install --device-id=your-device-id
+```
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Using Batch Scripts (Windows)
 
-- Flutter SDK (3.8.0+)
-- Dart SDK (3.8.0+)
-- Android Studio / Xcode (for mobile development)
-- Node.js (for server components)
+1. **Start All Services:**
+```bash
+.\start_all_services.bat
+```
 
-### Installation
+2. **Access the App:**
+- Web: `http://localhost:8082`
+- Mobile: Install APK on device
 
-1. **Clone the repository**
-   ```bash
-   git clone https://github.com/faroukahmed74/soc-chat_app.git
-   cd soc_chat_app
-   ```
+### Manual Setup
 
-2. **Install Flutter dependencies**
-   ```bash
-   flutter pub get
-   ```
+1. **Start MongoDB:**
+```bash
+mongod
+```
 
-3. **Install server dependencies**
-   ```bash
-   cd servers
-   npm install
-   cd ..
-   ```
+2. **Start API Server:**
+```bash
+cd servers
+npm start
+```
 
-4. **Run the app**
-   ```bash
-   flutter run
-   ```
+3. **Start Web Server:**
+```bash
+flutter build web --release
+cd build/web
+python -m http.server 8082
+```
 
-## 📱 Platform Support
+4. **Access the App:**
+- Web: `http://localhost:8082`
+- API: `http://localhost:3003`
 
-- ✅ **Android**: Full support with optimized APK builds
-- ✅ **iOS**: App Store ready with proper permissions
-- ✅ **Web**: Optimized web build with tree-shaking
-- ✅ **Windows**: Desktop application support
-- ✅ **macOS**: Native macOS application
-- ✅ **Linux**: Linux desktop support
+## 📱 Mobile Testing with ngrok
 
-## 🔐 Key Features
+### Setup ngrok
+```bash
+# Install ngrok
+# Download from https://ngrok.com/
 
-- **Secure Messaging**: End-to-end encryption
-- **Real-time Communication**: Firebase-powered real-time updates
-- **Media Sharing**: Photos, videos, and file sharing
-- **Cross-platform**: Consistent experience across all platforms
-- **Push Notifications**: Comprehensive notification system
-- **Admin Panel**: Advanced user management and monitoring
-- **Responsive Design**: Optimized for all screen sizes
+# Start tunnel
+ngrok http 3003
+```
+
+### Update Mobile Configuration
+```dart
+// In lib/config/database_config.dart
+static const String mobileServerUrl = 'https://your-ngrok-url.ngrok-free.app';
+```
+
+### Build Mobile App
+```bash
+flutter build apk --release --dart-define=API_BASE_URL_MOBILE=https://your-ngrok-url.ngrok-free.app
+```
+
+## 🔧 Configuration
+
+### Database Configuration
+```dart
+// lib/config/database_config.dart
+class DatabaseConfig {
+  static const bool usePhysicalServer = true;
+  static const String webServerUrl = 'http://localhost:3003';
+  static const String mobileServerUrl = 'https://your-ngrok-url.ngrok-free.app';
+}
+```
+
+### Server Configuration
+```javascript
+// servers/server.js
+const config = {
+  port: process.env.PORT || 3003,
+  mongoUri: process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app',
+  jwtSecret: process.env.JWT_SECRET || 'your_jwt_secret'
+};
+```
+
+## 📊 API Endpoints
+
+### Authentication
+- `POST /api/auth/register` - Register new user
+- `POST /api/auth/login` - User login
+- `GET /api/auth/verify` - Verify token
+
+### Users
+- `GET /api/users` - Get all users (for search)
+- `GET /api/users/:id` - Get specific user
+- `PUT /api/users/:id/status` - Update user status
+
+### Chats
+- `GET /api/chats` - Get user chats
+- `POST /api/chats` - Create new chat
+- `GET /api/chats/:id/messages` - Get chat messages
+- `POST /api/chats/:id/messages` - Send message
+
+### Admin
+- `GET /api/admin/users` - Get all users (admin)
+- `DELETE /api/admin/users/:id` - Delete user (admin)
+- `POST /api/admin/broadcast` - Send broadcast message
+
+## 🗄️ Database Schema
+
+### Users Collection
+```javascript
+{
+  _id: ObjectId,
+  email: String,
+  password: String, // hashed
+  displayName: String,
+  username: String,
+  role: String, // 'user' or 'admin'
+  status: String, // 'online', 'offline', 'away'
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Chats Collection
+```javascript
+{
+  _id: ObjectId,
+  type: String, // 'private' or 'group'
+  name: String,
+  members: [String], // user IDs
+  createdBy: String, // user ID
+  createdAt: Date,
+  updatedAt: Date
+}
+```
+
+### Messages Collection
+```javascript
+{
+  _id: ObjectId,
+  chatId: ObjectId,
+  senderId: String, // user ID
+  content: String,
+  messageType: String, // 'text', 'image', 'video', 'file'
+  mediaUrl: String, // optional
+  timestamp: Date,
+  readBy: [String] // user IDs who read the message
+}
+```
+
+## 🔒 Security Features
+
+- **JWT Authentication**: Secure token-based authentication
+- **Password Hashing**: bcrypt password encryption
+- **Rate Limiting**: Protection against abuse
+- **CORS Configuration**: Secure cross-origin requests
+- **Input Validation**: Sanitized user inputs
+- **Error Handling**: Secure error responses
 
 ## 🧪 Testing
 
-### Run Flutter Tests
+### Unit Tests
 ```bash
 flutter test
 ```
 
-### Run Custom Tests
+### Integration Tests
 ```bash
-cd testing
-flutter run test_permissions_cli.dart
+flutter test integration_test/
 ```
 
-### Test Notifications
+### API Tests
 ```bash
-cd testing
-flutter run test_notification_system.dart
+cd servers
+npm test
 ```
 
-## 🏗️ Building
+## 📦 Deployment
 
-### Android
+### Docker Deployment
 ```bash
-cd build-scripts
-./build_android.bat  # Windows
-./build_android.sh   # Linux/macOS
+# Build Docker image
+docker build -t soc-chat-app .
+
+# Run with Docker Compose
+docker-compose up -d
 ```
 
-### iOS
-```bash
-cd build-scripts
-./build_ios.sh
-```
-
-### Web
-```bash
-flutter build web
-```
-
-## 📚 Documentation Index
-
-### Essential Guides
-- [Setup Guide](docs/SETUP_GUIDE.md) - Complete project setup
-- [Project Documentation](docs/PROJECT_DOCUMENTATION.md) - Comprehensive project overview
-- [Production Readiness](docs/PRODUCTION_READINESS.md) - Production deployment guide
-
-### Platform-Specific
-- [Android Setup](docs/ANDROID_UPDATE_SETUP.md) - Android development setup
-- [iOS Permissions](docs/IOS_PERMISSION_FIXES_SUMMARY.md) - iOS permission handling
-- [Windows Build](docs/WINDOWS_BUILD_GUIDE.md) - Windows application building
-
-### Testing & Quality
-- [Testing Guide](docs/PERMISSION_TESTING_GUIDE.md) - Comprehensive testing guide
-- [UAT Plan](docs/UAT_TEST_PLAN.md) - User acceptance testing
-- [Testing Status](docs/CURRENT_TESTING_STATUS.md) - Current testing status
-
-### Legal & Compliance
-- [Privacy Policy](docs/PRIVACY_POLICY.md) - App privacy policy
-- [Terms of Service](docs/TERMS_OF_SERVICE.md) - App terms and conditions
-- [Legal Compliance](docs/LEGAL_COMPLIANCE_CHECKLIST.md) - Compliance checklist
+### Production Deployment
+1. Set up MongoDB cluster
+2. Configure environment variables
+3. Deploy API server
+4. Build and deploy Flutter web app
+5. Configure CDN for static assets
 
 ## 🤝 Contributing
 
 1. Fork the repository
 2. Create a feature branch
 3. Make your changes
-4. Add tests if applicable
+4. Add tests
 5. Submit a pull request
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-## 📞 Support
+## 🆘 Support
 
-For support and questions:
-- Create an issue on GitHub
-- Check the [documentation](docs/) for guides
-- Review the [testing status](docs/CURRENT_TESTING_STATUS.md) for known issues
+- **Documentation**: [Wiki](https://github.com/yourusername/soc-chat-app-mongodb/wiki)
+- **Issues**: [GitHub Issues](https://github.com/yourusername/soc-chat-app-mongodb/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/yourusername/soc-chat-app-mongodb/discussions)
 
-## 🔄 Project Status
+## 🙏 Acknowledgments
 
-- **Version**: 1.0.1 (Build 5)
-- **Status**: Production Ready ✅
-- **Last Updated**: 2025-01-27
-- **All Platforms**: Successfully Built ✅
+- Flutter team for the amazing framework
+- MongoDB for the database
+- Express.js for the API framework
+- All contributors and testers
 
-For detailed build information, see [version_info.json](version_info.json).
+---
+
+**Made with ❤️ using Flutter and MongoDB**

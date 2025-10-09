@@ -25,17 +25,19 @@
 // - Cross-platform: Unified interface for all platforms
 
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'chat_screen.dart';
+import 'chat_screen_web.dart' if (dart.library.html) 'chat_screen_web.dart' as chat_screen;
 import '../services/admin_group_service.dart';
 import '../services/theme_service.dart';
 import '../services/chat_management_service.dart';
 import '../services/fcm_notification_service.dart';
 import '../services/logger_service.dart'; // Added import for logging
-import '../widgets/version_display_widget.dart';
-import '../widgets/voice_message_player.dart';
+import '../config/database_config.dart';
+import '../services/local_auth_service.dart';
+ 
 
 
 class ChatListScreen extends StatefulWidget {
@@ -53,9 +55,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
   bool _isFCMHealthy = false;
   late ThemeService _themeService;
   late VoidCallback _themeListener;
-  
-  // Cache for user display names to avoid repeated Firestore calls
-  final Map<String, String> _userDisplayNameCache = {};
+  Map<String, dynamic>? _localUser;
+  bool _isLoadingLocalUser = true;
   
   // User role management
   String _userRole = 'user';
@@ -72,14 +73,31 @@ class _ChatListScreenState extends State<ChatListScreen> {
     };
     _themeService.addListener(_themeListener);
     
-    // Run migration to fix missing user names in existing chats
-    _runChatMigration();
-    
-    // Load user role for access control
-    _loadUserRole();
-    
-    // Check FCM service health
-    _checkFCMHealth();
+    // When using the physical server, avoid any Firebase calls to prevent runtime errors.
+    if (DatabaseConfig.usePhysicalServer) {
+      // Default role state to non-loading and standard user
+      _isLoadingRole = false;
+      _userRole = 'user';
+      // Skip Firebase-dependent health checks and migrations
+      // Load local user data instead
+      LocalAuthService.getCurrentUser().then((userData) {
+        if (mounted) {
+          setState(() {
+            _localUser = userData;
+            _isLoadingLocalUser = false;
+          });
+        }
+      });
+    } else {
+      // Run migration to fix missing user names in existing chats
+      _runChatMigration();
+      
+      // Load user role for access control
+      _loadUserRole();
+      
+      // Check FCM service health
+      _checkFCMHealth();
+    }
   }
 
   @override
@@ -98,73 +116,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     }
   }
 
-  /// Shows options for creating new chats or groups
-  void _showCreateOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder: (BuildContext context) {
-        return Container(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Create New',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        Navigator.pushNamed(context, '/search');
-                      },
-                      icon: const Icon(Icons.person_add),
-                      label: const Text('New Chat'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () {
-                        Navigator.pop(context);
-                        Navigator.pushNamed(context, '/create_group');
-                      },
-                      icon: const Icon(Icons.group_add),
-                      label: const Text('New Group'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Theme.of(context).colorScheme.secondary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('Cancel'),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-  }
+  
 
   /// Loads the current user's role for access control
   Future<void> _loadUserRole() async {
@@ -214,92 +166,55 @@ class _ChatListScreenState extends State<ChatListScreen> {
     super.dispose();
   }
 
-  /// Fetches user display name from Firestore with caching
-  Future<String> _getUserDisplayName(String userId) async {
-    // Check cache first
-    if (_userDisplayNameCache.containsKey(userId)) {
-      return _userDisplayNameCache[userId]!;
-    }
-    
-    try {
-      final userDoc = await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .get();
-      
-      if (userDoc.exists) {
-        final userData = userDoc.data() as Map<String, dynamic>;
-        
-        // Debug: Log what we're getting
-        Log.i('User data for $userId: $userData', 'CHAT_LIST');
-        
-        // Prioritize displayName, then username, then email as fallback
-        String displayName = 'Unknown User';
-        
-        if (userData['displayName'] != null && userData['displayName'].toString().isNotEmpty) {
-          displayName = userData['displayName'].toString();
-          Log.i('Using displayName: $displayName', 'CHAT_LIST');
-        } else if (userData['username'] != null && userData['username'].toString().isNotEmpty) {
-          displayName = userData['username'].toString();
-          Log.i('Using username: $displayName', 'CHAT_LIST');
-        } else if (userData['email'] != null && userData['email'].toString().isNotEmpty) {
-          // Only use email if it's not the current user's email
-          final currentUser = FirebaseAuth.instance.currentUser;
-          if (currentUser != null && userData['email'] != currentUser.email) {
-            displayName = userData['email'].toString();
-            Log.i('Using email: $displayName', 'CHAT_LIST');
-          } else {
-            displayName = 'Unknown User';
-            Log.i('Email matches current user, using Unknown User', 'CHAT_LIST');
-          }
-        }
-        
-        // Cache the result
-        _userDisplayNameCache[userId] = displayName;
-        Log.i('Final display name for $userId: $displayName', 'CHAT_LIST');
-        return displayName;
-      }
-      
-      Log.i('User document does not exist for $userId', 'CHAT_LIST');
-      return 'Unknown User';
-    } catch (e) {
-      Log.e('Error fetching user display name', 'CHAT_LIST', e);
-      return 'Unknown User';
-    }
-  }
+  
 
-  /// Resolves chat name from members with proper user name fetching
-  Future<String> _resolveChatNameFromMembers(Map<String, dynamic> chatData, String currentUserId) async {
-    try {
-      final members = List<String>.from(chatData['members'] ?? []);
-      Log.i('Resolving chat name. Members: $members, Current user: $currentUserId', 'CHAT_LIST');
-      
-      if (members.length == 2) {
-        // This is a private chat, get the other user's name
-        final otherUserId = members.firstWhere((id) => id != currentUserId);
-        Log.i('Private chat. Other user ID: $otherUserId', 'CHAT_LIST');
-        final displayName = await _getUserDisplayName(otherUserId);
-        Log.i('Resolved display name: $displayName', 'CHAT_LIST');
-        return displayName;
-      } else if (members.length > 2) {
-        // This is a group chat
-        final groupName = chatData['groupName'] ?? 'Group Chat';
-        Log.i('Group chat. Group name: $groupName', 'CHAT_LIST');
-        return groupName;
-      }
-    } catch (e) {
-      Log.e('Error resolving chat name', 'CHAT_LIST', e);
-    }
-    return 'Chat';
-  }
+  
 
   @override
   Widget build(BuildContext context) {
-    final user = FirebaseAuth.instance.currentUser;
-    if (user == null) {
+    final isLocalServer = DatabaseConfig.usePhysicalServer;
+    // Access FirebaseAuth only when not using the physical server to avoid core/no-app
+    final firebaseUser = isLocalServer ? null : FirebaseAuth.instance.currentUser;
+    if (!isLocalServer && firebaseUser == null) {
       return const Scaffold(
         body: Center(
           child: Text('User not authenticated'),
+        ),
+      );
+    }
+    if (isLocalServer && _isLoadingLocalUser) {
+      // Still loading local user data
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Loading user data...'),
+            ],
+          ),
+        ),
+      );
+    }
+    
+    if (isLocalServer && _localUser == null) {
+      // In physical server mode, if local user is missing, redirect to login.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+        }
+      });
+      return const Scaffold(
+        body: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text('Redirecting to login...'),
+            ],
+          ),
         ),
       );
     }
@@ -311,14 +226,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
         foregroundColor: Colors.white,
         actions: [
           // FCM Status Indicator
-          IconButton(
-            onPressed: () => Navigator.pushNamed(context, '/startup-diagnostics'),
-            icon: Icon(
-              _isFCMHealthy ? Icons.notifications_active : Icons.notifications_off,
-              color: _isFCMHealthy ? Colors.green : Colors.orange,
+          if (!isLocalServer)
+            IconButton(
+              onPressed: () => Navigator.pushNamed(context, '/startup-diagnostics'),
+              icon: Icon(
+                _isFCMHealthy ? Icons.notifications_active : Icons.notifications_off,
+                color: _isFCMHealthy ? Colors.green : Colors.orange,
+              ),
+              tooltip: _isFCMHealthy ? 'FCM Service Healthy' : 'FCM Service Issues',
             ),
-            tooltip: _isFCMHealthy ? 'FCM Service Healthy' : 'FCM Service Issues',
-          ),
           IconButton(
             onPressed: () => _themeService.toggleTheme(),
             icon: Icon(
@@ -330,6 +246,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
             icon: const Icon(Icons.more_vert),
             onSelected: (value) async {
               switch (value) {
+                case 'search_users':
+                  Navigator.pushNamed(context, '/search');
+                  break;
                 case 'create_group':
                   Navigator.pushNamed(context, '/create_group');
                   break;
@@ -351,7 +270,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   break;
                 case 'logout':
                   final navigator = Navigator.of(context);
-                  await FirebaseAuth.instance.signOut();
+                  if (DatabaseConfig.usePhysicalServer) {
+                    await LocalAuthService.logout();
+                  } else {
+                    await FirebaseAuth.instance.signOut();
+                  }
                   if (mounted) {
                     navigator.pushReplacementNamed('/login');
                   }
@@ -359,6 +282,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
               }
             },
             itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'search_users',
+                child: Row(
+                  children: [
+                    Icon(Icons.search),
+                    SizedBox(width: 8),
+                    Text('Search Users'),
+                  ],
+                ),
+              ),
               const PopupMenuItem(
                 value: 'create_group',
                 child: Row(
@@ -422,7 +355,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     radius: 25,
                     backgroundColor: Colors.white,
                     child: Text(
-                      user.email?.substring(0, 1).toUpperCase() ?? 'U',
+                      (() {
+                        final email = isLocalServer
+                            ? (_localUser?['email'] as String? ?? '')
+                            : (firebaseUser?.email ?? '');
+                        return email.isNotEmpty
+                            ? email.substring(0, 1).toUpperCase()
+                            : 'U';
+                      })(),
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
@@ -432,7 +372,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    user.email ?? 'User',
+                    (() {
+                      final email = isLocalServer
+                          ? (_localUser?['email'] as String? ?? '')
+                          : (firebaseUser?.email ?? '');
+                      return email.isNotEmpty ? email : 'User';
+                    })(),
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 16,
@@ -510,6 +455,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
             ),
             
             ListTile(
+              leading: const Icon(Icons.search),
+              title: const Text('Search Users'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/search');
+              },
+            ),
+            
+            ListTile(
               leading: const Icon(Icons.group_add),
               title: const Text('Create Group'),
               onTap: () {
@@ -579,7 +533,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
               title: const Text('Logout', style: TextStyle(color: Colors.red)),
               onTap: () async {
                 Navigator.pop(context);
-                await FirebaseAuth.instance.signOut();
+                if (DatabaseConfig.usePhysicalServer) {
+                  await LocalAuthService.logout();
+                } else {
+                  await FirebaseAuth.instance.signOut();
+                }
                 if (mounted) {
                   Navigator.pushReplacementNamed(context, '/login');
                 }
@@ -641,591 +599,342 @@ class _ChatListScreenState extends State<ChatListScreen> {
               onRefresh: () async {
                 setState(() {});
               },
-              child: StreamBuilder<QuerySnapshot>(
-                stream: FirebaseFirestore.instance
-                    .collection('chats')
-                    .where('members', arrayContains: user.uid)
-                    .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
-                  return const Center(child: CircularProgressIndicator());
-                }
-                
-                if (snapshot.hasError) {
-                  final error = snapshot.error.toString();
-                  if (error.contains('failed-precondition')) {
-                    return Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.storage,
-                            size: 64,
-                            color: Colors.orange.shade400,
-                          ),
-                          const SizedBox(height: 16),
-                          const Text(
-                            'Database Index Required',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'You need to create a Firestore index.',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Colors.grey.shade600,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          ElevatedButton.icon(
-                            onPressed: () {
-                              // Open Firebase Console in browser
-                              launchUrl(Uri.parse('https://console.firebase.google.com/project/soc-chat-app-ca57e/firestore/indexes'));
-                            },
-                            icon: const Icon(Icons.open_in_browser),
-                            label: const Text('Open Firebase Console'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.blue,
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(8),
-                              border: Border.all(color: Colors.blue.shade200),
-                            ),
-                            child: Column(
-                              children: [
-                                Text(
-                                  '📋 Steps to Fix:',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.blue,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  '1. Click "Open Firebase Console"\n'
-                                  '2. Go to Firestore → Indexes\n'
-                                  '3. Create index: chats collection\n'
-                                  '4. Fields: members (Array), lastMessageTime (Descending)\n'
-                                  '5. Wait 1-5 minutes for build',
-                                  style: TextStyle(fontSize: 12),
-                                  textAlign: TextAlign.left,
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  } else {
-                    return Center(
-                      child: Text('Error: $error'),
-                    );
-                  }
-                }
-                
-                final chats = snapshot.data?.docs ?? [];
-                
-                // Sort chats: those with lastMessageTime first (most recent), then by creation time
-                final sortedChats = List<QueryDocumentSnapshot>.from(chats);
-                sortedChats.sort((a, b) {
-                  final aData = a.data() as Map<String, dynamic>;
-                  final bData = b.data() as Map<String, dynamic>;
-                  
-                  final aLastMessageTime = aData['lastMessageTime'] as Timestamp?;
-                  final bLastMessageTime = bData['lastMessageTime'] as Timestamp?;
-                  
-                  // If both have lastMessageTime, sort by most recent
-                  if (aLastMessageTime != null && bLastMessageTime != null) {
-                    return bLastMessageTime.compareTo(aLastMessageTime);
-                  }
-                  
-                  // If only one has lastMessageTime, prioritize it
-                  if (aLastMessageTime != null && bLastMessageTime == null) {
-                    return -1;
-                  }
-                  if (aLastMessageTime == null && bLastMessageTime != null) {
-                    return 1;
-                  }
-                  
-                  // If neither has lastMessageTime, sort by creation time (most recent first)
-                  final aCreatedAt = aData['createdAt'] as Timestamp?;
-                  final bCreatedAt = bData['createdAt'] as Timestamp?;
-                  
-                  if (aCreatedAt != null && bCreatedAt != null) {
-                    return bCreatedAt.compareTo(aCreatedAt);
-                  }
-                  
-                  // If only one has createdAt, prioritize it
-                  if (aCreatedAt != null && bCreatedAt == null) {
-                    return -1;
-                  }
-                  if (aCreatedAt == null && bCreatedAt != null) {
-                    return 1;
-                  }
-                  
-                  // Fallback: keep original order
-                  return 0;
-                });
-                
-                if (sortedChats.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.chat_bubble_outline,
-                          size: 64,
-                          color: Colors.grey.shade400,
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No chats yet',
-                          style: TextStyle(
-                            fontSize: 18,
-                            color: Colors.grey.shade600,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Start a conversation with someone!',
-                          style: TextStyle(
-                            color: Colors.grey.shade500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                
-                // Filter chats based on search query
-                final filteredChats = sortedChats.where((chat) {
-                  final data = chat.data() as Map<String, dynamic>;
-                  final chatName = data['groupName'] ?? '';
-                  final lastMessage = data['lastMessage'] ?? '';
-                  final query = _searchQuery.toLowerCase();
-                  
-                  return chatName.toLowerCase().contains(query) ||
-                         lastMessage.toLowerCase().contains(query);
-                }).toList();
-                
-                return ListView.builder(
-                  itemCount: filteredChats.length,
-                  itemBuilder: (context, index) {
-                    final chat = filteredChats[index];
-                    final data = chat.data() as Map<String, dynamic>;
-                    final lastMessage = data['lastMessage'] ?? '';
-                    final lastMessageTime = data['lastMessageTime'] as Timestamp?;
-                    
-                    // Always use FutureBuilder to resolve user names from members
-                    // This ensures we get the correct display names, not cached emails
-                    return FutureBuilder<String>(
-                      future: _resolveChatNameFromMembers(data, user.uid),
-                      builder: (context, snapshot) {
-                        final resolvedName = snapshot.data ?? 'Loading...';
-                        return _buildChatTile(chat, data, lastMessage, lastMessageTime, resolvedName);
-                      },
-                    );
-                  },
-                );
-              },
+              child: DatabaseConfig.usePhysicalServer
+                  ? _buildLocalChatList((_localUser?['id'] ?? '') as String)
+                  : _buildFirebaseChatList(firebaseUser!.uid),
             ),
-          ),
-        ),
-      
-  
-          // Version display widget (Android only)
-          const VersionDisplayWidget(
-            showUpdateButton: true,
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: () => _showCreateOptions(context),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          Navigator.pushNamed(context, '/search');
+        },
         backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
-        icon: const Icon(Icons.add),
-        label: const Text('New'),
+        child: const Icon(Icons.person_add),
+        tooltip: 'Search Users',
       ),
     );
   }
+  
+  
+  
+  
 
-  /// Builds a chat tile with the given data
-  Widget _buildChatTile(DocumentSnapshot chat, Map<String, dynamic> data, String lastMessage, Timestamp? lastMessageTime, String displayName) {
-    return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          child: Text(
-            displayName.isNotEmpty 
-              ? displayName[0].toUpperCase() 
-              : 'C',
-            style: const TextStyle(
-              color: Colors.white,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
-        title: Text(
-          displayName.isNotEmpty ? displayName : 'Chat',
-          style: const TextStyle(fontWeight: FontWeight.bold),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (lastMessage.isNotEmpty) ...[
-              _buildLastMessageDisplay(lastMessage, data),
-              if (lastMessageTime != null) ...[
-                const SizedBox(height: 2),
-                Text(
-                  '${_formatTime(lastMessageTime.toDate())} • ${data['lastMessageSender'] ?? 'Unknown'}',
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey.shade600,
+  
+
+  
+
+  
+  
+  
+  
+  
+
+  Widget _buildFirebaseChatList(String userId) {
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('chats')
+          .where('members', arrayContains: userId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        if (snapshot.hasError) {
+          final error = snapshot.error.toString();
+          if (error.contains('failed-precondition')) {
+            return Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.storage,
+                    size: 64,
+                    color: Colors.orange.shade400,
                   ),
-                ),
-              ],
-            ] else ...[
-              Text(
-                'New chat - tap to start conversation',
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 14,
-                  color: Colors.blue.shade600,
-                  fontStyle: FontStyle.italic,
-                ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Database Index Required',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'You need to create a Firestore index.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.grey.shade600,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      // Open Firebase Console in browser
+                      launchUrl(Uri.parse('https://console.firebase.google.com/project/soc-chat-app-ca57e/firestore/indexes'));
+                    },
+                    icon: const Icon(Icons.open_in_browser),
+                    label: const Text('Open Firebase Console'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
               ),
-            ],
+            );
+          } else {
+            return Center(
+              child: Text('Error: $error'),
+            );
+          }
+        }
+        
+        final chats = snapshot.data?.docs ?? [];
+        return _buildChatListView(chats);
+      },
+    );
+  }
+
+  Widget _buildLocalChatList(String userId) {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      stream: _localChatsStream(userId),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        
+        if (snapshot.hasError) {
+          return Center(
+            child: Text('Error: ${snapshot.error}'),
+          );
+        }
+        
+        final chats = snapshot.data ?? [];
+        return _buildLocalChatListView(chats);
+      },
+    );
+  }
+
+  Stream<List<Map<String, dynamic>>> _localChatsStream(String userId) {
+    // Poll server periodically for updated chat list when using physical server
+    return Stream.periodic(const Duration(seconds: 3))
+        .asyncMap((_) => _getLocalChats(userId));
+  }
+
+  Future<List<Map<String, dynamic>>> _getLocalChats(String userId) async {
+    try {
+      final databaseService = await DatabaseConfig.getDatabaseService();
+      final docs = await databaseService.getUserChats(userId);
+      return docs.map((doc) => (doc.data() as Map<String, dynamic>)).toList();
+    } catch (e) {
+      Log.e('Error fetching local chats', 'CHAT_LIST', e);
+      return [];
+    }
+  }
+
+  Widget _buildLocalChatListView(List<Map<String, dynamic>> chats) {
+    if (chats.isEmpty) {
+      return const Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.chat_bubble_outline,
+              size: 64,
+              color: Colors.grey,
+            ),
+            SizedBox(height: 16),
+            Text(
+              'No chats yet',
+              style: TextStyle(
+                fontSize: 18,
+                color: Colors.grey,
+              ),
+            ),
+            SizedBox(height: 8),
+            Text(
+              'Start a conversation with someone!',
+              style: TextStyle(
+                color: Colors.grey,
+              ),
+            ),
           ],
         ),
-        trailing: _buildStatusBadge(data, lastMessageTime),
-        onTap: () {
-          Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (context) => ChatScreen(
-                chatId: chat.id,
-                isGroupChat: data['isGroup'] ?? false,
-                chatName: displayName,
-                userIds: data['members']?.cast<String>(),
-              ),
-            ),
-          );
-        },
-      ),
-    );
-  }
-  
-  String _formatTime(DateTime time) {
-    final now = DateTime.now();
-    final difference = now.difference(time);
-    
-    if (difference.inDays > 0) {
-      return '${difference.inDays}d ago';
-    } else if (difference.inHours > 0) {
-      return '${difference.inHours}h ago';
-    } else if (difference.inMinutes > 0) {
-      return '${difference.inMinutes}m ago';
-    } else {
-      return 'Just now';
-    }
-  }
-
-  /// Builds the last message display with support for voice messages
-  Widget _buildLastMessageDisplay(String lastMessage, Map<String, dynamic> data) {
-    // Check if this is a voice message
-    if (_isVoiceMessage(lastMessage, data)) {
-      return VoiceMessageIndicator(
-        isSender: _isCurrentUserSender(data),
-        onTap: () {
-          // Navigate to chat to play the voice message
-          // We'll navigate to the chat screen where the user can play the voice message
-          // The chat screen already has voice message playback functionality
-        },
       );
     }
-    
-    // Regular text message
-    return Text(
-      lastMessage,
-      maxLines: 1,
-      overflow: TextOverflow.ellipsis,
-      style: const TextStyle(
-        fontSize: 14,
-        color: Colors.black87,
-      ),
+
+    // Filter chats based on search query
+    final filteredChats = chats.where((chat) {
+      if (_searchQuery.isEmpty) return true;
+      
+      final chatName = chat['name']?.toString().toLowerCase() ?? '';
+      final lastMessage = chat['lastMessage']?.toString().toLowerCase() ?? '';
+      
+      return chatName.contains(_searchQuery.toLowerCase()) ||
+             lastMessage.contains(_searchQuery.toLowerCase());
+    }).toList();
+
+    return ListView.builder(
+      itemCount: filteredChats.length,
+      itemBuilder: (context, index) {
+        final chat = filteredChats[index];
+        return _buildLocalChatTile(chat);
+      },
     );
   }
 
-  /// Checks if the last message is a voice message
-  bool _isVoiceMessage(String lastMessage, Map<String, dynamic> data) {
-    // Check for voice message indicators in the message content
-    if (lastMessage.toLowerCase().contains('voice message') ||
-        lastMessage.toLowerCase().contains('audio') ||
-        lastMessage.toLowerCase().contains('🎵') ||
-        lastMessage.toLowerCase().contains('🎤')) {
-      return true;
-    }
-    
-    // Check if the message has voice message metadata
-    if (data['lastMessageType'] == 'voice' || 
-        data['lastMessageType'] == 'audio') {
-      return true;
-    }
-    
-    // Check if the message contains voice message file extension
-    if (lastMessage.toLowerCase().contains('.m4a') ||
-        lastMessage.toLowerCase().contains('.wav') ||
-        lastMessage.toLowerCase().contains('.mp3')) {
-      return true;
-    }
-    
-    // Check if the message contains voice message indicators from the chat screen
-    if (lastMessage.contains('Voice Message') ||
-        lastMessage.contains('🎵 Voice Message')) {
-      return true;
-    }
-    
-    return false;
-  }
+  Widget _buildLocalChatTile(Map<String, dynamic> chat) {
+    final dynamic time = chat['lastMessageTime'] ?? chat['updatedAt'] ?? chat['createdAt'];
+    final String displayName = chat['name']?.toString() ?? 'Unknown Chat';
+    final bool isGroup = (chat['isGroup'] == true) || (chat['type'] == 'group') || (chat['isGroupChat'] == true);
+    final String chatId = (chat['id']?.toString() ?? chat['_id']?.toString() ?? '');
+    final List<String> memberIds = List<String>.from(chat['members'] ?? chat['memberIds'] ?? []);
 
-  /// Checks if the current user is the sender of the last message
-  bool _isCurrentUserSender(Map<String, dynamic> data) {
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
-    final lastMessageSender = data['lastMessageSender'];
-    return currentUserId == lastMessageSender;
-  }
-  
-  /// Builds the status badge for a chat tile
-  Widget _buildStatusBadge(Map<String, dynamic> data, Timestamp? lastMessageTime) {
-    if (lastMessageTime == null) {
-      // New chat - no messages yet
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        decoration: BoxDecoration(
-          color: Colors.blue.shade100,
-          borderRadius: BorderRadius.circular(12),
-        ),
+    return ListTile(
+      leading: CircleAvatar(
+        backgroundColor: Theme.of(context).colorScheme.primary,
         child: Text(
-          'New',
-          style: TextStyle(
-            color: Colors.blue.shade700,
-            fontSize: 10,
-            fontWeight: FontWeight.w500,
-          ),
+          displayName.isNotEmpty ? displayName[0].toUpperCase() : 'C',
+          style: const TextStyle(color: Colors.white),
         ),
-      );
-    }
-    
-    // Check if this is a group chat
-    final isGroup = data['isGroup'] ?? false;
-    
-    if (isGroup) {
-      // For group chats, show "Active" if there are recent messages
-      final messageAge = DateTime.now().difference(lastMessageTime.toDate());
-      if (messageAge.inHours < 24) {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.green.shade100,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            'Active',
-            style: TextStyle(
-              color: Colors.green.shade700,
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        );
-      } else {
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Text(
-            'Recent',
-            style: TextStyle(
-              color: Colors.grey.shade700,
-              fontSize: 10,
-              fontWeight: FontWeight.w500,
-            ),
-          ),
-        );
-      }
-    } else {
-              // For private chats, check user presence
-        final otherUserId = _getOtherUserId(data);
-        if (otherUserId != null) {
-          return StreamBuilder<DocumentSnapshot>(
-            stream: FirebaseFirestore.instance.collection('users').doc(otherUserId).snapshots(),
-            builder: (context, snapshot) {
-            if (snapshot.hasData && snapshot.data != null) {
-              final userData = snapshot.data!.data() as Map<String, dynamic>?;
-              final isOnline = userData?['isOnline'] ?? false;
-              final lastSeen = userData?['lastSeen'] as Timestamp?;
-              
-                             if (isOnline) {
-                 return Container(
-                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                   decoration: BoxDecoration(
-                     color: Colors.green.shade100,
-                     borderRadius: BorderRadius.circular(12),
-                   ),
-                   child: Row(
-                     mainAxisSize: MainAxisSize.min,
-                     children: [
-                       Container(
-                         width: 6,
-                         height: 6,
-                         decoration: BoxDecoration(
-                           color: Colors.green.shade600,
-                           shape: BoxShape.circle,
-                         ),
-                       ),
-                       const SizedBox(width: 4),
-                       Text(
-                         'Online',
-                         style: TextStyle(
-                           color: Colors.green.shade700,
-                           fontSize: 10,
-                           fontWeight: FontWeight.w500,
-                         ),
-                       ),
-                     ],
-                   ),
-                 );
-              } else if (lastSeen != null) {
-                final lastSeenAge = DateTime.now().difference(lastSeen.toDate());
-                if (lastSeenAge.inMinutes < 5) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'Just now',
-                      style: TextStyle(
-                        color: Colors.orange.shade700,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  );
-                } else if (lastSeenAge.inHours < 1) {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.orange.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      '${lastSeenAge.inMinutes}m ago',
-                      style: TextStyle(
-                        color: Colors.orange.shade700,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  );
-                } else {
-                  return Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: Text(
-                      'Offline',
-                      style: TextStyle(
-                        color: Colors.grey.shade700,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  );
-                }
-              } else {
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    'Offline',
-                    style: TextStyle(
-                      color: Colors.grey.shade700,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                );
-              }
-            }
-            
-            // Loading state
-            return Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(12),
+      ),
+      title: Text(
+        displayName,
+        style: const TextStyle(fontWeight: FontWeight.bold),
+      ),
+      subtitle: Text(
+        chat['lastMessage']?.toString() ?? 'No messages yet',
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+      trailing: time != null
+          ? Text(
+              _formatTimestamp(time),
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 12,
               ),
-              child: Text(
-                '...',
-                style: TextStyle(
-                  color: Colors.grey.shade700,
-                  fontSize: 10,
-                  fontWeight: FontWeight.w500,
+            )
+          : null,
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => kIsWeb ? chat_screen.ChatScreenWeb(
+              chatId: chatId,
+              chatName: displayName,
+              isGroupChat: isGroup,
+              userIds: memberIds,
+            ) : ChatScreen(
+              chatId: chatId,
+              chatName: displayName,
+              isGroupChat: isGroup,
+              userIds: memberIds,
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildChatListView(List<QueryDocumentSnapshot> chats) {
+    // Filter chats based on search query
+    final List<QueryDocumentSnapshot> filtered = _searchQuery.isEmpty
+        ? chats
+        : chats.where((chat) {
+            final data = chat.data() as Map<String, dynamic>;
+            final chatName = (data['name']?.toString() ?? '').toLowerCase();
+            final lastMessage = (data['lastMessage']?.toString() ?? '').toLowerCase();
+            final q = _searchQuery.toLowerCase();
+            return chatName.contains(q) || lastMessage.contains(q);
+          }).toList();
+
+    return ListView.builder(
+      itemCount: filtered.length,
+      itemBuilder: (context, index) {
+        final chat = filtered[index];
+        final data = chat.data() as Map<String, dynamic>;
+        final dynamic time = data['lastMessageTime'];
+        final String displayName = data['name']?.toString() ?? 'Chat';
+        final bool isGroup = (data['isGroup'] == true) || (data['type'] == 'group') || (data['isGroupChat'] == true);
+
+        return ListTile(
+          leading: CircleAvatar(
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            child: Text(
+              displayName.isNotEmpty ? displayName[0].toUpperCase() : 'C',
+              style: const TextStyle(color: Colors.white),
+            ),
+          ),
+          title: Text(displayName, style: const TextStyle(fontWeight: FontWeight.bold)),
+          subtitle: Text(
+            data['lastMessage']?.toString() ?? 'No messages',
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+          trailing: time != null
+              ? Text(
+                  _formatTimestamp(time),
+                  style: TextStyle(color: Colors.grey.shade600, fontSize: 12),
+                )
+              : null,
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => kIsWeb ? chat_screen.ChatScreenWeb(
+                  chatId: chat.id,
+                  chatName: displayName,
+                  isGroupChat: isGroup,
+                  userIds: List<String>.from(data['members'] ?? []),
+                ) : ChatScreen(
+                  chatId: chat.id,
+                  chatName: displayName,
+                  isGroupChat: isGroup,
+                  userIds: List<String>.from(data['members'] ?? []),
                 ),
               ),
             );
           },
         );
-      }
-    }
-    
-    // Fallback for unknown cases
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(
-        'Chat',
-        style: TextStyle(
-          color: Colors.grey.shade700,
-          fontSize: 10,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
+      },
     );
   }
-  
-  /// Gets the other user ID from a private chat
-  String? _getOtherUserId(Map<String, dynamic> data) {
-    final members = List<String>.from(data['members'] ?? []);
-    final currentUserId = FirebaseAuth.instance.currentUser?.uid;
+
+  String _formatTimestamp(dynamic timestamp) {
+    if (timestamp == null) return '';
     
-    if (currentUserId != null && members.length == 2) {
-      return members.firstWhere((id) => id != currentUserId);
+    try {
+      DateTime dateTime;
+      if (timestamp is String) {
+        dateTime = DateTime.parse(timestamp);
+      } else if (timestamp is int) {
+        dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+      } else if (timestamp is Timestamp) {
+        dateTime = timestamp.toDate();
+      } else {
+        return '';
+      }
+      
+      final now = DateTime.now();
+      final difference = now.difference(dateTime);
+      
+      if (difference.inDays > 0) {
+        return '${difference.inDays}d';
+      } else if (difference.inHours > 0) {
+        return '${difference.inHours}h';
+      } else if (difference.inMinutes > 0) {
+        return '${difference.inMinutes}m';
+      } else {
+        return 'now';
+      }
+    } catch (e) {
+      return '';
     }
-    return null;
   }
-} 
+}

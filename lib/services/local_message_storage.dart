@@ -1,4 +1,5 @@
 import 'package:hive/hive.dart';
+import 'package:hive_flutter/hive_flutter.dart';
 
 
 class LocalMessageStorage {
@@ -10,6 +11,12 @@ class LocalMessageStorage {
   
   /// Initialize local storage
   static Future<void> initialize() async {
+    // Ensure Hive is initialized for Flutter platforms
+    try {
+      await Hive.initFlutter();
+    } catch (_) {
+      // If already initialized, ignore
+    }
     _messagesBox = await Hive.openBox(_messagesBoxName);
     _chatsBox = await Hive.openBox(_chatsBoxName);
     print('[LocalStorage] Initialized successfully');

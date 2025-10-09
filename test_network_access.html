@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Network Access Test</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>SOC Chat App - Network Access Test</h1>
+    <p>Testing network access to API server...</p>
+    
+    <div id="status">Loading...</div>
+    <div id="details"></div>
+    
+    <script>
+        async function testNetworkAccess() {
+            const statusDiv = document.getElementById('status');
+            const detailsDiv = document.getElementById('details');
+            
+            try {
+                // Test API server connection from network IP
+                const response = await fetch('http://10.120.4.230:3003/health', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = '<span style="color: green;">✅ Network Access Working!</span>';
+                    detailsDiv.innerHTML = `
+                        <h3>API Server Details:</h3>
+                        <p><strong>Status:</strong> ${data.status}</p>
+                        <p><strong>Message:</strong> ${data.message}</p>
+                        <p><strong>Timestamp:</strong> ${data.timestamp}</p>
+                        <p><strong>Uptime:</strong> ${Math.round(data.uptime)} seconds</p>
+                        <hr>
+                        <h3>Network URLs:</h3>
+                        <p>✅ <strong>Web App:</strong> <a href="http://10.120.4.230:8082" target="_blank">http://10.120.4.230:8082</a></p>
+                        <p>✅ <strong>API Server:</strong> http://10.120.4.230:3003</p>
+                        <p>✅ <strong>Secondary:</strong> <a href="http://192.168.0.117:8082" target="_blank">http://192.168.0.117:8082</a></p>
+                        <hr>
+                        <h3>Instructions for Other PCs:</h3>
+                        <p>1. Share these URLs with other PCs on your network</p>
+                        <p>2. They can access the chat app in any web browser</p>
+                        <p>3. No installation needed - works directly in browser</p>
+                        <p>4. All users share the same database and can chat together</p>
+                    `;
+                } else {
+                    statusDiv.innerHTML = '<span style="color: red;">❌ Network Access Failed</span>';
+                    detailsDiv.innerHTML = `<p>Error: ${response.status} - ${response.statusText}</p>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = '<span style="color: red;">❌ Network Connection Failed</span>';
+                detailsDiv.innerHTML = `
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>Possible causes:</strong></p>
+                    <ul>
+                        <li>API server not accessible from network</li>
+                        <li>Firewall blocking port 3003</li>
+                        <li>CORS issues</li>
+                        <li>Network connectivity problems</li>
+                    </ul>
+                `;
+            }
+        }
+        
+        // Run test when page loads
+        testNetworkAccess();
+    </script>
+</body>
+</html>

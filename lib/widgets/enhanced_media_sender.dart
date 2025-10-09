@@ -580,6 +580,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
             _uploadProgress = progress;
           });
         },
+        caption: _captionController.text.trim(),
       );
 
       if (mediaUrl != null) {

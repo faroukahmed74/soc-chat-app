@@ -18,7 +18,8 @@
 
 import 'package:flutter/material.dart';
 import 'dart:async';
-import '../services/offline_service.dart';
+import '../services/offline_service.dart'
+    if (dart.library.html) '../services/offline_service_web.dart';
 
 class OfflineStatusWidget extends StatefulWidget {
   final bool showDetails;

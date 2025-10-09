@@ -24,6 +24,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:flutter/foundation.dart';
+import 'package:dio/dio.dart';
+import '../config/database_config.dart';
 
 class ScheduledMessagesService {
   static final ScheduledMessagesService _instance = ScheduledMessagesService._internal();
@@ -127,7 +129,14 @@ class ScheduledMessagesService {
       
       // Handle media if provided
       if (mediaBytes != null && fileName != null) {
-        final mediaUrl = await _uploadMedia(mediaBytes, fileName, mediaType);
+        final caption = (messageText).trim();
+        final mediaUrl = await _uploadMedia(
+          mediaBytes,
+          fileName,
+          mediaType,
+          chatId: chatId,
+          caption: caption.isNotEmpty ? caption : null,
+        );
         scheduleData['mediaUrl'] = mediaUrl;
         scheduleData['mediaType'] = mediaType;
         scheduleData['fileName'] = fileName;
@@ -148,8 +157,50 @@ class ScheduledMessagesService {
   }
   
   /// Upload media for scheduled message
-  Future<String> _uploadMedia(Uint8List mediaBytes, String fileName, String? mediaType) async {
+  Future<String> _uploadMedia(
+    Uint8List mediaBytes,
+    String fileName,
+    String? mediaType, {
+    required String chatId,
+    String? caption,
+  }) async {
     try {
+      if (DatabaseConfig.isPhysicalServerEnabled) {
+        final baseUrl = DatabaseConfig.physicalServerUrl;
+        final token = await DatabaseConfig.getStoredAuthToken();
+        final dio = Dio(BaseOptions(
+          baseUrl: baseUrl,
+          headers: {
+            if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+          },
+          connectTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 60),
+          sendTimeout: const Duration(seconds: 60),
+        ));
+
+        final formData = FormData.fromMap({
+          'chatId': chatId,
+          'type': mediaType ?? 'document',
+          'file': MultipartFile.fromBytes(mediaBytes, filename: fileName),
+          if (caption != null && caption.isNotEmpty) 'caption': caption,
+        });
+
+        final response = await dio.post('/api/media/upload', data: formData);
+        if (response.statusCode == 201 && response.data is Map) {
+          final data = response.data as Map;
+          final mediaUrl = data['mediaUrl'] as String?;
+          if (mediaUrl != null && mediaUrl.isNotEmpty) {
+            return mediaUrl;
+          }
+          throw Exception('Local API upload succeeded but no mediaUrl returned');
+        } else {
+          final code = response.statusCode ?? 0;
+          final msg = response.statusMessage ?? 'Unknown error';
+          throw Exception('Local API upload failed: HTTP $code $msg');
+        }
+      }
+
+      // Fallback to Firebase Storage
       final storageRef = FirebaseStorage.instance
           .ref()
           .child('scheduled_media')
@@ -161,7 +212,6 @@ class ScheduledMessagesService {
       
       await storageRef.putData(mediaBytes, metadata);
       final downloadUrl = await storageRef.getDownloadURL();
-      
       return downloadUrl;
     } catch (e) {
       print('[ScheduledMessages] Error uploading media: $e');

@@ -100,21 +100,33 @@ class FCMNotificationService {
 
   /// Handle new chat message - Send remote FCM notification to receiver
   Future<void> handleNewMessage({
-    required String senderId,
-    required String senderName,
-    required String message,
-    required String receiverId,
+    String? senderId,
+    String? senderName,
+    String? message,
+    String? receiverId,
     String? messageType,
+    String? chatId,
+    String? messageText,
+    List<String>? recipientIds,
   }) async {
     try {
+      final normalizedMessage = message ?? messageText ?? '';
+      final normalizedReceiverId = receiverId ?? (recipientIds != null && recipientIds.isNotEmpty ? recipientIds.first : null);
+      final normalizedSenderId = senderId ?? 'unknown_sender';
+      final normalizedSenderName = senderName ?? 'Unknown';
+      final normalizedType = messageType ?? 'text';
+      if (normalizedReceiverId == null || normalizedReceiverId.isEmpty) {
+        Log.w('No receiver specified for handleNewMessage', 'FCM');
+        return;
+      }
       // Get receiver's FCM token from Firestore
       final receiverDoc = await FirebaseFirestore.instance
           .collection('users')
-          .doc(receiverId)
+          .doc(normalizedReceiverId)
           .get();
       
       if (!receiverDoc.exists) {
-        Log.w('Receiver not found: $receiverId', 'FCM');
+        Log.w('Receiver not found: $normalizedReceiverId', 'FCM');
         return;
       }
 
@@ -122,21 +134,22 @@ class FCMNotificationService {
       final fcmToken = receiverData['fcmToken'];
       
       if (fcmToken == null || fcmToken.isEmpty) {
-        Log.w('No FCM token found for receiver: $receiverId', 'FCM');
+        Log.w('No FCM token found for receiver: $normalizedReceiverId', 'FCM');
         return;
       }
 
       // Send remote FCM notification to receiver
-      final title = 'New message from $senderName';
-      final body = message.length > 50 ? '${message.substring(0, 50)}...' : message;
+      final title = 'New message from $normalizedSenderName';
+      final body = normalizedMessage.length > 50 ? '${normalizedMessage.substring(0, 50)}...' : normalizedMessage;
       
       final notificationData = {
         'type': 'chat_message',
-        'senderId': senderId,
-        'senderName': senderName,
-        'message': message,
-        'receiverId': receiverId,
-        'messageType': messageType ?? 'text',
+        'senderId': normalizedSenderId,
+        'senderName': normalizedSenderName,
+        'message': normalizedMessage,
+        'receiverId': normalizedReceiverId,
+        'chatId': chatId,
+        'messageType': normalizedType,
         'timestamp': DateTime.now().toIso8601String(),
       };
 
@@ -148,7 +161,7 @@ class FCMNotificationService {
         'data': notificationData,
       });
       
-      Log.i('Remote FCM notification sent to receiver: $receiverId', 'FCM');
+      Log.i('Remote FCM notification sent to receiver: $normalizedReceiverId', 'FCM');
     } catch (e) {
       Log.e('Error sending remote FCM notification', 'FCM', e);
     }
@@ -156,48 +169,60 @@ class FCMNotificationService {
 
   /// Handle group message - Send remote FCM notifications to all group members except sender
   Future<void> handleGroupMessage({
-    required String senderId,
-    required String senderName,
-    required String message,
-    required String groupId,
-    required String groupName,
+    String? senderId,
+    String? senderName,
+    String? message,
+    String? groupId,
+    String? groupName,
     String? messageType,
+    String? messageText,
+    List<String>? memberIds,
   }) async {
     try {
+      final normalizedMessage = message ?? messageText ?? '';
+      final normalizedSenderId = senderId ?? 'unknown_sender';
+      final normalizedSenderName = senderName ?? 'Unknown';
+      final normalizedGroupId = groupId ?? 'unknown_group';
+      final normalizedGroupName = groupName ?? 'Unknown Group';
+      final normalizedType = messageType ?? 'text';
       // Get group members from Firestore
       final groupDoc = await FirebaseFirestore.instance
           .collection('chats')
-          .doc(groupId)
+          .doc(normalizedGroupId)
           .get();
       
       if (!groupDoc.exists) {
-        Log.w('Group not found: $groupId', 'FCM');
+        Log.w('Group not found: $normalizedGroupId', 'FCM');
         return;
       }
 
       final groupData = groupDoc.data()!;
-      final memberIds = List<String>.from(groupData['members'] ?? []);
+      final groupMemberIds = List<String>.from(groupData['members'] ?? []);
       
       // Remove sender from notification recipients
-      final recipientIds = memberIds.where((id) => id != senderId).toList();
+      final recipientIds = groupMemberIds.where((id) => id != normalizedSenderId).toList();
+      if (memberIds != null && memberIds.isNotEmpty) {
+        final providedSet = memberIds.toSet();
+        recipientIds.retainWhere((id) => providedSet.contains(id));
+      }
       
       if (recipientIds.isEmpty) {
-        Log.w('No recipients found for group: $groupId', 'FCM');
+        Log.w('No recipients found for group: $normalizedGroupId', 'FCM');
         return;
       }
 
       // Send notifications to all recipients using Cloud Function
-      final title = '$senderName in $groupName';
-      final body = message.length > 50 ? '${message.substring(0, 50)}...' : message;
+      final title = '$normalizedSenderName in $normalizedGroupName';
+      final body = normalizedMessage.length > 50 ? '${normalizedMessage.substring(0, 50)}...' : normalizedMessage;
       
       final notificationData = {
         'type': 'group_message',
-        'senderId': senderId,
-        'senderName': senderName,
-        'message': message,
-        'groupId': groupId,
-        'groupName': groupName,
-        'messageType': messageType ?? 'text',
+        'senderId': normalizedSenderId,
+        'senderName': normalizedSenderName,
+        'message': normalizedMessage,
+        'groupId': normalizedGroupId,
+        'groupName': normalizedGroupName,
+        'messageType': normalizedType,
         'timestamp': DateTime.now().toIso8601String(),
       };
 

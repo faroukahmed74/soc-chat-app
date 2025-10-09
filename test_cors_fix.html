@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test CORS Fix</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>SOC Chat App - CORS Test</h1>
+    <p>Testing CORS fix for web app...</p>
+    
+    <div id="status">Loading...</div>
+    <div id="details"></div>
+    
+    <script>
+        async function testCORS() {
+            const statusDiv = document.getElementById('status');
+            const detailsDiv = document.getElementById('details');
+            
+            try {
+                // Test API server connection with CORS
+                const response = await fetch('http://localhost:3003/health', {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    credentials: 'include'
+                });
+                
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = '<span style="color: green;">✅ CORS Fixed! API Server Accessible!</span>';
+                    detailsDiv.innerHTML = `
+                        <h3>API Server Details:</h3>
+                        <p><strong>Status:</strong> ${data.status}</p>
+                        <p><strong>Message:</strong> ${data.message}</p>
+                        <p><strong>Timestamp:</strong> ${data.timestamp}</p>
+                        <p><strong>Uptime:</strong> ${Math.round(data.uptime)} seconds</p>
+                        <hr>
+                        <h3>Next Steps:</h3>
+                        <p>✅ CORS is working - web app should now connect successfully!</p>
+                        <p>🌐 Try accessing: <a href="http://localhost:8082" target="_blank">http://localhost:8082</a></p>
+                    `;
+                } else {
+                    statusDiv.innerHTML = '<span style="color: red;">❌ API Server Error</span>';
+                    detailsDiv.innerHTML = `<p>Error: ${response.status} - ${response.statusText}</p>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = '<span style="color: red;">❌ CORS Still Blocked</span>';
+                detailsDiv.innerHTML = `
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>This means:</strong> CORS is still blocking the request</p>
+                    <p><strong>Solution:</strong> The API server needs to be restarted with the new CORS settings</p>
+                `;
+            }
+        }
+        
+        // Run test when page loads
+        testCORS();
+    </script>
+</body>
+</html>

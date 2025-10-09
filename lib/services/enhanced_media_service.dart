@@ -7,6 +7,8 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:dio/dio.dart';
+import '../config/database_config.dart';
 import 'logger_service.dart';
 
 /// Enhanced media service with progress tracking, optimization, and better error handling
@@ -235,10 +237,70 @@ class EnhancedMediaService {
     MediaResult media,
     String chatId,
     void Function(double progress)? onProgress,
+    {String? caption}
   ) async {
     try {
       Log.i('Starting media upload: ${media.fileName}', 'ENHANCED_MEDIA');
-      
+
+      // If physical server is enabled, use local API upload with Dio
+      if (DatabaseConfig.isPhysicalServerEnabled) {
+        final baseUrl = DatabaseConfig.physicalServerUrl;
+        final token = await DatabaseConfig.getStoredAuthToken();
+
+        final dio = Dio(BaseOptions(
+          baseUrl: baseUrl,
+          headers: {
+            if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+          },
+          // 60s timeout to allow larger uploads
+          connectTimeout: const Duration(seconds: 20),
+          receiveTimeout: const Duration(seconds: 60),
+          sendTimeout: const Duration(seconds: 60),
+        ));
+
+        final formDataMap = {
+          'chatId': chatId,
+          'type': media.type,
+          'file': MultipartFile.fromBytes(
+            media.bytes,
+            filename: media.fileName,
+          ),
+        };
+
+        // Include caption if provided
+        final formData = FormData.fromMap({
+          ...formDataMap,
+          if (caption != null && caption.isNotEmpty) 'caption': caption,
+        });
+
+        final response = await dio.post(
+          '/api/media/upload',
+          data: formData,
+          onSendProgress: (sent, total) {
+            if (total > 0) {
+              final progress = sent / total;
+              Log.i('Upload progress: ${(progress * 100).toStringAsFixed(1)}%', 'ENHANCED_MEDIA');
+              onProgress?.call(progress);
+            }
+          },
+        );
+
+        if (response.statusCode == 201 && response.data is Map) {
+          final data = response.data as Map;
+          final mediaUrl = data['mediaUrl'] as String?;
+          if (mediaUrl != null && mediaUrl.isNotEmpty) {
+            Log.i('Media upload completed (server): $mediaUrl', 'ENHANCED_MEDIA');
+            return mediaUrl;
+          }
+          throw Exception('Upload succeeded but no mediaUrl returned');
+        } else {
+          final code = response.statusCode ?? 0;
+          final msg = response.statusMessage ?? 'Unknown error';
+          throw Exception('Upload failed: HTTP $code $msg');
+        }
+      }
+
+      // Fallback to Firebase Storage when physical server is disabled
       final fileName = '${DateTime.now().millisecondsSinceEpoch}_${media.type}_${media.fileName}';
       final ref = FirebaseStorage.instance
           .ref()

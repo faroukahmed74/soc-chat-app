@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Test Web App Connection</title>
+    <meta charset="utf-8">
+</head>
+<body>
+    <h1>SOC Chat App - Connection Test</h1>
+    <p>Testing connection to API server...</p>
+    
+    <div id="status">Loading...</div>
+    <div id="details"></div>
+    
+    <script>
+        async function testConnection() {
+            const statusDiv = document.getElementById('status');
+            const detailsDiv = document.getElementById('details');
+            
+            try {
+                // Test API server connection
+                const response = await fetch('http://localhost:3003/health');
+                const data = await response.json();
+                
+                if (response.ok) {
+                    statusDiv.innerHTML = '<span style="color: green;">✅ API Server Connected Successfully!</span>';
+                    detailsDiv.innerHTML = `
+                        <h3>API Server Details:</h3>
+                        <p><strong>Status:</strong> ${data.status}</p>
+                        <p><strong>Message:</strong> ${data.message}</p>
+                        <p><strong>Timestamp:</strong> ${data.timestamp}</p>
+                        <p><strong>Uptime:</strong> ${Math.round(data.uptime)} seconds</p>
+                    `;
+                } else {
+                    statusDiv.innerHTML = '<span style="color: red;">❌ API Server Error</span>';
+                    detailsDiv.innerHTML = `<p>Error: ${response.status} - ${response.statusText}</p>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = '<span style="color: red;">❌ Connection Failed</span>';
+                detailsDiv.innerHTML = `
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>Possible causes:</strong></p>
+                    <ul>
+                        <li>API server not running</li>
+                        <li>CORS issues</li>
+                        <li>Network connectivity problems</li>
+                    </ul>
+                `;
+            }
+        }
+        
+        // Run test when page loads
+        testConnection();
+    </script>
+</body>
+</html>
