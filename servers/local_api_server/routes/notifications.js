@@ -6,15 +6,28 @@ const { MongoClient, ObjectId } = require('mongodb');
 // MongoDB connection
 let db;
 const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app';
-const jwtSecret = process.env.JWT_SECRET || 'your_jwt_secret';
+const jwtSecret = process.env.JWT_SECRET || 'your_jwt_secret_here';
 
-// Connect to MongoDB
+// Connect to MongoDB (with auth fallback similar to auth.js)
 async function connectDB() {
   if (db) return db;
-  const client = new MongoClient(mongoUri);
-  await client.connect();
-  db = client.db();
-  return db;
+  try {
+    const client = new MongoClient(mongoUri);
+    await client.connect();
+    db = client.db();
+    return db;
+  } catch (error) {
+    // Fallback: if auth fails, try connecting without credentials to localhost
+    if (error?.codeName === 'AuthenticationFailed' || error?.code === 18) {
+      console.warn('Notifications routes: Mongo auth failed, falling back to no-auth localhost connection');
+      const fallbackUri = 'mongodb://localhost:27017/soc_chat_app';
+      const client = new MongoClient(fallbackUri);
+      await client.connect();
+      db = client.db();
+      return db;
+    }
+    throw error;
+  }
 }
 
 // Authentication middleware

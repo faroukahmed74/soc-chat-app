@@ -16,7 +16,7 @@
 //
 // ARCHITECTURE:
 // - Uses TabController for organized multi-tab interface
-// - Implements real-time data streaming from Firestore
+// - Implements real-time data streaming from MongoDB
 // - Provides comprehensive admin actions through AdminGroupService
 // - Responsive design for different screen sizes
 //
@@ -35,6 +35,7 @@ import '../config/database_config.dart';
 import '../services/database_service.dart';
 import 'package:intl/intl.dart';
 import 'dart:async';
+// Firebase imports removed - using MongoDB/ngrok API only
 
 class AdminPanelScreen extends StatefulWidget {
   const AdminPanelScreen({Key? key}) : super(key: key);

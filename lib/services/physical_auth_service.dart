@@ -24,7 +24,7 @@ class PhysicalAuthService {
     try {
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final response = await http.post(
-        Uri.parse('$baseUrl/auth/login'),
+        Uri.parse('$baseUrl/api/auth/login'),
         headers: {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
@@ -73,7 +73,7 @@ class PhysicalAuthService {
     try {
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final response = await http.post(
-        Uri.parse('$baseUrl/auth/register'),
+        Uri.parse('$baseUrl/api/auth/register'),
         headers: {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',

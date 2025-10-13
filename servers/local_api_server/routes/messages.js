@@ -6,7 +6,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 // MongoDB connection
 let db;
 const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app';
-const jwtSecret = process.env.JWT_SECRET || 'your_jwt_secret';
+const jwtSecret = process.env.JWT_SECRET || 'your_jwt_secret_here';
 
 // Connect to MongoDB
 async function connectDB() {
@@ -34,7 +34,8 @@ const authenticateToken = (req, res, next) => {
 // Send a new message
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { chatId, content, type = 'text' } = req.body;
+    const { chatId, content } = req.body;
+    const type = (req.body.type || req.body.messageType || 'text');
     
     // Validate input
     if (!chatId || !content) {

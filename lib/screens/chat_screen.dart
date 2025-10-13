@@ -5,9 +5,7 @@
 // It handles message sending, media uploads, real-time updates, and group management.
 
 import 'package:flutter/material.dart';
-// Removed Firebase/Firestore - using physical server only
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:firebase_storage/firebase_storage.dart';
+// Firebase imports removed - using MongoDB/ngrok API only
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;

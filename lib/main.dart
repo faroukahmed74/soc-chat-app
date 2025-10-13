@@ -9,6 +9,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:developer' as developer;
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 // Avoid direct dart:io on web; use conditional imports for io-heavy services
 
 import 'config/database_config.dart';
@@ -18,19 +19,12 @@ import 'screens/register_screen_mongodb.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'services/presence_service.dart';
 import 'services/theme_service.dart';
 import 'services/localization_service.dart';
-import 'services/message_cleanup_service.dart'
-    if (dart.library.html) 'services/message_cleanup_service_web.dart';
-import 'services/offline_service.dart'
-    if (dart.library.html) 'services/offline_service_web.dart';
-import 'services/scheduled_messages_service.dart';
-import 'services/secure_message_service.dart';
+// Firebase services removed - using MongoDB/ngrok API only
 import 'services/local_message_storage.dart';
 import 'services/local_auth_service.dart';
 
-import 'services/fcm_notification_service.dart';
 import 'services/unified_notification_service.dart';
 import 'services/logger_service.dart';
 import 'widgets/error_boundary.dart';
@@ -44,23 +38,9 @@ import 'screens/chat_list_screen_web_mongodb.dart' if (dart.library.html) 'scree
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 // =============================================================================
-// REQUIRED: FCM BACKGROUND HANDLER (TOP-LEVEL)
+// BACKGROUND HANDLERS (TOP-LEVEL)
 // =============================================================================
-// Firebase background handler REMOVED - Using physical server only
-// @pragma('vm:entry-point')
-// Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
-//   // Skip Firebase background handling in physical server mode
-//   if (DatabaseConfig.usePhysicalServer) {
-//     return;
-//   }
-//   WidgetsFlutterBinding.ensureInitialized();
-//   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-//   try {
-//     await FCMNotificationService().handleBackgroundMessage(message);
-//   } catch (e, st) {
-//     Log.e('BG handler error', 'FCM', e, st);
-//   }
-// }
+// Physical server mode - no Firebase background handlers needed
 
 // =============================================================================
 // MAIN
@@ -76,19 +56,22 @@ Future<void> main() async {
     Log.i('DatabaseConfig initialized (server URL override ready)', 'MAIN');
     // Log resolved server URL for visibility in logcat
     Log.i('Resolved server URL: ' + DatabaseConfig.physicalServerUrl, 'MAIN');
+    // Ping API health to verify reachability from device
+    await _pingApiHealth();
   } catch (e, st) {
     Log.e('DatabaseConfig initialization failed', 'MAIN', e, st);
     // Continue anyway - app should still work with defaults
   }
 
-  // Physical Server Only - No Firebase initialization needed
-  Log.i('Using physical server only - no Firebase initialization', 'MAIN');
+  // Physical Server Only - MongoDB/ngrok API mode
+  Log.i('Using physical server only - MongoDB/ngrok API mode', 'MAIN');
 
   // Initialize app services for physical server
   try {
     // Initialize services for physical server mode
     Log.i('Initializing services for physical server mode', 'MAIN');
-    SecureMessageService.initialize();
+    await LocalAuthService.initialize();
+    // SecureMessageService removed - using MongoDB/ngrok API only
     await LocalMessageStorage.initialize();
   } catch (e, st) {
     Log.e('Failed to initialize app services', 'MAIN', e, st);
@@ -97,6 +80,18 @@ Future<void> main() async {
 
   Log.i('Starting main app', 'MAIN');
   runApp(const MyApp());
+}
+
+Future<void> _pingApiHealth() async {
+  try {
+    final base = DatabaseConfig.physicalServerUrl;
+    final url = base.endsWith('/') ? '${base}api/health' : '$base/api/health';
+    Log.i('Pinging API health at: ' + url, 'MAIN');
+    final resp = await http.get(Uri.parse(url)).timeout(const Duration(seconds: 3));
+    Log.i('API health status: ' + resp.statusCode.toString(), 'MAIN');
+  } catch (e) {
+    Log.e('API health ping failed', 'MAIN', e);
+  }
 }
 
 // =============================================================================
@@ -348,12 +343,8 @@ class _MainAppState extends State<MainApp> {
       // ALWAYS initialize notifications (handles web/mobile inside)
       await _initializeNotifications();
 
-      // Optional: presence service on mobile only
-      if (!kIsWeb && !DatabaseConfig.usePhysicalServer) {
-        PresenceService().start();
-      } else {
-        Log.i('Skipping PresenceService (physical server mode)', 'MAIN_APP');
-      }
+      // Presence service removed - using MongoDB/ngrok API only
+      Log.i('Presence service removed (physical server mode)', 'MAIN_APP');
 
       Log.i('App initialization completed successfully', 'MAIN_APP');
     } catch (e) {
@@ -371,13 +362,8 @@ class _MainAppState extends State<MainApp> {
 
   Future<void> _initializeNotifications() async {
     try {
-      // Skip all notification initialization in physical server (MongoDB-only) mode
-      if (DatabaseConfig.usePhysicalServer) {
-        Log.i('Skipping notifications initialization (physical server mode)', 'MAIN_APP');
-        return;
-      }
       // Physical server mode - simplified notification handling
-      Log.i('Physical server mode - notifications simplified', 'MAIN_APP');
+      Log.i('Physical server mode - initializing notifications', 'MAIN_APP');
       
       // Request basic notification permissions for mobile
       if (!kIsWeb) {
@@ -428,7 +414,6 @@ class _MainAppState extends State<MainApp> {
 Future<bool> checkNotificationPermission() async {
   try {
     // Physical server mode - always return true for simplicity
-    if (DatabaseConfig.usePhysicalServer) return true;
     if (kIsWeb) return true;
     
     // For mobile platforms, check basic permission

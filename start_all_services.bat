@@ -9,26 +9,41 @@ echo [INFO] Opening individual service windows...
 echo [INFO] Each service will run in its own window for better visibility
 echo.
 
+echo [PRECHECK] Checking current services status...
+set "NO_PAUSE=1"
+call check_services_status.bat
+set "NO_PAUSE="
+echo.
+echo [INFO] Proceeding to start services...
+
 echo [1/5] Starting MongoDB Service...
 start "MongoDB Service" start_mongodb.bat
+timeout /t 2 /nobreak >nul
 
 echo [2/5] Starting API Server Service...
 start "API Server Service" start_api_server.bat
+timeout /t 3 /nobreak >nul
 
 echo [3/5] Starting ngrok Service...
 start "ngrok Service" start_ngrok.bat
+timeout /t 2 /nobreak >nul
 
 echo [4/5] Starting Local Network Server...
 start "Local Network Server" start_local_network_server.bat
+timeout /t 2 /nobreak >nul
 
 echo [5/5] Starting Local Web Server...
 start "Local Web Server" start_web_server_optimized.bat
+timeout /t 2 /nobreak >nul
 
 echo.
 echo =============================================================================
 echo ALL SERVICES STARTED!
 echo =============================================================================
 echo.
+echo [INFO] Showing Local Network URLs in a separate window...
+start "Network URLs Service" start_network_urls_service.bat 3004
+timeout /t 1 /nobreak >nul
 echo Services Status:
 echo   - MongoDB: Starting in separate window
 echo   - API Server: Starting in separate window  

@@ -17,7 +17,7 @@ class LocalAuthService {
     required String password,
   }) async {
     try {
-      final endpoint = '${DatabaseConfig.physicalServerUrl}/auth/register';
+      final endpoint = '${DatabaseConfig.physicalServerUrl}/api/auth/register';
       Log.i('Attempting register at: ' + endpoint, 'AUTH');
       
       // Add timeout and better error handling
@@ -56,7 +56,7 @@ class LocalAuthService {
     required String password,
   }) async {
     try {
-      final endpoint = '${DatabaseConfig.physicalServerUrl}/auth/login';
+      final endpoint = '${DatabaseConfig.physicalServerUrl}/api/auth/login';
       Log.i('Attempting login at: ' + endpoint, 'AUTH');
       
       // Add timeout and better error handling
@@ -98,6 +98,7 @@ class LocalAuthService {
     await prefs.remove(_userIdKey);
     await prefs.remove(_userEmailKey);
     await prefs.remove(_userNameKey);
+    _cachedUserId = null; // Clear cached user ID
   }
 
   /// Check if user is logged in
@@ -129,10 +130,35 @@ class LocalAuthService {
     return null;
   }
 
-  /// Get current user ID
-  static Future<String?> getCurrentUserId() async {
-    final prefs = await SharedPreferences.getInstance();
-    return prefs.getString(_userIdKey);
+  /// Get current user ID (synchronous)
+  static String? getCurrentUserId() {
+    // This method needs to be synchronous for compatibility
+    // We'll use a cached value approach
+    return _cachedUserId;
+  }
+
+  /// Get current user ID (async version)
+  static Future<String?> getCurrentUserIdAsync() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      return prefs.getString(_userIdKey);
+    } catch (e) {
+      Log.e('Error getting current user ID', 'LOCAL_AUTH_SERVICE', e);
+      return null;
+    }
+  }
+
+  static String? _cachedUserId;
+
+  /// Initialize cached user ID from stored preferences
+  static Future<void> initialize() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _cachedUserId = prefs.getString(_userIdKey);
+      Log.i('LocalAuthService initialized - cached user ID: ${_cachedUserId?.isNotEmpty == true ? "present" : "none"}', 'LOCAL_AUTH_SERVICE');
+    } catch (e) {
+      Log.e('Error initializing LocalAuthService', 'LOCAL_AUTH_SERVICE', e);
+    }
   }
 
   /// Store authentication data locally
@@ -140,7 +166,11 @@ class LocalAuthService {
     print('LocalAuthService: _storeAuthData - storing token length: ${token.length}');
     final prefs = await SharedPreferences.getInstance();
     await DatabaseConfig.setAuthToken(token);
-    await prefs.setString(_userIdKey, user['id'] ?? user['_id'] ?? '');
+    
+    final userId = user['id'] ?? user['_id'] ?? '';
+    _cachedUserId = userId; // Cache the user ID for synchronous access
+    
+    await prefs.setString(_userIdKey, userId);
     await prefs.setString(_userEmailKey, user['email'] ?? '');
     await prefs.setString(_userNameKey, user['name'] ?? user['displayName'] ?? '');
     print('LocalAuthService: _storeAuthData - data stored successfully');
@@ -157,7 +187,7 @@ class LocalAuthService {
         return false;
       }
 
-      final endpoint = '${DatabaseConfig.physicalServerUrl}/auth/verify';
+      final endpoint = '${DatabaseConfig.physicalServerUrl}/api/auth/verify';
       print('LocalAuthService: verifyToken - endpoint: $endpoint');
       Log.i('Attempting token verify at: ' + endpoint, 'AUTH');
       

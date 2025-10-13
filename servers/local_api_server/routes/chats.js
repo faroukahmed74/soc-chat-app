@@ -6,7 +6,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 // MongoDB connection
 let db;
 const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app';
-const jwtSecret = process.env.JWT_SECRET || 'your_jwt_secret';
+const jwtSecret = process.env.JWT_SECRET || 'your_jwt_secret_here';
 
 // Connect to MongoDB
 async function connectDB() {

@@ -1,6 +1,6 @@
-import 'dart:html' as html;
 import 'dart:typed_data';
 import 'dart:async';
+import 'package:web/web.dart' as web;
 import '../services/logger_service.dart';
 
 /// Modern web media service using package:web instead of deprecated dart:html

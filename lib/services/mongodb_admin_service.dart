@@ -47,7 +47,11 @@ class MongoDBAdminService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return List<Map<String, dynamic>>.from(data);
+        // Admin /users returns { users: [...], pagination: {...} }
+        final users = (data is Map && data['users'] is List)
+            ? List<Map<String, dynamic>>.from(data['users'])
+            : <Map<String, dynamic>>[];
+        return users;
       } else {
         throw Exception('Failed to load users: ${response.statusCode}');
       }
@@ -75,7 +79,11 @@ class MongoDBAdminService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return List<Map<String, dynamic>>.from(data);
+        // Admin /chats returns { chats: [...], pagination: {...} }
+        final chats = (data is Map && data['chats'] is List)
+            ? List<Map<String, dynamic>>.from(data['chats'])
+            : <Map<String, dynamic>>[];
+        return chats;
       } else {
         throw Exception('Failed to load chats: ${response.statusCode}');
       }
@@ -103,7 +111,11 @@ class MongoDBAdminService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return List<Map<String, dynamic>>.from(data);
+        // Admin /messages returns { messages: [...], pagination: {...} }
+        final messages = (data is Map && data['messages'] is List)
+            ? List<Map<String, dynamic>>.from(data['messages'])
+            : <Map<String, dynamic>>[];
+        return messages;
       } else {
         throw Exception('Failed to load messages: ${response.statusCode}');
       }

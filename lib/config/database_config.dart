@@ -26,7 +26,7 @@ class DatabaseConfig {
     'API_BASE_URL',
     defaultValue: 'https://soc-chat-app.ngrok-free.app',
   );
-  static const String firestoreFallback = 'firestore';
+  // Firebase/Firestore removed - using MongoDB only
   
   // Optional remote discovery URL for current API base
   static const String configDiscoveryUrl = String.fromEnvironment(
@@ -97,14 +97,35 @@ class DatabaseConfig {
   /// Get server URL for physical server
   static String get physicalServerUrl => _resolveServerUrl();
   
-  /// Get fallback database type
-  static String get fallbackDatabase => firestoreFallback;
+  /// Get fallback database type (MongoDB only)
+  static String get fallbackDatabase => 'mongodb';
 
   /// Initialize runtime override and optionally fetch remote config.
   static Future<void> initialize() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       _cachedOverrideUrl = prefs.getString(_serverUrlOverrideKey) ?? '';
+      // Validate existing override: clear if invalid or unreachable
+      if (_cachedOverrideUrl.isNotEmpty) {
+        final override = _cachedOverrideUrl.trim();
+        if (!_isValidUrl(override)) {
+          await prefs.remove(_serverUrlOverrideKey);
+          _cachedOverrideUrl = '';
+        } else {
+          try {
+            final base = override.endsWith('/') ? override.substring(0, override.length - 1) : override;
+            final uri = Uri.parse('$base/api/health');
+            final resp = await http.get(uri).timeout(const Duration(seconds: 3));
+            if (resp.statusCode != 200) {
+              await prefs.remove(_serverUrlOverrideKey);
+              _cachedOverrideUrl = '';
+            }
+          } catch (_) {
+            await prefs.remove(_serverUrlOverrideKey);
+            _cachedOverrideUrl = '';
+          }
+        }
+      }
       if (_cachedOverrideUrl.isEmpty && configDiscoveryUrl.isNotEmpty) {
         try {
           final resp = await http

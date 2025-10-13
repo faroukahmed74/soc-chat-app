@@ -32,11 +32,11 @@ import 'chat_screen.dart';
 import 'chat_screen_web.dart' if (dart.library.html) 'chat_screen_web.dart' as chat_screen;
 import '../services/admin_group_service.dart';
 import '../services/theme_service.dart';
-import '../services/chat_management_service.dart';
-import '../services/fcm_notification_service.dart';
+// Firebase services removed - using MongoDB/ngrok API only
 import '../services/logger_service.dart'; // Added import for logging
 import '../config/database_config.dart';
 import '../services/local_auth_service.dart';
+// Firebase imports removed - using MongoDB/ngrok API only
  
 
 

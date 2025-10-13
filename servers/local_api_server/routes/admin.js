@@ -18,14 +18,15 @@ const verifyAdminToken = (req, res, next) => {
   }
   
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_key');
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_here');
     
     // Check if user is admin
     if (decoded.role !== 'admin') {
       return res.status(403).json({ error: 'Admin access required' });
     }
     
-    req.user = decoded;
+    // Normalize decoded payload for downstream usage
+    req.user = { ...decoded, userId: decoded.id };
     next();
   } catch (error) {
     return res.status(401).json({ error: 'Invalid token' });
@@ -162,18 +163,40 @@ router.get('/chats', verifyAdminToken, async (req, res) => {
     
     const totalChats = await db.collection('chats').countDocuments();
     
-    // Get member details for each chat
-    const chatsWithMembers = await Promise.all(
-      chats.map(async (chat) => {
-        const members = await db.collection('users')
-          .find({ _id: { $in: chat.memberIds } })
-          .toArray();
+  // Get member details for each chat
+  const chatsWithMembers = await Promise.all(
+    chats.map(async (chat) => {
+        // Support legacy documents and ensure members array is valid ObjectIds
+        const rawMembers = Array.isArray(chat.members)
+          ? chat.members
+          : Array.isArray(chat.memberIds)
+            ? chat.memberIds
+            : [];
+
+        let memberObjectIds = [];
+        try {
+          // Convert string IDs to ObjectIds when needed, leave ObjectIds as-is
+          const { ObjectId } = require('mongodb');
+          memberObjectIds = rawMembers
+            .filter((m) => m) // remove null/undefined
+            .map((m) => (typeof m === 'string' && ObjectId.isValid(m) ? new ObjectId(m) : m))
+            .filter((m) => m); // filter invalid entries
+        } catch (e) {
+          // Fallback to empty array if conversion fails
+          memberObjectIds = [];
+        }
+
+        const members = memberObjectIds.length > 0
+          ? await db.collection('users')
+              .find({ _id: { $in: memberObjectIds } })
+              .toArray()
+          : [];
         
         return {
           id: chat._id,
           name: chat.name,
-          type: chat.type,
-          memberCount: chat.memberIds?.length || 0,
+          type: chat.type || 'group',
+          memberCount: rawMembers?.length || 0,
           members: members.map(member => ({
             id: member._id,
             name: member.displayName,

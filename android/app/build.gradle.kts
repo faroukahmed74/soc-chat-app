@@ -50,9 +50,25 @@ android {
                 storePassword = keystoreProperties["storePassword"] as String
             } else {
                 // Fallback to debug keystore if key.properties not found
-                storeFile = file("debug.keystore")
+                val localDebugKeystore = file("debug.keystore")
+                if (localDebugKeystore.exists()) {
+                    storeFile = localDebugKeystore
+                    println("[signingConfigs] Using local debug.keystore for release signing")
+                } else {
+                    val userProfile = System.getenv("USERPROFILE") ?: System.getProperty("user.home")
+                    val globalDebugKeystorePath = "$userProfile/.android/debug.keystore"
+                    val globalDebugKeystore = file(globalDebugKeystorePath)
+                    if (globalDebugKeystore.exists()) {
+                        storeFile = globalDebugKeystore
+                        println("[signingConfigs] Using global debug.keystore: $globalDebugKeystorePath")
+                    } else {
+                        println("[signingConfigs] WARNING: debug.keystore not found locally or globally. Build may fail.")
+                        storeFile = localDebugKeystore // keep default path
+                    }
+                }
                 storePassword = "android"
-                keyAlias = "androiddebugkey"
+                // Default Android debug keystore alias is 'AndroidDebugKey'
+                keyAlias = "AndroidDebugKey"
                 keyPassword = "android"
             }
         }
@@ -73,7 +89,12 @@ flutter {
 }
 
 dependencies {
-    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }
 
-apply(plugin = "com.google.gms.google-services")
+// Apply Google Services plugin only if configuration file exists
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+} else {
+    println("[build.gradle.kts] Skipping Google Services plugin: google-services.json not found")
+}

@@ -63,6 +63,15 @@ echo [INFO] Starting server on all network interfaces (0.0.0.0:3004)
 echo [INFO] This allows access from any PC on the network
 echo.
 
+REM Check if port 3004 is already in use
+netstat -an | findstr ":3004" | findstr "LISTENING" >nul 2>&1
+if not errorlevel 1 (
+    echo [ERROR] Port 3004 is already in use. Please stop the existing service.
+    echo [HINT] Try: stop_all_services.bat
+    pause
+    exit /b 1
+)
+
 REM Change to API server directory
 cd servers\local_api_server
 

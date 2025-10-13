@@ -21,8 +21,16 @@ if errorlevel 1 (
     echo [SUCCESS] API Server stopped
 )
 
+echo [INFO] Checking for API Server (Node fallback)...
+taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - API Server (Node)" >nul 2>&1
+if errorlevel 1 (
+    echo [INFO] API Server (Node) was not running
+) else (
+    echo [SUCCESS] API Server (Node) stopped
+)
+
 echo [3/5] Stopping Local Network Server...
-taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - Local Network Server*" >nul 2>&1
+taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - Local Network Server" >nul 2>&1
 if errorlevel 1 (
     echo [INFO] Local Network Server was not running
 ) else (
@@ -30,7 +38,7 @@ if errorlevel 1 (
 )
 
 echo [4/5] Stopping Local Web Server...
-taskkill /f /im python.exe /fi "WINDOWTITLE eq SOC Chat App - Web Server*" >nul 2>&1
+taskkill /f /im python.exe /fi "WINDOWTITLE eq SOC Chat App - Web Server" >nul 2>&1
 if errorlevel 1 (
     echo [INFO] Local Web Server was not running
 ) else (

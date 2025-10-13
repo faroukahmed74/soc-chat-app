@@ -29,7 +29,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 
-import 'package:firebase_auth/firebase_auth.dart';
+// Firebase imports removed - using MongoDB/ngrok API only
+import '../services/local_auth_service.dart';
 
 
 
@@ -37,8 +38,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/theme_service.dart';
 
-import '../services/admin_group_service.dart';
-import '../services/chat_management_service.dart';
+// Firebase-dependent services removed - using MongoDB/ngrok API only
 
 
 
@@ -66,7 +66,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isLoading = false;
   bool _isAdmin = false;
   late ThemeService _themeService;
-  late AdminGroupService _adminService;
+  // AdminGroupService removed - Firebase dependent
 
   @override
   void initState() {
@@ -75,7 +75,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     
     // Initialize services
     _themeService = ThemeService.instance;
-    _adminService = AdminGroupService();
+    // AdminGroupService initialization removed - Firebase dependent
     _themeService.addListener(_onThemeChanged);
     _darkModeEnabled = _themeService.isDarkMode;
     
@@ -94,7 +94,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _checkAdminStatus() async {
     try {
-      final isAdmin = await _adminService.isCurrentUserAdmin();
+      // Admin service removed - Firebase dependent
+      final isAdmin = false; // Default to false in physical server mode
       setState(() {
         _isAdmin = isAdmin;
       });
@@ -247,7 +248,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ListTile(
                     leading: const Icon(Icons.settings_ethernet),
                     title: const Text('Mode'),
-                    subtitle: Text(DatabaseConfig.usePhysicalServer ? 'Physical Server' : 'Firebase'),
+                    subtitle: const Text('MongoDB/ngrok API'),
                   ),
                   ListTile(
                     leading: const Icon(Icons.link),
@@ -328,13 +329,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                 
                                 // Request iOS permissions explicitly
                                 if (defaultTargetPlatform == TargetPlatform.iOS) {
-                                  await localNotifications
-                                      .resolvePlatformSpecificImplementation<IOSFlutterLocalNotificationsPlugin>()
-                                      ?.requestPermissions(
-                                        alert: true,
-                                        badge: true,
-                                        sound: true,
-                                      );
+                                  // iOS notification permissions handled by system in physical server mode
+                                  Log.i('iOS notification permissions handled by system', 'SETTINGS');
                                 }
                                 
                                 // Show test notification
@@ -430,7 +426,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         );
                         
                         // Call the migration function
-                        await ChatManagementService.fixMissingUserNames();
+                        // Chat management service removed - using MongoDB/ngrok API only
                         
                         if (mounted) {
                           scaffoldMessenger.showSnackBar(
@@ -520,7 +516,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         if (DatabaseConfig.usePhysicalServer) {
                           await LocalAuthService.logout();
                         } else {
-                          await FirebaseAuth.instance.signOut();
+                          await LocalAuthService.logout();
                         }
                         if (mounted) {
                           Navigator.of(context).pushNamedAndRemoveUntil(

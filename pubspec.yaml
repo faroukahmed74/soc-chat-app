@@ -1,5 +1,5 @@
 name: soc_chat_app
-description: "SOC Chat App - A comprehensive cross-platform chat application with real-time messaging, voice messages, media sharing, and advanced notification systems. Supports Android, iOS, and Web platforms with Firebase integration."
+description: "SOC Chat App - A comprehensive cross-platform chat application with real-time messaging, voice messages, media sharing, and advanced notification systems. Supports Android, iOS, and Web platforms with MongoDB/ngrok API integration."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -34,22 +34,20 @@ dependencies:
   # Use with the CupertinoIcons class for iOS style icons.
   cupertino_icons: ^1.0.8
 
-  # Firebase dependencies - Minimal for compatibility
-  firebase_core: ^3.15.2
-  firebase_auth: ^5.7.0
-  cloud_firestore: ^5.6.12
-  firebase_storage: ^12.4.10
-  firebase_messaging: ^15.2.10
+  # Firebase dependencies removed - Using MongoDB/ngrok API only
+
+  # Web support
+  web: ^1.1.1
 
   # Media and file picking - Cross-platform support
   image_picker: ^1.1.1
   file_picker: ^10.2.0
   
   # Audio recording and playback - Voice messages
-  audioplayers: ^5.2.1
+  audioplayers: ^6.5.1
   
   # Video player for video messages
-  video_player: ^2.8.12
+  video_player: ^2.8.15
   chewie: ^1.7.4
 
   # For encryption (example: encrypt package)
@@ -62,19 +60,19 @@ dependencies:
   url_launcher: ^6.2.6
 
   # For in-app notifications - Unified notification system
-  flutter_local_notifications: ^17.2.4
+  flutter_local_notifications: ^19.4.2
 
   # For version checking and updates
-  package_info_plus: ^8.0.2
+  package_info_plus: ^9.0.0
   http: ^1.2.1
   dio: ^5.7.0
 
   # Temporary file storage and local database
   path_provider: ^2.0.15
-  image_cropper: ^9.1.0
+  image_cropper: ^11.0.0
   shared_preferences: ^2.5.3
   permission_handler: ^12.0.1
-  cloud_functions: ^5.6.2
+  # cloud_functions removed - Using MongoDB/ngrok API only
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   intl: ^0.20.2

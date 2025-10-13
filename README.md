@@ -196,7 +196,7 @@ class DatabaseConfig {
 const config = {
   port: process.env.PORT || 3003,
   mongoUri: process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app',
-  jwtSecret: process.env.JWT_SECRET || 'your_jwt_secret'
+  jwtSecret: process.env.JWT_SECRET || 'your_jwt_secret_here'
 };
 ```
 

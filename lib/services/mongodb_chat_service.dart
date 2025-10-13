@@ -287,7 +287,7 @@ class MongoDBChatService {
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final request = http.MultipartRequest(
         'POST',
-        Uri.parse('$baseUrl/api/upload'),
+        Uri.parse('$baseUrl/api/media/upload'),
       );
 
       request.headers.addAll({
@@ -308,7 +308,8 @@ class MongoDBChatService {
       if (response.statusCode == 200) {
         final responseBody = await response.stream.bytesToString();
         final data = json.decode(responseBody);
-        return data['url'];
+        // Server returns { mediaUrl, type, caption, fileName, size, mimeType }
+        return data['mediaUrl'] ?? data['url'];
       } else {
         throw Exception('Failed to upload media: ${response.statusCode}');
       }

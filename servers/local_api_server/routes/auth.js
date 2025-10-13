@@ -3,17 +3,11 @@ const router = express.Router();
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { MongoClient, ObjectId } = require('mongodb');
-const { 
-  validateUserRegistration, 
-  validateUserLogin, 
-  handleValidationErrors,
-  sanitizeInput 
-} = require('../middleware/validation');
 
 // MongoDB connection
 let db;
 const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app';
-const jwtSecret = process.env.JWT_SECRET || 'your_jwt_secret';
+const jwtSecret = process.env.JWT_SECRET || 'your_jwt_secret_here';
 
 // Connect to MongoDB
 async function connectDB() {
@@ -38,7 +32,7 @@ async function connectDB() {
 }
 
 // Register a new user
-router.post('/register', sanitizeInput, validateUserRegistration, handleValidationErrors, async (req, res) => {
+router.post('/register', async (req, res) => {
   try {
     const { email, password, name } = req.body;
     
@@ -65,7 +59,6 @@ router.post('/register', sanitizeInput, validateUserRegistration, handleValidati
       email,
       password: hashedPassword,
       name,
-      displayName: name, // Add displayName for consistency
       role: 'user',
       status: 'active',
       createdAt: new Date(),
@@ -76,7 +69,7 @@ router.post('/register', sanitizeInput, validateUserRegistration, handleValidati
     
     // Create token
     const token = jwt.sign(
-      { id: result.insertedId.toString() },
+      { id: result.insertedId.toString(), role: 'user', email },
       jwtSecret,
       { expiresIn: '1d' }
     );
@@ -88,9 +81,7 @@ router.post('/register', sanitizeInput, validateUserRegistration, handleValidati
         id: result.insertedId.toString(),
         email,
         name,
-        displayName: name,
-        role: 'user',
-        status: 'active'
+        role: 'user'
       }
     });
   } catch (error) {
@@ -100,7 +91,7 @@ router.post('/register', sanitizeInput, validateUserRegistration, handleValidati
 });
 
 // Login user
-router.post('/login', sanitizeInput, validateUserLogin, handleValidationErrors, async (req, res) => {
+router.post('/login', async (req, res) => {
   try {
     const { email, password } = req.body;
     
@@ -126,7 +117,7 @@ router.post('/login', sanitizeInput, validateUserLogin, handleValidationErrors, 
     
     // Create token
     const token = jwt.sign(
-      { id: user._id.toString() },
+      { id: user._id.toString(), role: user.role || 'user', email: user.email },
       jwtSecret,
       { expiresIn: '1d' }
     );
@@ -137,10 +128,8 @@ router.post('/login', sanitizeInput, validateUserLogin, handleValidationErrors, 
       user: {
         id: user._id.toString(),
         email: user.email,
-        name: user.name || user.displayName,
-        displayName: user.displayName || user.name,
-        role: user.role || 'user',
-        status: user.status || 'active'
+        name: user.name,
+        role: user.role || 'user'
       }
     });
   } catch (error) {
@@ -174,10 +163,8 @@ router.get('/user', async (req, res) => {
       user: {
         id: user._id.toString(),
         email: user.email,
-        name: user.name || user.displayName,
-        displayName: user.displayName || user.name,
-        role: user.role || 'user',
-        status: user.status || 'active'
+        name: user.name,
+        role: user.role || 'user'
       }
     });
   } catch (error) {

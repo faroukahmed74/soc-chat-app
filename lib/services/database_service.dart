@@ -44,12 +44,12 @@ abstract class DatabaseService {
   Future<void> removeUserFromChat(String chatId, String userId);
 }
 
-/// Physical Server implementation using REST API
-class PostgreSQLService implements DatabaseService {
+/// Physical Server implementation using MongoDB REST API
+class MongoDBService implements DatabaseService {
   final String baseUrl;
   final String authToken;
   
-  PostgreSQLService({required this.baseUrl, required this.authToken});
+  MongoDBService({required this.baseUrl, required this.authToken});
   
   @override
   Future<List<DocumentSnapshot>> getUserChats(String userId) async {
@@ -288,14 +288,14 @@ class PostgreSQLService implements DatabaseService {
   }
 }
 
-/// Database factory - Physical Server Only
+/// Database factory - MongoDB Server Only
 class DatabaseFactory {
   static DatabaseService createDatabaseService({
     required bool usePhysicalServer,
     required String serverUrl,
     required String authToken,
   }) {
-    return PostgreSQLService(
+    return MongoDBService(
       baseUrl: serverUrl,
       authToken: authToken,
     );

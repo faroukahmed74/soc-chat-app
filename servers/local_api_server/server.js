@@ -241,7 +241,7 @@ let totalQueries = 0;
 let failedQueries = 0;
 
 // JWT Secret
-const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_key';
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_here';
 
 // Connect to MongoDB with retry logic and enhanced monitoring
 async function connectToMongo(retryCount = 0) {
@@ -253,6 +253,8 @@ async function connectToMongo(retryCount = 0) {
   try {
     await client.connect();
     db = client.db('soc_chat_app');
+    // Expose database handle on app.locals for downstream routes (e.g., admin)
+    app.locals.db = db;
     connectionStatus = 'connected';
     lastConnectionTime = new Date();
     
@@ -286,6 +288,8 @@ async function connectToMongo(retryCount = 0) {
         });
         await client.connect();
         db = client.db('soc_chat_app');
+        // Ensure app.locals has the db in fallback path as well
+        app.locals.db = db;
         connectionStatus = 'connected';
         lastConnectionTime = new Date();
         console.log('✅ Connected to MongoDB (no auth fallback)');
@@ -483,6 +487,12 @@ app.use('/chats', chatRoutes);
 app.use('/messages', messageRoutes);
 app.use('/notifications', notificationRoutes);
 app.use('/admin', adminRoutes);
+// Also mount API-prefixed routes for client compatibility
+app.use('/api/auth', authRoutes);
+app.use('/api/chats', chatRoutes);
+app.use('/api/messages', messageRoutes);
+app.use('/api/notifications', notificationRoutes);
+app.use('/api/admin', adminRoutes);
 
 // Legacy User Authentication - keeping for backward compatibility
 app.post('/api/auth/register', async (req, res) => {
@@ -504,6 +514,7 @@ app.post('/api/auth/register', async (req, res) => {
       email,
       password: hashedPassword,
       displayName,
+      role: 'user',
       createdAt: new Date(),
       status: 'online'
     };
@@ -512,7 +523,7 @@ app.post('/api/auth/register', async (req, res) => {
     
     // Generate token
     const token = jwt.sign(
-      { id: result.insertedId, email, displayName },
+      { id: result.insertedId, email, displayName, role: 'user' },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -522,7 +533,8 @@ app.post('/api/auth/register', async (req, res) => {
       user: {
         id: result.insertedId,
         email,
-        displayName
+        displayName,
+        role: 'user'
       }
     });
   } catch (err) {
@@ -555,7 +567,7 @@ app.post('/api/auth/login', async (req, res) => {
     
     // Generate token
     const token = jwt.sign(
-      { id: user._id, email: user.email, displayName: user.displayName },
+      { id: user._id, email: user.email, displayName: user.displayName, role: user.role || 'user' },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -565,7 +577,8 @@ app.post('/api/auth/login', async (req, res) => {
       user: {
         id: user._id,
         email: user.email,
-        displayName: user.displayName
+        displayName: user.displayName,
+        role: user.role || 'user'
       }
     });
   } catch (err) {
@@ -793,6 +806,51 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
   }
 });
 
+// Mark messages as read
+app.patch('/api/chats/:chatId/messages/read', authenticateToken, async (req, res) => {
+  try {
+    const { messageIds } = req.body || {};
+    const userId = req.user.id;
+    const chatId = req.params.chatId;
+
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ error: 'messageIds must be a non-empty array' });
+    }
+
+    // Verify user is a member of the chat
+    const chat = await db.collection('chats').findOne({
+      _id: new ObjectId(chatId),
+      memberIds: userId,
+    });
+
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found or access denied' });
+    }
+
+    // Convert to ObjectId and filter invalid ids
+    const validIds = messageIds
+      .filter(id => ObjectId.isValid(id))
+      .map(id => new ObjectId(id));
+
+    if (validIds.length === 0) {
+      return res.status(400).json({ error: 'No valid messageIds provided' });
+    }
+
+    const result = await db.collection('messages').updateMany(
+      { _id: { $in: validIds }, chatId },
+      { $addToSet: { readBy: userId }, $set: { updatedAt: new Date() } }
+    );
+
+    res.status(200).json({
+      message: 'Messages marked as read',
+      updatedCount: result.modifiedCount,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // Socket.IO
 io.on('connection', (socket) => {
   console.log('New client connected');
@@ -813,7 +871,7 @@ io.on('connection', (socket) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 3000;
+const PORT = process.env.PORT || 3003;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Cloudflare Access protection for admin routes

@@ -29,7 +29,7 @@ const config = {
   dbName: 'soc_chat_app',
   
   // JWT configuration (same as main server)
-  jwtSecret: process.env.JWT_SECRET || 'your_jwt_secret',
+  jwtSecret: process.env.JWT_SECRET || 'your_jwt_secret_here',
   
   // CORS configuration for local network
   corsOptions: {
@@ -165,13 +165,11 @@ async function createLocalNetworkServer() {
   const authRoutes = require('./routes/auth');
   const chatRoutes = require('./routes/chats');
   const messageRoutes = require('./routes/messages');
-  const mediaRoutes = require('./routes/media');
   const adminRoutes = require('./routes/admin');
   
   app.use('/api/auth', authRoutes);
   app.use('/api/chats', chatRoutes);
   app.use('/api/messages', messageRoutes);
-  app.use('/api/media', mediaRoutes);
   app.use('/api/admin', adminRoutes);
   
   // Error handling
@@ -197,6 +195,8 @@ async function startLocalNetworkServer() {
     
     // Create server
     const app = await createLocalNetworkServer();
+    // Expose database handle to routes via app.locals
+    app.locals.db = db;
     
     // Start server
     const server = app.listen(config.port, config.host, () => {

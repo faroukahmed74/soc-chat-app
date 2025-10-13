@@ -18,7 +18,7 @@ echo   SOC Chat App - Enhanced Database Admin Tool
 echo =============================================================================
 echo   Advanced Features:
 echo   - User Management (View passwords, Delete users, Update roles)
-echo   - Statistics & Analytics (Users, Chats, Messages)
+echo   - Statistics ^& Analytics (Users, Chats, Messages)
 echo   - Maintenance (Cleanup, Export database)
 echo   - System Health Monitoring
 echo   - DANGER ZONE (Delete users, Delete all data, Reset database)
@@ -72,7 +72,7 @@ if "%~1"=="" (
     echo.
     echo Interactive mode includes advanced features:
     echo   - User Management (View passwords, Delete users, Update roles)
-    echo   - Statistics & Analytics (Users, Chats, Messages)
+    echo   - Statistics ^& Analytics (Users, Chats, Messages)
     echo   - Maintenance (Cleanup, Export database)
     echo   - System Health Monitoring
     echo   - DANGER ZONE (Delete users, Delete all data, Reset database)
