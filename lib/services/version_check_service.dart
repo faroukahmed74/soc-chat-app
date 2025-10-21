@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:package_info_plus/package_info_plus.dart';
+// import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -15,9 +15,11 @@ class VersionCheckService {
   static Future<Map<String, dynamic>?> checkForUpdates() async {
     try {
       // Get current app version
-      final PackageInfo packageInfo = await PackageInfo.fromPlatform();
-      final String currentVersion = packageInfo.version;
-      final String currentBuildNumber = packageInfo.buildNumber;
+      // final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      // final String currentVersion = packageInfo.version;
+      // final String currentBuildNumber = packageInfo.buildNumber;
+      final String currentVersion = "1.0.0"; // Fallback version
+      final String currentBuildNumber = "1"; // Fallback build number
       
       // Fetch version info from Dropbox
       final response = await http.get(Uri.parse(_dropboxJsonUrl));
@@ -175,8 +177,9 @@ class VersionCheckService {
   
   static Future<String> getCurrentVersion() async {
     try {
-      final PackageInfo packageInfo = await PackageInfo.fromPlatform();
-      return '${packageInfo.version} (${packageInfo.buildNumber})';
+      // final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      // return '${packageInfo.version} (${packageInfo.buildNumber})';
+      return '1.0.0 (1)'; // Fallback version
     } catch (e) {
       return 'Unknown';
     }
@@ -184,8 +187,9 @@ class VersionCheckService {
   
   static Future<String> getAppName() async {
     try {
-      final PackageInfo packageInfo = await PackageInfo.fromPlatform();
-      return packageInfo.appName;
+      // final PackageInfo packageInfo = await PackageInfo.fromPlatform();
+      // return packageInfo.appName;
+      return 'SOC Chat App'; // Fallback app name
     } catch (e) {
       return 'SOC Chat App';
     }

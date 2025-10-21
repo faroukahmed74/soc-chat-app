@@ -468,4 +468,63 @@ router.post('/broadcast', verifyAdminToken, async (req, res) => {
   }
 });
 
+// Clear all chats and all messages (admin only)
+router.post('/chats/clear', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+
+    // Delete all messages first to avoid orphaned data
+    const messagesResult = await db.collection('messages').deleteMany({});
+
+    // Delete all chats
+    const chatsResult = await db.collection('chats').deleteMany({});
+
+    res.json({
+      message: 'All chats and messages cleared',
+      deleted: {
+        chats: chatsResult?.deletedCount || 0,
+        messages: messagesResult?.deletedCount || 0,
+      },
+    });
+  } catch (error) {
+    console.error('Error clearing all chats:', error);
+    res.status(500).json({ error: 'Failed to clear chats and messages' });
+  }
+});
+
+// Delete a single chat by ID (admin only)
+router.delete('/chats/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+
+    if (!ObjectId.isValid(id)) {
+      return res.status(400).json({ error: 'Invalid chat ID' });
+    }
+
+    const chatObjectId = new ObjectId(id);
+
+    // Delete messages for this chat
+    const messagesResult = await db.collection('messages').deleteMany({ chatId: chatObjectId });
+
+    // Delete the chat document
+    const chatResult = await db.collection('chats').deleteOne({ _id: chatObjectId });
+
+    if (chatResult.deletedCount === 0) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+
+    res.json({
+      message: 'Chat deleted successfully',
+      deleted: {
+        chat: chatResult.deletedCount,
+        messages: messagesResult?.deletedCount || 0,
+      },
+    });
+  } catch (error) {
+    console.error('Error deleting chat:', error);
+    res.status(500).json({ error: 'Failed to delete chat' });
+  }
+});
+
 module.exports = router;

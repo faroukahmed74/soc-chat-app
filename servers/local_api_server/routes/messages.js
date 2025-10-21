@@ -115,11 +115,21 @@ router.post('/', authenticateToken, async (req, res) => {
 // Get messages for a specific chat
 router.get('/:chatId', authenticateToken, async (req, res) => {
   try {
-    const { chatId } = req.params;
+    const cid = (req.params.chatId ?? '').toString().trim();
     const { page = 1, limit = 50 } = req.query;
+    console.log('Messages GET debug:', {
+      raw: req.params.chatId,
+      cid,
+      len: cid.length,
+      regex24: /^[0-9a-fA-F]{24}$/.test(cid),
+      userId: req.user?.id
+    });
     
-    // Validate ObjectId
-    if (!ObjectId.isValid(chatId)) {
+    // Validate and construct ObjectId safely
+    let chatObjectId;
+    try {
+      chatObjectId = new ObjectId(cid);
+    } catch (_) {
       return res.status(400).json({ message: 'Invalid chat ID' });
     }
     
@@ -129,7 +139,7 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
     
     // Check if user is a member of the chat
     const chat = await chatsCollection.findOne({
-      _id: new ObjectId(chatId),
+      _id: chatObjectId,
       members: new ObjectId(req.user.id)
     });
     
@@ -142,14 +152,14 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
     
     // Get messages for the chat
     const messages = await messagesCollection
-      .find({ chatId: new ObjectId(chatId) })
+      .find({ chatId: chatObjectId })
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
       .toArray();
     
     // Get total count for pagination
-    const totalMessages = await messagesCollection.countDocuments({ chatId: new ObjectId(chatId) });
+    const totalMessages = await messagesCollection.countDocuments({ chatId: chatObjectId });
     
     // Format the response
     const formattedMessages = messages.map(msg => ({
@@ -175,6 +185,63 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Get messages error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Mark messages as read for a chat
+router.patch('/:chatId/read', authenticateToken, async (req, res) => {
+  try {
+    const cid = (req.params.chatId ?? '').toString().trim();
+    const { messageIds } = req.body || {};
+
+    // Validate chatId
+    if (!cid || !/^[0-9a-fA-F]{24}$/.test(cid)) {
+      return res.status(400).json({ message: 'Invalid chat ID' });
+    }
+
+    // Validate messageIds
+    if (!Array.isArray(messageIds) || messageIds.length === 0) {
+      return res.status(400).json({ message: 'messageIds must be a non-empty array' });
+    }
+
+    const database = await connectDB();
+    const messagesCollection = database.collection('messages');
+    const chatsCollection = database.collection('chats');
+
+    // Verify user is a member of the chat
+    const chat = await chatsCollection.findOne({
+      _id: new ObjectId(cid),
+      members: new ObjectId(req.user.id)
+    });
+
+    if (!chat) {
+      return res.status(404).json({ message: 'Chat not found or access denied' });
+    }
+
+    // Convert to ObjectId and filter invalid ids
+    const validIds = messageIds
+      .filter(id => ObjectId.isValid(id))
+      .map(id => new ObjectId(id));
+
+    if (validIds.length === 0) {
+      return res.status(400).json({ message: 'No valid messageIds provided' });
+    }
+
+    const result = await messagesCollection.updateMany(
+      { _id: { $in: validIds }, chatId: new ObjectId(cid) },
+      { 
+        $addToSet: { readBy: new ObjectId(req.user.id) }, 
+        $set: { updatedAt: new Date() } 
+      }
+    );
+
+    res.status(200).json({
+      message: 'Messages marked as read',
+      updatedCount: result.modifiedCount
+    });
+  } catch (error) {
+    console.error('Mark messages as read error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

@@ -11,6 +11,7 @@ import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
+import '../utils/group_chat_naming_utility.dart';
 import 'chat_screen_web_mongodb.dart';
 import 'user_search_screen.dart';
 import 'create_group_screen.dart';
@@ -35,6 +36,8 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
   String? _currentUserName;
   StreamSubscription? _chatsSubscription;
   late ThemeService _themeService;
+  final Map<String, String> _userNameCache = {};
+  final Set<String> _userNameFetching = {};
 
   @override
   void initState() {
@@ -132,27 +135,74 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
 
   String _formatTimestamp(DateTime? timestamp) {
     if (timestamp == null) return '';
-    
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
+    // Convert to Cairo time (UTC+2)
+    final cairo = timestamp.toUtc().add(const Duration(hours: 2));
+    final nowCairo = DateTime.now().toUtc().add(const Duration(hours: 2));
+    final difference = nowCairo.difference(cairo);
 
     if (difference.inDays > 0) {
-      return '${timestamp.day}/${timestamp.month}';
+      return '${cairo.day}/${cairo.month}';
     } else if (difference.inHours > 0) {
-      return '${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+      return '${cairo.hour}:${cairo.minute.toString().padLeft(2, '0')}';
     } else {
-      return '${timestamp.minute.toString().padLeft(2, '0')}';
+      return '${cairo.minute.toString().padLeft(2, '0')}';
     }
+  }
+
+  String _getChatTitle(Map<String, dynamic> chat) {
+    // Use the utility function for consistent naming
+    return GroupChatNamingUtility.getChatDisplayName(chat, currentUserId: _currentUserId);
+  }
+
+  Future<void> _ensureUserNameCached(String userId) async {
+    if (_userNameCache.containsKey(userId) || _userNameFetching.contains(userId)) return;
+    _userNameFetching.add(userId);
+    try {
+      final user = await _chatService.getUserDetails(userId);
+      final displayName = (user?['name'] ?? user?['displayName'] ?? user?['email'] ?? userId).toString();
+      _userNameCache[userId] = displayName;
+      if (mounted) setState(() {});
+    } finally {
+      _userNameFetching.remove(userId);
+    }
+  }
+
+  String _buildLastMessagePreview(Map<String, dynamic> chat, {required bool isGroup}) {
+    final lastMsgObj = chat['lastMessage'];
+    String content;
+    String? senderName;
+    String? senderId;
+    if (lastMsgObj is Map<String, dynamic>) {
+      content = (lastMsgObj['content'] ?? '').toString();
+      senderName = (lastMsgObj['senderName'] ?? '').toString();
+      senderId = (lastMsgObj['senderId'] ?? '').toString();
+    } else {
+      content = (lastMsgObj ?? '').toString();
+    }
+    if (isGroup) {
+      String prefix = '';
+      if (senderName != null && senderName.isNotEmpty) {
+        prefix = senderName;
+      } else if (senderId != null && senderId.isNotEmpty) {
+        final cached = _userNameCache[senderId];
+        if (cached == null) _ensureUserNameCached(senderId);
+        prefix = cached ?? '';
+      }
+      if (prefix.isNotEmpty) {
+        return '$prefix: $content';
+      }
+    }
+    return content;
   }
 
   Widget _buildChatTile(Map<String, dynamic> chat) {
     final chatId = chat['_id'] ?? chat['id'] ?? '';
-    final name = chat['name'] ?? 'Unknown Chat';
-    final lastMessage = chat['lastMessage'] ?? '';
+    final String name = _getChatTitle(chat);
+    final bool isGroup = chat['type'] == 'group';
+    final String lastMessage = _buildLastMessagePreview(chat, isGroup: isGroup);
     final lastMessageTime = chat['lastMessageTime'] != null
         ? DateTime.parse(chat['lastMessageTime'])
         : null;
-    final isGroup = chat['type'] == 'group';
     final unreadCount = chat['unreadCount'] ?? 0;
 
     return Card(
@@ -445,14 +495,32 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushNamed(context, '/search');
-        },
-        backgroundColor: _themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500],
-        foregroundColor: Colors.white,
-        child: const Icon(Icons.person_add),
-        tooltip: 'Search Users',
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          FloatingActionButton(
+            heroTag: 'fab_profile',
+            onPressed: () {
+              Navigator.pushNamed(context, '/profile');
+            },
+            backgroundColor: _themeService.isDarkMode ? Colors.blue[900] : Colors.blue[800],
+            foregroundColor: Colors.white,
+            child: const Icon(Icons.person),
+            tooltip: 'My Profile',
+          ),
+          const SizedBox(height: 12),
+          FloatingActionButton(
+            heroTag: 'fab_search',
+            onPressed: () {
+              Navigator.pushNamed(context, '/search');
+            },
+            backgroundColor: _themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500],
+            foregroundColor: Colors.white,
+            child: const Icon(Icons.person_add),
+            tooltip: 'Search Users',
+          ),
+        ],
       ),
     );
   }

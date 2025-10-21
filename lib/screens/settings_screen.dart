@@ -31,6 +31,7 @@ import 'package:flutter/foundation.dart';
 
 // Firebase imports removed - using MongoDB/ngrok API only
 import '../services/local_auth_service.dart';
+import 'package:http/http.dart' as http;
 
 
 
@@ -67,6 +68,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _isAdmin = false;
   late ThemeService _themeService;
   // AdminGroupService removed - Firebase dependent
+  final TextEditingController _serverUrlController = TextEditingController();
+  bool _testingServerUrl = false;
 
   @override
   void initState() {
@@ -82,6 +85,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Load settings and check admin status
     _loadSettings();
     _checkAdminStatus();
+    _initServerUrlController();
   }
 
   Future<void> _loadSettings() async {
@@ -101,6 +105,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
       });
     } catch (e) {
       Log.e('Error checking admin status', 'SETTINGS_SCREEN', e);
+    }
+  }
+
+  Future<void> _initServerUrlController() async {
+    try {
+      final override = await DatabaseConfig.getServerUrlOverride();
+      final current = override.isNotEmpty ? override : DatabaseConfig.physicalServerUrl;
+      _serverUrlController.text = current;
+    } catch (_) {
+      _serverUrlController.text = DatabaseConfig.physicalServerUrl;
+    }
+  }
+
+  Future<void> _saveServerUrlOverride() async {
+    final url = _serverUrlController.text.trim();
+    if (url.isEmpty) return;
+    setState(() { _testingServerUrl = true; });
+    try {
+      await DatabaseConfig.setServerUrlOverride(url);
+      final base = url.endsWith('/') ? url.substring(0, url.length - 1) : url;
+      final health = Uri.parse('$base/api/health');
+      final resp = await http.get(health).timeout(const Duration(seconds: 5));
+      final ok = resp.statusCode == 200;
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(ok ? 'Server URL saved and reachable' : 'Saved, but health check failed (${resp.statusCode})')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error testing server URL: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() { _testingServerUrl = false; });
+    }
+  }
+
+  Future<void> _clearServerUrlOverride() async {
+    try {
+      await DatabaseConfig.setServerUrlOverride('');
+      await _initServerUrlController();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Server URL override cleared')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error clearing override: $e')),
+        );
+      }
     }
   }
 
@@ -252,8 +310,40 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
                   ListTile(
                     leading: const Icon(Icons.link),
-                    title: const Text('Server URL'),
-                    subtitle: Text(DatabaseConfig.physicalServerUrl),
+                    title: const Text('Server URL (override)'),
+                    subtitle: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        TextField(
+                          controller: _serverUrlController,
+                          decoration: const InputDecoration(
+                            hintText: 'e.g. http://localhost:3003 or https://your-ngrok-url',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: [
+                            ElevatedButton.icon(
+                              onPressed: _testingServerUrl ? null : _saveServerUrlOverride,
+                              icon: const Icon(Icons.save),
+                              label: Text(_testingServerUrl ? 'Saving...' : 'Save & Test'),
+                            ),
+                            const SizedBox(width: 12),
+                            OutlinedButton.icon(
+                              onPressed: _testingServerUrl ? null : _clearServerUrlOverride,
+                              icon: const Icon(Icons.clear),
+                              label: const Text('Clear Override'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          'Current base: ${DatabaseConfig.physicalServerUrl}',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

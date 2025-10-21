@@ -9,6 +9,7 @@ const API_TARGET = process.env.API_TARGET || 'http://localhost:3003';
 app.use(
   '/api',
   createProxyMiddleware({
+    // Target the API server directly (it already has /api routes)
     target: API_TARGET,
     changeOrigin: true,
     logLevel: 'warn',

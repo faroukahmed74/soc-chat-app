@@ -10,6 +10,7 @@ import '../services/theme_service.dart';
 import '../services/mongodb_admin_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
+import '../config/database_config.dart';
 
 class AdminPanelScreenMongoDB extends StatefulWidget {
   const AdminPanelScreenMongoDB({Key? key}) : super(key: key);
@@ -30,6 +31,12 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _reports = [];
   Map<String, dynamic>? _systemStats;
+  Map<String, dynamic>? _systemHealth;
+  Map<String, dynamic>? _apiHealth;
+  Map<String, dynamic>? _mongoDbStatus;
+  Map<String, dynamic>? _ngrokHealth;
+  final TextEditingController _userSearchController = TextEditingController();
+  String _selectedChatIdForMessages = '';
   
   // Loading states
   bool _isLoadingUsers = false;
@@ -37,6 +44,8 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   bool _isLoadingMessages = false;
   bool _isLoadingReports = false;
   bool _isLoadingStats = false;
+  bool _roleLoaded = false;
+  bool _isAdmin = false;
 
   @override
   void initState() {
@@ -46,12 +55,13 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
       if (mounted) setState(() {});
     });
     _tabController = TabController(length: 5, vsync: this);
-    _loadInitialData();
+    _checkAdminAccess();
   }
 
   @override
   void dispose() {
     _tabController.dispose();
+    _userSearchController.dispose();
     super.dispose();
   }
 
@@ -59,7 +69,55 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     await Future.wait([
       _loadUsers(),
       _loadSystemStats(),
+      _loadSystemHealth(),
     ]);
+  }
+
+  Future<void> _checkAdminAccess() async {
+    try {
+      final role = await _authService.getCurrentUserRole();
+      setState(() {
+        _isAdmin = role == 'admin';
+        _roleLoaded = true;
+      });
+      if (_isAdmin) {
+        await _loadInitialData();
+      }
+    } catch (e) {
+      setState(() {
+        _roleLoaded = true;
+        _isAdmin = false;
+      });
+    }
+  }
+
+  Widget _buildAccessDenied() {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Admin Panel'),
+        backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
+        foregroundColor: Colors.white,
+      ),
+      body: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.lock_outline, size: 64, color: Colors.redAccent),
+            const SizedBox(height: 16),
+            const Text(
+              'Access denied. Admins only.',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 24),
+            ElevatedButton.icon(
+              onPressed: () => Navigator.of(context).maybePop(),
+              icon: const Icon(Icons.arrow_back),
+              label: const Text('Back'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Future<void> _loadUsers() async {
@@ -68,7 +126,11 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     });
 
     try {
-      final users = await _adminService.getAllUsers();
+      final users = await _adminService.getAllUsers(
+        search: _userSearchController.text.trim().isNotEmpty ? _userSearchController.text.trim() : null,
+        page: 1,
+        limit: 50,
+      );
       if (mounted) {
         setState(() {
           _users = users;
@@ -124,7 +186,11 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     });
 
     try {
-      final messages = await _adminService.getAllMessages();
+      final messages = await _adminService.getAllMessages(
+        chatId: _selectedChatIdForMessages.isNotEmpty ? _selectedChatIdForMessages : null,
+        page: 1,
+        limit: 100,
+      );
       if (mounted) {
         setState(() {
           _messages = messages;
@@ -194,6 +260,25 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           _isLoadingStats = false;
         });
       }
+    }
+  }
+
+  Future<void> _loadSystemHealth() async {
+    try {
+      final health = await _adminService.getSystemHealth();
+      final apiHealth = await _adminService.getApiHealth();
+      final mongoStatus = await _adminService.getMongoDbStatus();
+      final ngrokHealth = await _adminService.getNgrokHealth();
+      if (mounted) {
+        setState(() {
+          _systemHealth = health;
+          _apiHealth = apiHealth;
+          _mongoDbStatus = mongoStatus;
+          _ngrokHealth = ngrokHealth;
+        });
+      }
+    } catch (e) {
+      Log.e('Error loading system health', 'ADMIN_PANEL_MONGODB', e);
     }
   }
 
@@ -299,68 +384,259 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     }
   }
 
-  Widget _buildUsersTab() {
-    if (_isLoadingUsers) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_users.isEmpty) {
-      return const Center(child: Text('No users found'));
-    }
-
-    return ListView.builder(
-      itemCount: _users.length,
-      itemBuilder: (context, index) {
-        final user = _users[index];
-        final userId = user['_id'] ?? user['id'] ?? '';
-        final name = user['name'] ?? user['email'] ?? 'Unknown';
-        final email = user['email'] ?? '';
-        final role = user['role'] ?? 'user';
-        final disabled = user['disabled'] ?? false;
-
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: disabled ? Colors.red : Colors.blue,
-              child: Text(
-                name.isNotEmpty ? name[0].toUpperCase() : 'U',
-                style: const TextStyle(color: Colors.white),
+  Future<void> _openCreateAdminDialog() async {
+    final nameController = TextEditingController();
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Create Admin User'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Display Name',
+                border: OutlineInputBorder(),
               ),
             ),
-            title: Text(name),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(email),
-                Text('Role: $role'),
-                if (disabled) const Text('Status: Disabled', style: TextStyle(color: Colors.red)),
-              ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: emailController,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
             ),
-            trailing: PopupMenuButton<String>(
-              onSelected: (value) {
-                switch (value) {
-                  case 'delete':
-                    _deleteUser(userId);
-                    break;
-                }
-              },
-              itemBuilder: (context) => [
-                const PopupMenuItem(
-                  value: 'delete',
-                  child: Row(
-                    children: [
-                      Icon(Icons.delete, color: Colors.red),
-                      SizedBox(width: 8),
-                      Text('Delete User'),
-                    ],
-                  ),
-                ),
-              ],
+            const SizedBox(height: 12),
+            TextField(
+              controller: passwordController,
+              decoration: const InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+              ),
+              obscureText: true,
             ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
           ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Create'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final created = await _adminService.createAdminUser(
+          email: emailController.text.trim(),
+          password: passwordController.text,
+          displayName: nameController.text.trim(),
         );
-      },
+        if (mounted) {
+          if (created != null) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Admin user created')),
+            );
+            await _loadUsers();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to create admin')),
+            );
+          }
+        }
+      } catch (e) {
+        Log.e('Error creating admin user', 'ADMIN_PANEL_MONGODB', e);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
+  }
+
+  Future<void> _changeUserRole(String userId, String role) async {
+    try {
+      final success = await _adminService.updateUserRole(userId, role);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(success ? 'Role updated to $role' : 'Failed to update role')),
+        );
+        if (success) await _loadUsers();
+      }
+    } catch (e) {
+      Log.e('Error updating user role', 'ADMIN_PANEL_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _toggleUserStatusAction(String userId, bool disabled) async {
+    try {
+      final success = await _adminService.toggleUserStatus(userId, disabled);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(success ? (disabled ? 'User disabled' : 'User enabled') : 'Failed to update status')),
+        );
+        if (success) await _loadUsers();
+      }
+    } catch (e) {
+      Log.e('Error toggling user status', 'ADMIN_PANEL_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
+      }
+    }
+  }
+
+  Widget _buildUsersTab() {
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _userSearchController,
+                  decoration: const InputDecoration(
+                    hintText: 'Search users by name or email',
+                    border: OutlineInputBorder(),
+                    prefixIcon: Icon(Icons.search),
+                  ),
+                  onSubmitted: (_) => _loadUsers(),
+                ),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _loadUsers,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _openCreateAdminDialog,
+                icon: const Icon(Icons.admin_panel_settings),
+                label: const Text('Create Admin'),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: _isLoadingUsers
+              ? const Center(child: CircularProgressIndicator())
+              : _users.isEmpty
+                  ? const Center(child: Text('No users found'))
+                  : ListView.builder(
+                      itemCount: _users.length,
+                      itemBuilder: (context, index) {
+                        final user = _users[index];
+                        final userId = user['_id'] ?? user['id'] ?? '';
+                        final name = user['name'] ?? user['email'] ?? 'Unknown';
+                        final email = user['email'] ?? '';
+                        final role = user['role'] ?? 'user';
+                        final disabled = user['disabled'] ?? false;
+
+                        return Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              backgroundColor: disabled ? Colors.red : Colors.blue,
+                              child: Text(
+                                name.isNotEmpty ? name[0].toUpperCase() : 'U',
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                            ),
+                            title: Text(name),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(email),
+                                Text('Role: $role'),
+                                if (disabled) const Text('Status: Disabled', style: TextStyle(color: Colors.red)),
+                              ],
+                            ),
+                            trailing: PopupMenuButton<String>(
+                              onSelected: (value) async {
+                                switch (value) {
+                                  case 'make_admin':
+                                    await _changeUserRole(userId, 'admin');
+                                    break;
+                                  case 'make_user':
+                                    await _changeUserRole(userId, 'user');
+                                    break;
+                                  case 'toggle_status':
+                                    await _toggleUserStatusAction(userId, !disabled);
+                                    break;
+                                  case 'delete':
+                                    _deleteUser(userId);
+                                    break;
+                                }
+                              },
+                              itemBuilder: (context) => [
+                                if (role != 'admin')
+                                  const PopupMenuItem(
+                                    value: 'make_admin',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.upgrade, color: Colors.green),
+                                        SizedBox(width: 8),
+                                        Text('Make Admin'),
+                                      ],
+                                    ),
+                                  ),
+                                if (role != 'user')
+                                  const PopupMenuItem(
+                                    value: 'make_user',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.person, color: Colors.blue),
+                                        SizedBox(width: 8),
+                                        Text('Make User'),
+                                      ],
+                                    ),
+                                  ),
+                                PopupMenuItem(
+                                  value: 'toggle_status',
+                                  child: Row(
+                                    children: [
+                                      Icon(disabled ? Icons.play_circle : Icons.pause_circle, color: Colors.orange),
+                                      const SizedBox(width: 8),
+                                      Text(disabled ? 'Enable User' : 'Disable User'),
+                                    ],
+                                  ),
+                                ),
+                                const PopupMenuItem(
+                                  value: 'delete',
+                                  child: Row(
+                                    children: [
+                                      Icon(Icons.delete, color: Colors.red),
+                                      SizedBox(width: 8),
+                                      Text('Delete User'),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+        ),
+      ],
     );
   }
 
@@ -405,6 +681,52 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
+                    'System Health',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  if (_systemHealth == null)
+                    const Text('Health info not available')
+                  else ...[
+                    _buildStatRow('Status', _systemHealth!['status']?.toString() ?? 'unknown'),
+                    ..._systemHealth!.entries
+                        .where((e) => e.key != 'status')
+                        .map((e) => _buildStatRow(e.key, e.value?.toString() ?? ''))
+                        .toList(),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Connectivity',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildStatRow('Web Base URL', DatabaseConfig.physicalServerUrl),
+                  _buildStatRow('API Health', _apiHealth?['status']?.toString() ?? 'unknown'),
+                  _buildStatRow('MongoDB', _mongoDbStatus?['mongodb']?['status']?.toString() ?? 'unknown'),
+                  _buildStatRow('Ngrok URL', DatabaseConfig.mobileServerUrl),
+                  _buildStatRow('Ngrok Health', _ngrokHealth?['status']?.toString() ?? 'unknown'),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 16),
+          Card(
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
                     'Admin Actions',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
@@ -418,6 +740,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                   ElevatedButton.icon(
                     onPressed: () {
                       _loadInitialData();
+                      _loadSystemHealth();
                     },
                     icon: const Icon(Icons.refresh),
                     label: const Text('Refresh Data'),
@@ -449,6 +772,16 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
 
   @override
   Widget build(BuildContext context) {
+    if (!_roleLoaded) {
+      return const Scaffold(
+        body: Center(child: CircularProgressIndicator()),
+      );
+    }
+
+    if (!_isAdmin) {
+      return _buildAccessDenied();
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: const Text('Admin Panel'),
@@ -483,47 +816,110 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_chats.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('No chats found'),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadChats,
-              child: const Text('Load Chats'),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return ListView.builder(
-      itemCount: _chats.length,
-      itemBuilder: (context, index) {
-        final chat = _chats[index];
-        final chatId = chat['_id'] ?? chat['id'] ?? '';
-        final name = chat['name'] ?? 'Unknown Chat';
-        final type = chat['type'] ?? 'private';
-        final memberCount = chat['members']?.length ?? 0;
-
-        return Card(
-          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: ListTile(
-            leading: CircleAvatar(
-              backgroundColor: type == 'group' ? Colors.green : Colors.blue,
-              child: Icon(
-                type == 'group' ? Icons.group : Icons.person,
-                color: Colors.white,
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: _loadChats,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
               ),
-            ),
-            title: Text(name),
-            subtitle: Text('Type: $type, Members: $memberCount'),
-            trailing: const Icon(Icons.arrow_forward_ios),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Clear All Chats'),
+                      content: const Text('This will permanently delete all chats and all messages. Continue?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          style: TextButton.styleFrom(foregroundColor: Colors.red),
+                          child: const Text('Delete All'),
+                        ),
+                      ],
+                    ),
+                  );
+
+                  if (confirmed == true) {
+                    try {
+                      final result = await _adminService.clearAllChats();
+                      if (mounted) {
+                        if (result != null) {
+                          final deletedChats = (result['deleted']?['chats'])?.toString() ?? '0';
+                          final deletedMessages = (result['deleted']?['messages'])?.toString() ?? '0';
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('Cleared $deletedChats chats and $deletedMessages messages')),
+                          );
+                        } else {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('Failed to clear chats')),
+                          );
+                        }
+                      }
+                      await _loadChats();
+                    } catch (e) {
+                      Log.e('Error clearing all chats', 'ADMIN_PANEL_MONGODB', e);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error: $e')),
+                        );
+                      }
+                    }
+                  }
+                },
+                icon: const Icon(Icons.delete_forever),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.red, foregroundColor: Colors.white),
+                label: const Text('Clear All Chats'),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+        Expanded(
+          child: _chats.isEmpty
+              ? Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: const [
+                      Text('No chats found'),
+                    ],
+                  ),
+                )
+              : ListView.builder(
+                  itemCount: _chats.length,
+                  itemBuilder: (context, index) {
+                    final chat = _chats[index];
+                    final name = chat['name'] ?? 'Unknown Chat';
+                    final type = chat['type'] ?? 'private';
+                    final memberCount = chat['members']?.length ?? 0;
+
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                      child: ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor: type == 'group' ? Colors.green : Colors.blue,
+                          child: Icon(
+                            type == 'group' ? Icons.group : Icons.person,
+                            color: Colors.white,
+                          ),
+                        ),
+                        title: Text(name),
+                        subtitle: Text('Type: $type, Members: $memberCount'),
+                        trailing: const Icon(Icons.arrow_forward_ios),
+                      ),
+                    );
+                  },
+                ),
+        ),
+      ],
     );
   }
 
@@ -554,7 +950,17 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
         final message = _messages[index];
         final content = message['content'] ?? '';
         final senderId = message['senderId'] ?? '';
-        final timestamp = message['timestamp'] ?? '';
+        final timestampRaw = message['timestamp'] ?? '';
+        String timestampDisplay = '';
+        if (timestampRaw is String && timestampRaw.isNotEmpty) {
+          try {
+            final dt = DateTime.parse(timestampRaw);
+            final cairo = dt.toUtc().add(const Duration(hours: 2));
+            timestampDisplay = '${cairo.year}-${cairo.month.toString().padLeft(2, '0')}-${cairo.day.toString().padLeft(2, '0')} ${cairo.hour.toString().padLeft(2, '0')}:${cairo.minute.toString().padLeft(2, '0')}';
+          } catch (_) {
+            timestampDisplay = timestampRaw.toString();
+          }
+        }
         final messageType = message['messageType'] ?? 'text';
 
         return Card(
@@ -568,7 +974,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
               ),
             ),
             title: Text(content.length > 50 ? '${content.substring(0, 50)}...' : content),
-            subtitle: Text('From: $senderId, Time: $timestamp'),
+            subtitle: Text('From: $senderId, Time: ${timestampDisplay.isEmpty ? 'Unknown' : timestampDisplay}'),
           ),
         );
       },

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'dart:typed_data';
-import '../services/enhanced_media_service.dart';
+import '../services/improved_media_service.dart';
 import '../services/logger_service.dart';
 import '../services/permission_test_service.dart';
 
@@ -504,7 +504,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
 
   Future<void> _pickImageFromGallery() async {
     try {
-      final result = await EnhancedMediaService.pickImageFromGallery(context);
+      final result = await ImprovedMediaService.pickImageFromGallery(context);
       if (result != null) {
         setState(() {
           _selectedMedia = result;
@@ -519,7 +519,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
 
   Future<void> _pickImageFromCamera() async {
     try {
-      final result = await EnhancedMediaService.pickImageFromCamera(context);
+      final result = await ImprovedMediaService.pickImageFromCamera(context);
       if (result != null) {
         setState(() {
           _selectedMedia = result;
@@ -534,7 +534,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
 
   Future<void> _pickVideoFromGallery() async {
     try {
-      final result = await EnhancedMediaService.pickVideoFromGallery(context);
+      final result = await ImprovedMediaService.pickVideoFromGallery(context);
       if (result != null) {
         setState(() {
           _selectedMedia = result;
@@ -549,7 +549,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
 
   Future<void> _pickDocument() async {
     try {
-      final result = await EnhancedMediaService.pickDocument(context);
+      final result = await ImprovedMediaService.pickDocument(context);
       if (result != null) {
         setState(() {
           _selectedMedia = result;
@@ -572,7 +572,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
         _uploadError = null;
       });
 
-      final mediaUrl = await EnhancedMediaService.uploadMediaWithProgress(
+      final mediaUrl = await ImprovedMediaService.uploadMediaWithProgress(
         _selectedMedia!,
         widget.chatId,
         (progress) {

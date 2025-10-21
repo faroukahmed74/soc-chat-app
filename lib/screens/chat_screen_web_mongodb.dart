@@ -12,6 +12,9 @@ import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
 import '../services/physical_auth_service.dart';
+import '../widgets/enhanced_media_sender.dart';
+import '../widgets/enhanced_chat_input.dart';
+import '../widgets/full_screen_media_preview.dart';
 
 class ChatScreenWebMongoDB extends StatefulWidget {
   final String chatId;
@@ -139,8 +142,7 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
     });
   }
 
-  Future<void> _sendMessage() async {
-    final content = _messageController.text.trim();
+  Future<void> _sendMessage(String content) async {
     if (content.isEmpty || _isSending) return;
 
     setState(() {
@@ -175,16 +177,55 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
     }
   }
 
+  Future<void> _sendMediaMessage(String mediaUrl, String messageType, {String? content}) async {
+    if (_isSending) return;
+
+    setState(() {
+      _isSending = true;
+    });
+
+    try {
+      final result = await _chatService.sendMediaMessage(
+        widget.chatId,
+        mediaUrl,
+        messageType,
+        content: (content != null && content.isNotEmpty) ? content : null,
+      );
+      if (result == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to send media')),
+          );
+        }
+      }
+    } catch (e) {
+      Log.e('Error sending media', 'CHAT_SCREEN_WEB_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sending media: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
+      }
+    }
+  }
+
   String _formatTimestamp(DateTime timestamp) {
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
+    // Convert to Cairo time (UTC+2)
+    final cairo = timestamp.toUtc().add(const Duration(hours: 2));
+    final nowCairo = DateTime.now().toUtc().add(const Duration(hours: 2));
+    final difference = nowCairo.difference(cairo);
 
     if (difference.inDays > 0) {
-      return '${timestamp.day}/${timestamp.month}/${timestamp.year}';
+      return '${cairo.day}/${cairo.month}/${cairo.year}';
     } else if (difference.inHours > 0) {
-      return '${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+      return '${cairo.hour}:${cairo.minute.toString().padLeft(2, '0')}';
     } else {
-      return '${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+      return '${cairo.hour}:${cairo.minute.toString().padLeft(2, '0')}';
     }
   }
 
@@ -253,21 +294,24 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            message['mediaUrl'] ?? '',
-                            width: 200,
-                            height: 200,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                width: 200,
-                                height: 200,
-                                color: Colors.grey[300],
-                                child: const Icon(Icons.broken_image),
-                              );
-                            },
+                        GestureDetector(
+                          onTap: () => _showFullScreenMedia(message['mediaUrl'] ?? '', 'image', content),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              message['mediaUrl'] ?? '',
+                              width: 200,
+                              height: 200,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: 200,
+                                  height: 200,
+                                  color: Colors.grey[300],
+                                  child: const Icon(Icons.broken_image),
+                                );
+                              },
+                            ),
                           ),
                         ),
                         if (content.isNotEmpty)
@@ -356,6 +400,18 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
     );
   }
 
+  void _showFullScreenMedia(String mediaUrl, String mediaType, String fileName) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullScreenMediaPreview(
+          mediaUrl: mediaUrl,
+          mediaType: mediaType,
+          fileName: fileName.isNotEmpty ? fileName : null,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -395,46 +451,13 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
                         },
                       ),
           ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: _themeService.isDarkMode ? Colors.grey[900] : Colors.white,
-              border: Border(
-                top: BorderSide(
-                  color: _themeService.isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    ),
-                    maxLines: null,
-                    textCapitalization: TextCapitalization.sentences,
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: _isSending ? null : _sendMessage,
-                  icon: _isSending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send),
-                ),
-              ],
-            ),
+          // Enhanced chat input with emoji picker and media attachment
+          EnhancedChatInput(
+            controller: _messageController,
+            onSendMessage: _sendMessage,
+            onSendMedia: _sendMediaMessage,
+            chatId: widget.chatId,
+            isEnabled: !_isSending,
           ),
         ],
       ),

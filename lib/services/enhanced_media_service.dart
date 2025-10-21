@@ -10,6 +10,8 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:dio/dio.dart';
 import '../config/database_config.dart';
 import 'logger_service.dart';
+import 'document_service.dart';
+import 'web_media_service.dart' if (dart.library.io) 'web_media_stub.dart';
 
 /// Enhanced media service with progress tracking, optimization, and better error handling
 class EnhancedMediaService {
@@ -606,29 +608,138 @@ class EnhancedMediaService {
 
   /// Web implementations (placeholders)
   static Future<MediaResult?> _pickImageFromCameraWeb(BuildContext context) async {
-    // Web camera implementation
-    return null;
+    try {
+      final result = await WebMediaService.pickImageFromCamera();
+      if (result == null) return null;
+      final bytes = result['bytes'] as Uint8List?;
+      if (bytes == null) return null;
+      final optimizedBytes = await _optimizeImage(bytes);
+      final fileName = (result['fileName'] as String?) ?? 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final mimeType = (result['mimeType'] as String?) ?? 'image/jpeg';
+      return MediaResult(
+        bytes: optimizedBytes,
+        type: 'image',
+        originalSize: bytes.length,
+        optimizedSize: optimizedBytes.length,
+        fileName: fileName,
+        mimeType: mimeType,
+      );
+    } catch (e) {
+      Log.e('Error picking image from camera (web)', 'ENHANCED_MEDIA', e);
+      return null;
+    }
   }
 
   static Future<MediaResult?> _pickImageFromGalleryWeb(BuildContext context) async {
-    // Web gallery implementation
-    return null;
+    try {
+      final result = await WebMediaService.pickImageFromGallery();
+      if (result == null) return null;
+      final bytes = result['bytes'] as Uint8List?;
+      if (bytes == null) return null;
+      final optimizedBytes = await _optimizeImage(bytes);
+      final fileName = (result['fileName'] as String?) ?? 'image_${DateTime.now().millisecondsSinceEpoch}.jpg';
+      final mimeType = (result['mimeType'] as String?) ?? 'image/jpeg';
+      return MediaResult(
+        bytes: optimizedBytes,
+        type: 'image',
+        originalSize: bytes.length,
+        optimizedSize: optimizedBytes.length,
+        fileName: fileName,
+        mimeType: mimeType,
+      );
+    } catch (e) {
+      Log.e('Error picking image from gallery (web)', 'ENHANCED_MEDIA', e);
+      return null;
+    }
   }
 
   static Future<MediaResult?> _pickVideoFromGalleryWeb(BuildContext context) async {
-    // Web video gallery implementation
-    return null;
+    try {
+      final result = await WebMediaService.pickVideoFromGallery();
+      if (result == null) return null;
+      final bytes = result['bytes'] as Uint8List?;
+      if (bytes == null) return null;
+      final fileName = (result['fileName'] as String?) ?? 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final mimeType = (result['mimeType'] as String?) ?? 'video/mp4';
+      return MediaResult(
+        bytes: bytes,
+        type: 'video',
+        originalSize: bytes.length,
+        optimizedSize: bytes.length,
+        fileName: fileName,
+        mimeType: mimeType,
+      );
+    } catch (e) {
+      Log.e('Error picking video from gallery (web)', 'ENHANCED_MEDIA', e);
+      return null;
+    }
   }
 
   static Future<MediaResult?> _recordVideoWeb(BuildContext context) async {
-    // Web video recording implementation
-    return null;
+    try {
+      final result = await WebMediaService.pickVideoFromCamera();
+      if (result == null) return null;
+      final bytes = result['bytes'] as Uint8List?;
+      if (bytes == null) return null;
+      final fileName = (result['fileName'] as String?) ?? 'video_${DateTime.now().millisecondsSinceEpoch}.mp4';
+      final mimeType = (result['mimeType'] as String?) ?? 'video/mp4';
+      return MediaResult(
+        bytes: bytes,
+        type: 'video',
+        originalSize: bytes.length,
+        optimizedSize: bytes.length,
+        fileName: fileName,
+        mimeType: mimeType,
+      );
+    } catch (e) {
+      Log.e('Error recording video (web)', 'ENHANCED_MEDIA', e);
+      return null;
+    }
   }
 
-  /// Document picker dialog (placeholder)
+  /// Document picker dialog bridging web and mobile services
   static Future<MediaResult?> _showDocumentPickerDialog(BuildContext context) async {
-    // Document picker implementation
-    return null;
+    try {
+      if (kIsWeb) {
+        final result = await WebMediaService.pickDocument();
+        if (result == null) return null;
+        final bytes = result['bytes'] as Uint8List?;
+        if (bytes == null) return null;
+        final fileName = (result['fileName'] as String?) ?? 'document_${DateTime.now().millisecondsSinceEpoch}.dat';
+        final mimeType = (result['mimeType'] as String?) ?? 'application/octet-stream';
+        return MediaResult(
+          bytes: bytes,
+          type: 'document',
+          originalSize: bytes.length,
+          optimizedSize: bytes.length,
+          fileName: fileName,
+          mimeType: mimeType,
+        );
+      } else {
+        final filePickerResult = await DocumentService.pickDocument();
+        if (filePickerResult != null && filePickerResult.files.isNotEmpty) {
+          final file = filePickerResult.files.first;
+          final bytes = file.bytes;
+          if (bytes != null) {
+            final fileName = file.name;
+            final extension = file.extension;
+            final mimeType = DocumentService.mimeTypes[extension?.toLowerCase()] ?? 'application/octet-stream';
+            return MediaResult(
+              bytes: bytes,
+              type: 'document',
+              originalSize: bytes.length,
+              optimizedSize: bytes.length,
+              fileName: fileName,
+              mimeType: mimeType,
+            );
+          }
+        }
+        return null;
+      }
+    } catch (e) {
+      Log.e('Error picking document', 'ENHANCED_MEDIA', e);
+      return null;
+    }
   }
 }
 

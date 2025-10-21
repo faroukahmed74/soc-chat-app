@@ -1,6 +1,6 @@
 import 'dart:typed_data';
 import 'dart:async';
-import 'package:web/web.dart' as web;
+import 'dart:html' as html;
 import '../services/logger_service.dart';
 
 /// Modern web media service using package:web instead of deprecated dart:html
@@ -272,25 +272,26 @@ class WebMediaService {
   /// Check if voice recording is active (web implementation - always false)
   static bool isVoiceRecording() => false;
 
-  /// Read file as bytes using modern web APIs
+  /// Read file as bytes using web FileReader (ArrayBuffer -> Uint8List)
   static Future<Uint8List?> _readFileAsBytes(html.File file) async {
     try {
       final reader = html.FileReader();
       final completer = Completer<Uint8List?>();
-      
+
       reader.onLoad.listen((event) {
-        if (reader.result is Uint8List) {
-          completer.complete(reader.result as Uint8List);
+        final result = reader.result;
+        if (result is ByteBuffer) {
+          completer.complete(Uint8List.view(result));
         } else {
           completer.complete(null);
         }
       });
-      
+
       reader.onError.listen((event) {
         Log.e('FileReader error', 'WEB_MEDIA', event);
         completer.complete(null);
       });
-      
+
       reader.readAsArrayBuffer(file);
       return completer.future;
     } catch (e) {
@@ -346,4 +347,4 @@ class WebMediaService {
         return 'application/octet-stream';
     }
   }
-} 
+}

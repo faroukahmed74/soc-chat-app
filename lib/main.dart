@@ -30,7 +30,8 @@ import 'services/logger_service.dart';
 import 'widgets/error_boundary.dart';
 import 'routes/native_routes.dart' if (dart.library.html) 'routes/web_routes.dart' as app_routes;
 import 'screens/chat_list_screen_mongodb.dart';
-import 'screens/chat_list_screen_web_mongodb.dart' if (dart.library.html) 'screens/chat_list_screen_web_mongodb.dart' as chat_screen;
+import 'services/realtime_service.dart';
+import 'services/active_chat_service.dart';
 
 // =============================================================================
 // GLOBAL NAVIGATOR KEY
@@ -260,15 +261,36 @@ class _AuthGateState extends State<AuthGate> {
       final token = await DatabaseConfig.getStoredAuthToken();
       print('AuthGate: Stored token exists: ${token.isNotEmpty}');
       
+      bool isValid = false;
+      if (token.isNotEmpty) {
+        try {
+          final base = DatabaseConfig.physicalServerUrl;
+          final verifyUrl = base.endsWith('/') ? '${base}api/auth/verify' : '$base/api/auth/verify';
+          final resp = await http
+              .get(Uri.parse(verifyUrl), headers: {
+                'Authorization': 'Bearer ' + token,
+                'ngrok-skip-browser-warning': 'true',
+              })
+              .timeout(const Duration(seconds: 3));
+          isValid = resp.statusCode == 200;
+          print('AuthGate: Token verify status: ' + resp.statusCode.toString());
+        } catch (e) {
+          print('AuthGate: Token verify error: ' + e.toString());
+          isValid = false;
+        }
+      }
+      
       if (mounted) {
         setState(() {
-          _isAuthenticated = token.isNotEmpty;
+          _isAuthenticated = token.isNotEmpty && isValid;
           _isLoading = false;
         });
       }
       
-      if (token.isNotEmpty) {
-        print('AuthGate: Token found - showing MainApp');
+      if (token.isNotEmpty && isValid) {
+        print('AuthGate: Valid token - showing MainApp');
+      } else if (token.isNotEmpty && !isValid) {
+        print('AuthGate: Invalid/expired token - redirecting to LoginScreen');
       } else {
         print('AuthGate: No token - showing LoginScreen');
       }
@@ -346,6 +368,44 @@ class _MainAppState extends State<MainApp> {
       // Presence service removed - using MongoDB/ngrok API only
       Log.i('Presence service removed (physical server mode)', 'MAIN_APP');
 
+      // Initialize global realtime listener for notifications
+      try {
+        final realtime = RealtimeService.instance;
+        await realtime.connect();
+        // Join all chats after login: lightweight approach is to rely on message events
+        realtime.onNewMessage((msg) async {
+          try {
+            final chatId = (msg['chatId'] ?? msg['chat_id'] ?? '').toString();
+            final senderName = (msg['senderName'] ?? 'Someone').toString();
+            final content = (msg['content'] ?? '').toString();
+            final active = ActiveChatService.instance.isActive(chatId);
+            if (!active) {
+              if (kIsWeb) {
+                // On web, show a simple in-app SnackBar
+                navigatorKey.currentState?.overlay?.context.mounted == true
+                    ? ScaffoldMessenger.of(navigatorKey.currentState!.overlay!.context).showSnackBar(
+                        SnackBar(content: Text('$senderName: $content')),
+                      )
+                    : null;
+              } else {
+                // On mobile, fire a local notification
+                await UnifiedNotificationService().sendChatMessageNotification(
+                  title: senderName,
+                  body: content.isNotEmpty ? content : 'New message',
+                  chatId: chatId,
+                  senderId: (msg['senderId'] ?? '').toString(),
+                  senderName: senderName,
+                );
+              }
+            }
+          } catch (e) {
+            Log.e('Realtime message notify error', 'MAIN_APP', e);
+          }
+        });
+      } catch (e) {
+        Log.e('Realtime init failed', 'MAIN_APP', e);
+      }
+
       Log.i('App initialization completed successfully', 'MAIN_APP');
     } catch (e) {
       Log.e('Error during app initialization', 'MAIN_APP', e);
@@ -405,7 +465,7 @@ class _MainAppState extends State<MainApp> {
   }
 
   @override
-  Widget build(BuildContext context) => kIsWeb ? const chat_screen.ChatListScreenWebMongoDB() : const ChatListScreenMongoDB();
+  Widget build(BuildContext context) => const ChatListScreenMongoDB();
 }
 
 // =============================================================================

@@ -30,14 +30,20 @@ class MongoDBAdminService {
   }
 
   /// Get all users (admin only)
-  Future<List<Map<String, dynamic>>> getAllUsers() async {
+  Future<List<Map<String, dynamic>>> getAllUsers({String? search, int page = 1, int limit = 50}) async {
     try {
       final token = await _getAuthToken();
       if (token == null) throw Exception('No auth token');
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
+      final queryParams = {
+        'page': page.toString(),
+        'limit': limit.toString(),
+        if (search != null && search.isNotEmpty) 'search': search,
+      };
+      final uri = Uri.parse('$baseUrl/api/admin/users').replace(queryParameters: queryParams);
       final response = await http.get(
-        Uri.parse('$baseUrl/api/admin/users'),
+        uri,
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -94,14 +100,20 @@ class MongoDBAdminService {
   }
 
   /// Get all messages (admin only)
-  Future<List<Map<String, dynamic>>> getAllMessages({int limit = 100}) async {
+  Future<List<Map<String, dynamic>>> getAllMessages({String? chatId, int page = 1, int limit = 100}) async {
     try {
       final token = await _getAuthToken();
       if (token == null) throw Exception('No auth token');
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
+      final queryParams = {
+        'page': page.toString(),
+        'limit': limit.toString(),
+        if (chatId != null && chatId.isNotEmpty) 'chatId': chatId,
+      };
+      final uri = Uri.parse('$baseUrl/api/admin/messages').replace(queryParameters: queryParams);
       final response = await http.get(
-        Uri.parse('$baseUrl/api/admin/messages?limit=$limit'),
+        uri,
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -171,6 +183,32 @@ class MongoDBAdminService {
     }
   }
 
+  /// Clear all chats and messages (admin only)
+  Future<Map<String, dynamic>?> clearAllChats() async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/admin/chats/clear'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      Log.e('Error clearing all chats', 'MONGODB_ADMIN_SERVICE', e);
+      return null;
+    }
+  }
+
   /// Delete a message (admin only)
   Future<bool> deleteMessage(String messageId) async {
     try {
@@ -201,7 +239,7 @@ class MongoDBAdminService {
       if (token == null) throw Exception('No auth token');
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
-      final response = await http.patch(
+      final response = await http.put(
         Uri.parse('$baseUrl/api/admin/users/$userId/role'),
         headers: {
           'Authorization': 'Bearer $token',
@@ -404,6 +442,131 @@ class MongoDBAdminService {
     } catch (e) {
       Log.e('Error cleaning up old data', 'MONGODB_ADMIN_SERVICE', e);
       return false;
+    }
+  }
+
+  /// Create a new admin user (admin only)
+  Future<Map<String, dynamic>?> createAdminUser({required String email, required String password, required String displayName}) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/admin/users/admin'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({
+          'email': email,
+          'password': password,
+          'displayName': displayName,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      Log.e('Error creating admin user', 'MONGODB_ADMIN_SERVICE', e);
+      return null;
+    }
+  }
+
+  /// Get system health (admin only)
+  Future<Map<String, dynamic>?> getSystemHealth() async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/admin/health'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      Log.e('Error getting system health', 'MONGODB_ADMIN_SERVICE', e);
+      return null;
+    }
+  }
+
+  /// Get general API health (unprotected)
+  Future<Map<String, dynamic>?> getApiHealth() async {
+    try {
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/health'),
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 503) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      Log.e('Error getting API health', 'MONGODB_ADMIN_SERVICE', e);
+      return null;
+    }
+  }
+
+  /// Get MongoDB status (unprotected)
+  Future<Map<String, dynamic>?> getMongoDbStatus() async {
+    try {
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/status/mongodb'),
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 503) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      Log.e('Error getting MongoDB status', 'MONGODB_ADMIN_SERVICE', e);
+      return null;
+    }
+  }
+
+  /// Get ngrok-exposed API health (mobile base URL)
+  Future<Map<String, dynamic>?> getNgrokHealth() async {
+    try {
+      final ngrokUrl = DatabaseConfig.mobileServerUrl;
+      if (ngrokUrl.isEmpty) return null;
+
+      final response = await http.get(
+        Uri.parse('$ngrokUrl/api/health'),
+        headers: {
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200 || response.statusCode == 503) {
+        return json.decode(response.body) as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      Log.e('Error getting ngrok health', 'MONGODB_ADMIN_SERVICE', e);
+      return null;
     }
   }
 }

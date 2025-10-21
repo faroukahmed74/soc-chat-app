@@ -72,6 +72,9 @@ class PhysicalAuthService {
   Future<Map<String, dynamic>> register(String email, String password, String name) async {
     try {
       final baseUrl = DatabaseConfig.physicalServerUrl;
+      Log.i('Registering user at: $baseUrl/api/auth/register', 'PHYSICAL_AUTH');
+      Log.i('Full registration URL: $baseUrl/api/auth/register', 'PHYSICAL_AUTH');
+      
       final response = await http.post(
         Uri.parse('$baseUrl/api/auth/register'),
         headers: {
@@ -84,6 +87,9 @@ class PhysicalAuthService {
           'name': name,
         }),
       );
+
+      Log.i('Registration response status: ${response.statusCode}', 'PHYSICAL_AUTH');
+      Log.i('Registration response body: ${response.body}', 'PHYSICAL_AUTH');
 
       if (response.statusCode == 201) {
         final data = json.decode(response.body);
@@ -102,12 +108,21 @@ class PhysicalAuthService {
           'user': user,
         };
       } else {
-        final error = json.decode(response.body);
-        Log.e('Registration failed', 'PHYSICAL_AUTH', error['message']);
-        return {
-          'success': false,
-          'error': error['message'] ?? 'Registration failed',
-        };
+        // Try to parse error response, but handle cases where it's not JSON
+        try {
+          final error = json.decode(response.body);
+          Log.e('Registration failed', 'PHYSICAL_AUTH', error['message']);
+          return {
+            'success': false,
+            'error': error['message'] ?? 'Registration failed',
+          };
+        } catch (parseError) {
+          Log.e('Registration failed - non-JSON response', 'PHYSICAL_AUTH', response.body);
+          return {
+            'success': false,
+            'error': 'Server error: ${response.statusCode} - ${response.body}',
+          };
+        }
       }
     } catch (e) {
       Log.e('Registration error', 'PHYSICAL_AUTH', e);

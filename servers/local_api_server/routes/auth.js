@@ -7,7 +7,8 @@ const { MongoClient, ObjectId } = require('mongodb');
 // MongoDB connection
 let db;
 const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app';
-const jwtSecret = process.env.JWT_SECRET || 'your_jwt_secret_here';
+// Ensure we use the same JWT secret as the main server
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_here';
 
 // Connect to MongoDB
 async function connectDB() {
@@ -70,7 +71,7 @@ router.post('/register', async (req, res) => {
     // Create token
     const token = jwt.sign(
       { id: result.insertedId.toString(), role: 'user', email },
-      jwtSecret,
+      JWT_SECRET,
       { expiresIn: '1d' }
     );
     
@@ -118,7 +119,7 @@ router.post('/login', async (req, res) => {
     // Create token
     const token = jwt.sign(
       { id: user._id.toString(), role: user.role || 'user', email: user.email },
-      jwtSecret,
+      JWT_SECRET,
       { expiresIn: '1d' }
     );
     
@@ -148,7 +149,7 @@ router.get('/user', async (req, res) => {
     }
     
     // Verify token
-    const decoded = jwt.verify(token, jwtSecret);
+    const decoded = jwt.verify(token, JWT_SECRET);
     
     const database = await connectDB();
     const usersCollection = database.collection('users');
@@ -186,7 +187,7 @@ router.get('/verify', async (req, res) => {
     }
 
     // Verify token
-    const decoded = jwt.verify(token, jwtSecret);
+    const decoded = jwt.verify(token, JWT_SECRET);
 
     // Optionally check user existence
     const database = await connectDB();

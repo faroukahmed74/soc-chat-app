@@ -12,6 +12,11 @@ import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
 import '../services/physical_auth_service.dart';
+import '../widgets/enhanced_media_sender.dart';
+import '../widgets/enhanced_chat_input.dart';
+import '../widgets/full_screen_media_preview.dart';
+import '../services/realtime_service.dart';
+import '../services/active_chat_service.dart';
 
 class ChatScreenMongoDB extends StatefulWidget {
   final String chatId;
@@ -44,6 +49,64 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   String? _currentUserName;
   StreamSubscription? _messagesSubscription;
   late ThemeService _themeService;
+  final RealtimeService _realtime = RealtimeService.instance;
+  final ActiveChatService _activeChat = ActiveChatService.instance;
+  
+  String? _extractMessageId(Map<String, dynamic> m) {
+    final id = m['_id'] ?? m['id'];
+    return id?.toString();
+  }
+
+  String? _extractSenderId(Map<String, dynamic> m) {
+    var v = m['senderId'] ?? m['sender_id'];
+    if (v == null) {
+      final s = m['sender'];
+      if (s is Map) {
+        v = s['id'] ?? s['_id'];
+      } else if (s != null) {
+        v = s.toString();
+      }
+    }
+    return v?.toString();
+  }
+
+  String _extractSenderName(Map<String, dynamic> m) {
+    var n = m['senderName'] ?? m['sender_name'];
+    if (n == null) {
+      final s = m['sender'];
+      if (s is Map) {
+        n = s['name'] ?? s['username'] ?? s['email'];
+      }
+    }
+    return (n ?? 'Unknown').toString();
+  }
+
+  String _extractContent(Map<String, dynamic> m) {
+    return (m['content'] ?? m['text'] ?? m['body'] ?? '').toString();
+  }
+
+  String _extractType(Map<String, dynamic> m) {
+    return (m['messageType'] ?? m['type'] ?? 'text').toString();
+  }
+
+  String? _extractMediaUrl(Map<String, dynamic> m) {
+    final url = m['mediaUrl'] ?? m['media_url'] ?? m['url'];
+    return url?.toString();
+  }
+
+  DateTime _extractTimestamp(Map<String, dynamic> m) {
+    final t = m['timestamp'] ?? m['createdAt'] ?? m['created_at'];
+    if (t is String && t.isNotEmpty) {
+      try {
+        return DateTime.parse(t);
+      } catch (_) {}
+    } else if (t is int) {
+      try {
+        return DateTime.fromMillisecondsSinceEpoch(t);
+      } catch (_) {}
+    }
+    return DateTime.now();
+  }
 
   @override
   void initState() {
@@ -53,6 +116,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       if (mounted) setState(() {});
     });
     _initializeChat();
+    _activeChat.setActiveChat(widget.chatId);
   }
 
   @override
@@ -60,6 +124,8 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     _messagesSubscription?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
+    _realtime.leaveChat(widget.chatId);
+    _activeChat.clearActiveChat(widget.chatId);
     super.dispose();
   }
 
@@ -81,6 +147,16 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
 
       // Start listening for new messages
       _startMessageListener();
+
+      // Realtime: connect and join chat room, update on incoming events
+      await _realtime.connect();
+      _realtime.joinChat(widget.chatId);
+      _realtime.onNewMessage((msg) {
+        final chatId = (msg['chatId'] ?? msg['chat_id'] ?? '').toString();
+        if (chatId == widget.chatId) {
+          _loadMessages();
+        }
+      });
     } catch (e) {
       Log.e('Error initializing chat', 'CHAT_SCREEN_MONGODB', e);
       if (mounted) {
@@ -98,12 +174,26 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   }
 
   Future<void> _loadMessages() async {
+    // Validate chat ID before making API call
+    if (widget.chatId.isEmpty) {
+      Log.e('Cannot load messages: chat ID is empty', 'CHAT_SCREEN_MONGODB');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: Invalid chat ID')),
+        );
+      }
+      return;
+    }
+    
     try {
+      Log.i('Loading messages for chat ID: ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
       final messages = await _chatService.getChatMessages(widget.chatId);
       if (mounted) {
         setState(() {
           _messages = messages;
         });
+        // Mark messages as read for those not sent by current user
+        await _markMessagesAsRead(_messages);
         _scrollToBottom();
       }
     } catch (e) {
@@ -118,6 +208,8 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           setState(() {
             _messages = messages;
           });
+          // Mark incoming messages as read when viewing the chat
+          _markMessagesAsRead(_messages);
           _scrollToBottom();
         }
       },
@@ -125,6 +217,21 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         Log.e('Error in message stream', 'CHAT_SCREEN_MONGODB', error);
       },
     );
+  }
+
+  Future<void> _markMessagesAsRead(List<Map<String, dynamic>> messages) async {
+    try {
+      if (_currentUserId == null || messages.isEmpty) return;
+      final messageIds = messages
+          .where((m) => _extractSenderId(m) != _currentUserId)
+          .map((m) => _extractMessageId(m))
+          .whereType<String>()
+          .toList();
+      if (messageIds.isEmpty) return;
+      await _chatService.markMessagesAsRead(widget.chatId, messageIds);
+    } catch (e) {
+      Log.e('Error marking messages as read', 'CHAT_SCREEN_MONGODB', e);
+    }
   }
 
   void _scrollToBottom() {
@@ -139,15 +246,26 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     });
   }
 
-  Future<void> _sendMessage() async {
-    final content = _messageController.text.trim();
+  Future<void> _sendMessage(String content) async {
     if (content.isEmpty || _isSending) return;
+    
+    // Validate chat ID before sending message
+    if (widget.chatId.isEmpty) {
+      Log.e('Cannot send message: chat ID is empty', 'CHAT_SCREEN_MONGODB');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Error: Invalid chat ID')),
+        );
+      }
+      return;
+    }
 
     setState(() {
       _isSending = true;
     });
 
     try {
+      Log.i('Sending message to chat ID: ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
       final result = await _chatService.sendTextMessage(widget.chatId, content);
       if (result != null) {
         _messageController.clear();
@@ -175,7 +293,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     }
   }
 
-  Future<void> _sendMediaMessage(String mediaUrl, String messageType) async {
+  Future<void> _sendMediaMessage(String mediaUrl, String messageType, {String? content}) async {
     if (_isSending) return;
 
     setState(() {
@@ -183,7 +301,12 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     });
 
     try {
-      final result = await _chatService.sendMediaMessage(widget.chatId, mediaUrl, messageType);
+      final result = await _chatService.sendMediaMessage(
+        widget.chatId,
+        mediaUrl,
+        messageType,
+        content: (content != null && content.isNotEmpty) ? content : null,
+      );
       if (result == null) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -208,26 +331,28 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   }
 
   String _formatTimestamp(DateTime timestamp) {
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
+    // Convert to Cairo time (UTC+2)
+    final cairo = timestamp.toUtc().add(const Duration(hours: 2));
+    final nowCairo = DateTime.now().toUtc().add(const Duration(hours: 2));
+    final difference = nowCairo.difference(cairo);
 
     if (difference.inDays > 0) {
-      return '${timestamp.day}/${timestamp.month}/${timestamp.year}';
+      return '${cairo.day}/${cairo.month}/${cairo.year}';
     } else if (difference.inHours > 0) {
-      return '${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+      return '${cairo.hour}:${cairo.minute.toString().padLeft(2, '0')}';
     } else {
-      return '${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+      return '${cairo.hour}:${cairo.minute.toString().padLeft(2, '0')}';
     }
   }
 
   Widget _buildMessageBubble(Map<String, dynamic> message) {
-    final isCurrentUser = message['senderId'] == _currentUserId;
-    final content = message['content'] ?? '';
-    final messageType = message['messageType'] ?? 'text';
-    final timestamp = message['timestamp'] != null 
-        ? DateTime.parse(message['timestamp'])
-        : DateTime.now();
-    final senderName = message['senderName'] ?? 'Unknown';
+    final senderId = _extractSenderId(message);
+    final isCurrentUser = senderId == _currentUserId;
+    final content = _extractContent(message);
+    final messageType = _extractType(message);
+    final timestamp = _extractTimestamp(message);
+    final senderName = _extractSenderName(message);
+    final mediaUrl = _extractMediaUrl(message) ?? '';
 
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
@@ -285,21 +410,24 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            message['mediaUrl'] ?? '',
-                            width: 200,
-                            height: 200,
-                            fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                width: 200,
-                                height: 200,
-                                color: Colors.grey[300],
-                                child: const Icon(Icons.broken_image),
-                              );
-                            },
+                        GestureDetector(
+                          onTap: () => _showFullScreenMedia(mediaUrl, 'image', content),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.network(
+                              mediaUrl,
+                              width: 200,
+                              height: 200,
+                              fit: BoxFit.cover,
+                              errorBuilder: (context, error, stackTrace) {
+                                return Container(
+                                  width: 200,
+                                  height: 200,
+                                  color: Colors.grey[300],
+                                  child: const Icon(Icons.broken_image),
+                                );
+                              },
+                            ),
                           ),
                         ),
                         if (content.isNotEmpty)
@@ -320,18 +448,40 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Container(
-                          width: 200,
-                          height: 150,
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(8),
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.play_circle_filled,
-                              color: Colors.white,
-                              size: 50,
+                        GestureDetector(
+                          onTap: () => _showFullScreenMedia(mediaUrl, 'video', content),
+                          child: Container(
+                            width: 200,
+                            height: 150,
+                            decoration: BoxDecoration(
+                              color: Colors.black,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Stack(
+                              children: [
+                                // Video thumbnail placeholder
+                                Container(
+                                  width: 200,
+                                  height: 150,
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey[800],
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: const Icon(
+                                    Icons.videocam,
+                                    color: Colors.white54,
+                                    size: 40,
+                                  ),
+                                ),
+                                // Play button overlay
+                                const Center(
+                                  child: Icon(
+                                    Icons.play_circle_filled,
+                                    color: Colors.white,
+                                    size: 50,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         ),
@@ -347,6 +497,140 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                               ),
                             ),
                           ),
+                      ],
+                    )
+                  else if (messageType == 'audio' || messageType == 'voice')
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        GestureDetector(
+                          onTap: () => _showFullScreenMedia(mediaUrl, messageType, content),
+                          child: Container(
+                            width: 200,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              color: isCurrentUser
+                                  ? Colors.blue[600]
+                                  : (_themeService.isDarkMode ? Colors.grey[700] : Colors.grey[300]),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const SizedBox(width: 12),
+                                Icon(
+                                  messageType == 'voice' ? Icons.mic : Icons.music_note,
+                                  color: isCurrentUser ? Colors.white : Colors.grey[600],
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        messageType == 'voice' ? 'Voice Message' : 'Audio Message',
+                                        style: TextStyle(
+                                          color: isCurrentUser ? Colors.white : Colors.black87,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 4),
+                                      Text(
+                                        'Tap to play',
+                                        style: TextStyle(
+                                          color: isCurrentUser ? Colors.white70 : Colors.grey[600],
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                Icon(
+                                  Icons.play_circle_filled,
+                                  color: isCurrentUser ? Colors.white : Colors.grey[600],
+                                  size: 32,
+                                ),
+                                const SizedBox(width: 12),
+                              ],
+                            ),
+                          ),
+                        ),
+                        if (content.isNotEmpty)
+                          Padding(
+                            padding: const EdgeInsets.only(top: 8),
+                            child: Text(
+                              content,
+                              style: TextStyle(
+                                color: isCurrentUser
+                                    ? Colors.white
+                                    : (_themeService.isDarkMode ? Colors.white : Colors.black87),
+                              ),
+                            ),
+                          ),
+                      ],
+                    )
+                  else if (messageType == 'document')
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        GestureDetector(
+                          onTap: () => _showFullScreenMedia(mediaUrl, 'document', content),
+                          child: Container(
+                            width: 200,
+                            height: 80,
+                            decoration: BoxDecoration(
+                              color: isCurrentUser
+                                  ? Colors.orange[600]
+                                  : (_themeService.isDarkMode ? Colors.grey[700] : Colors.grey[300]),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Row(
+                              children: [
+                                const SizedBox(width: 12),
+                                const Icon(
+                                  Icons.description,
+                                  color: Colors.white,
+                                  size: 24,
+                                ),
+                                const SizedBox(width: 12),
+                                Expanded(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        content.isNotEmpty ? content : 'Document',
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      const SizedBox(height: 4),
+                                      const Text(
+                                        'Tap to open',
+                                        style: TextStyle(
+                                          color: Colors.white70,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                                const SizedBox(width: 12),
+                                const Icon(
+                                  Icons.download,
+                                  color: Colors.white70,
+                                  size: 20,
+                                ),
+                                const SizedBox(width: 12),
+                              ],
+                            ),
+                          ),
+                        ),
                       ],
                     )
                   else
@@ -384,6 +668,18 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
             ),
           ],
         ],
+      ),
+    );
+  }
+
+  void _showFullScreenMedia(String mediaUrl, String mediaType, String fileName) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => FullScreenMediaPreview(
+          mediaUrl: mediaUrl,
+          mediaType: mediaType,
+          fileName: fileName.isNotEmpty ? fileName : null,
+        ),
       ),
     );
   }
@@ -427,46 +723,13 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                         },
                       ),
           ),
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: _themeService.isDarkMode ? Colors.grey[900] : Colors.white,
-              border: Border(
-                top: BorderSide(
-                  color: _themeService.isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                    ),
-                    maxLines: null,
-                    textCapitalization: TextCapitalization.sentences,
-                    onSubmitted: (_) => _sendMessage(),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                IconButton(
-                  onPressed: _isSending ? null : _sendMessage,
-                  icon: _isSending
-                      ? const SizedBox(
-                          width: 20,
-                          height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.send),
-                ),
-              ],
-            ),
+          // Enhanced chat input with emoji picker and media attachment
+          EnhancedChatInput(
+            controller: _messageController,
+            onSendMessage: _sendMessage,
+            onSendMedia: _sendMediaMessage,
+            chatId: widget.chatId,
+            isEnabled: !_isSending,
           ),
         ],
       ),

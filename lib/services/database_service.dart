@@ -64,8 +64,9 @@ class MongoDBService implements DatabaseService {
       );
       
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => _createDocumentSnapshot(json)).toList();
+        final body = json.decode(response.body);
+        final List<dynamic> chats = (body is Map && body['chats'] is List) ? body['chats'] : [];
+        return chats.map((json) => _createDocumentSnapshot(json)).toList();
       } else {
         throw Exception('Failed to load chats: ${response.statusCode}');
       }
@@ -77,8 +78,10 @@ class MongoDBService implements DatabaseService {
   @override
   Future<List<DocumentSnapshot>> getChatMessages(String chatId, {int limit = 50, int offset = 0}) async {
     try {
+      // Local API expects pagination via page/limit on /api/messages/:chatId
+      final int page = (offset ~/ limit) + 1;
       final response = await http.get(
-        Uri.parse('$baseUrl/api/chats/$chatId/messages?limit=$limit&offset=$offset'),
+        Uri.parse('$baseUrl/api/messages/$chatId?limit=$limit&page=$page'),
         headers: {
           'Authorization': 'Bearer $authToken',
           'Content-Type': 'application/json',
@@ -87,8 +90,9 @@ class MongoDBService implements DatabaseService {
       );
       
       if (response.statusCode == 200) {
-        final List<dynamic> data = json.decode(response.body);
-        return data.map((json) => _createDocumentSnapshot(json)).toList();
+        final body = json.decode(response.body);
+        final List<dynamic> messages = (body is Map && body['messages'] is List) ? body['messages'] : [];
+        return messages.map((json) => _createDocumentSnapshot(json)).toList();
       } else {
         throw Exception('Failed to load messages: ${response.statusCode}');
       }
@@ -101,22 +105,25 @@ class MongoDBService implements DatabaseService {
   Future<DocumentReference> sendMessage(String chatId, String content, {String? mediaUrl, String? messageType}) async {
     try {
       final response = await http.post(
-        Uri.parse('$baseUrl/api/chats/$chatId/messages'),
+        Uri.parse('$baseUrl/api/messages'),
         headers: {
           'Authorization': 'Bearer $authToken',
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
         body: json.encode({
+          'chatId': chatId,
           'content': content,
-          'messageType': messageType ?? 'text',
+          'type': messageType ?? 'text',
           'mediaUrl': mediaUrl,
         }),
       );
       
       if (response.statusCode == 201 || response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return _createDocumentReference(data['id'], 'messages');
+        final body = json.decode(response.body);
+        final data = (body is Map && body['messageData'] is Map) ? body['messageData'] : body;
+        final messageId = data['_id'] ?? data['id'] ?? '';
+        return _createDocumentReference(messageId, 'messages');
       } else {
         throw Exception('Failed to send message: ${response.statusCode}');
       }
@@ -174,8 +181,8 @@ class MongoDBService implements DatabaseService {
   @override
   Future<void> updateUserStatus(String userId, String status) async {
     try {
-      final response = await http.patch(
-        Uri.parse('$baseUrl/api/users/$userId'),
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/users/$userId/status'),
         headers: {
           'Authorization': 'Bearer $authToken',
           'Content-Type': 'application/json',
@@ -221,7 +228,8 @@ class MongoDBService implements DatabaseService {
       
       if (response.statusCode == 201 || response.statusCode == 200) {
         final data = json.decode(response.body);
-        return _createDocumentReference(data['id'], 'chats');
+        final chatId = data['_id'] ?? data['id'] ?? '';
+        return _createDocumentReference(chatId, 'chats');
       } else {
         throw Exception('Failed to create chat: ${response.statusCode}');
       }
@@ -233,14 +241,14 @@ class MongoDBService implements DatabaseService {
   @override
   Future<void> addUserToChat(String chatId, String userId) async {
     try {
-      final response = await http.post(
+      final response = await http.put(
         Uri.parse('$baseUrl/api/chats/$chatId/members'),
         headers: {
           'Authorization': 'Bearer $authToken',
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-        body: json.encode({'userId': userId}),
+        body: json.encode({'userId': userId, 'action': 'add'}),
       );
       
       if (response.statusCode != 200) {
@@ -254,13 +262,14 @@ class MongoDBService implements DatabaseService {
   @override
   Future<void> removeUserFromChat(String chatId, String userId) async {
     try {
-      final response = await http.delete(
-        Uri.parse('$baseUrl/api/chats/$chatId/members/$userId'),
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/chats/$chatId/members'),
         headers: {
           'Authorization': 'Bearer $authToken',
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
+        body: json.encode({'userId': userId, 'action': 'remove'}),
       );
       
       if (response.statusCode != 200) {

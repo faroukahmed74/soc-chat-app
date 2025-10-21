@@ -21,6 +21,8 @@ const { jwtVerify, createRemoteJWKSet } = require('jose');
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
+// Trust reverse proxies (e.g., ngrok) so Express uses X-Forwarded-For for req.ip
+app.set('trust proxy', 1);
 // CORS allowed origins (comma-separated). Example: https://api.example.com,http://localhost:8080
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8080,http://localhost:8082,http://192.168.0.117:8080,http://192.168.0.117:8082,http://10.120.4.230:8080,http://10.120.4.230:8082')
   .split(',')
@@ -141,12 +143,29 @@ app.use(morgan('dev'));
 // Basic rate limiting - more lenient for development
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // Increased limit for development
+  // Bump global cap to accommodate polling during development
+  max: parseInt(process.env.RATE_LIMIT_MAX || '10000', 10),
   standardHeaders: true,
   legacyHeaders: false,
   message: {
     error: 'Too many requests from this IP',
     message: 'Please try again later'
+  },
+  // IPv6-safe key generator; honors trust proxy and avoids bypasses
+  keyGenerator: rateLimit.ipKeyGenerator,
+  // Skip rate limiting for health, auth, and high-frequency polling endpoints
+  skip: (req) => {
+    const p = req.path || '';
+    const m = (req.method || 'GET').toUpperCase();
+    // Health/status endpoints
+    if (p === '/health' || p.startsWith('/api/health') || p.startsWith('/api/status/')) return true;
+    // Preflight/HEAD
+    if (m === 'OPTIONS' || m === 'HEAD') return true;
+    // Polling-heavy GET endpoints
+    if (m === 'GET' && (p === '/api/chats' || (p.startsWith('/api/chats/') && p.endsWith('/messages')))) return true;
+    // Allow message send and auth to bypass rate limit
+    if (p.startsWith('/api/messages') || p.startsWith('/api/auth')) return true;
+    return false;
   }
 });
 app.use(limiter);
@@ -217,7 +236,7 @@ const upload = multer({
 
 // MongoDB Connection with Enhanced Monitoring
 // Use MONGO_URI from environment; ensure it matches your local auth setup
-const mongoURI = process.env.MONGO_URI || 'mongodb://admin:SecurePassword123!@localhost:27017/soc_chat_app?authSource=admin';
+const mongoURI = process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app';
 let client = new MongoClient(mongoURI, {
   // Connection pool settings
   maxPoolSize: 10,
@@ -691,10 +710,24 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
     const userId = req.user.id;
     
     const chats = await db.collection('chats')
-      .find({ memberIds: userId })
+      .find({ members: new ObjectId(userId) })
       .toArray();
     
-    res.json(chats);
+    // Format chats to include type field for frontend
+    const formattedChats = chats.map(chat => ({
+      _id: chat._id.toString(),
+      id: chat._id.toString(),
+      name: chat.name,
+      type: chat.type || 'group', // Default to 'group' for existing chats
+      members: chat.members.map(id => id.toString()),
+      createdBy: chat.createdBy ? chat.createdBy.toString() : null,
+      createdAt: chat.createdAt,
+      updatedAt: chat.updatedAt,
+      lastMessage: chat.lastMessage,
+      lastMessageTime: chat.lastMessageTime
+    }));
+    
+    res.json(formattedChats);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -703,12 +736,12 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
 
 app.post('/api/chats', authenticateToken, async (req, res) => {
   try {
-    const { type, name, memberIds } = req.body;
+    const { type, name, members } = req.body;
     
     const chat = {
       type,
       name,
-      memberIds,
+      members: Array.isArray(members) ? members.map(id => new ObjectId(id)) : [],
       createdAt: new Date(),
       updatedAt: new Date()
     };
@@ -732,12 +765,12 @@ app.put('/api/chats/:chatId/members', authenticateToken, async (req, res) => {
     if (action === 'add') {
       await db.collection('chats').updateOne(
         { _id: new ObjectId(req.params.chatId) },
-        { $addToSet: { memberIds: userId } }
+        { $addToSet: { members: new ObjectId(userId) } }
       );
     } else if (action === 'remove') {
       await db.collection('chats').updateOne(
         { _id: new ObjectId(req.params.chatId) },
-        { $pull: { memberIds: userId } }
+        { $pull: { members: new ObjectId(userId) } }
       );
     }
     
@@ -753,10 +786,20 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
   try {
     const limit = parseInt(req.query.limit) || 50;
     const offset = parseInt(req.query.offset) || 0;
+    const chatId = req.params.chatId;
+    
+    // Verify user is a member of the chat using `members`
+    const chat = await db.collection('chats').findOne({
+      _id: new ObjectId(chatId),
+      members: new ObjectId(req.user.id),
+    });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found or access denied' });
+    }
     
     const messages = await db.collection('messages')
-      .find({ chatId: req.params.chatId })
-      .sort({ createdAt: -1 })
+      .find({ chatId })
+      .sort({ createdAt: 1 })
       .skip(offset)
       .limit(limit)
       .toArray();
@@ -772,9 +815,19 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
   try {
     const { content, messageType, mediaUrl } = req.body;
     const userId = req.user.id;
+    const chatId = req.params.chatId;
+    
+    // Verify user is a member of the chat using `members`
+    const chat = await db.collection('chats').findOne({
+      _id: new ObjectId(chatId),
+      members: new ObjectId(userId),
+    });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found or access denied' });
+    }
     
     const message = {
-      chatId: req.params.chatId,
+      chatId,
       senderId: userId,
       content,
       messageType: messageType || 'text',
@@ -786,12 +839,21 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     
     // Update chat's updatedAt
     await db.collection('chats').updateOne(
-      { _id: new ObjectId(req.params.chatId) },
-      { $set: { updatedAt: new Date() } }
+      { _id: new ObjectId(chatId) },
+      { 
+        $set: { 
+          updatedAt: new Date(),
+          lastMessage: {
+            content,
+            senderId: new ObjectId(userId),
+            createdAt: new Date(),
+          },
+        }
+      }
     );
     
     // Emit to socket
-    io.to(req.params.chatId).emit('new_message', {
+    io.to(chatId).emit('new_message', {
       id: result.insertedId,
       ...message
     });
@@ -820,7 +882,7 @@ app.patch('/api/chats/:chatId/messages/read', authenticateToken, async (req, res
     // Verify user is a member of the chat
     const chat = await db.collection('chats').findOne({
       _id: new ObjectId(chatId),
-      memberIds: userId,
+      members: new ObjectId(userId),
     });
 
     if (!chat) {

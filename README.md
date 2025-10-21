@@ -312,6 +312,118 @@ docker-compose up -d
 4. Build and deploy Flutter web app
 5. Configure CDN for static assets
 
+## 🙋 User-facing Features
+
+- **Secure sign-in**
+  - Email/password login and quick registration
+  - Automatic session restore and token validation
+- **Chats**
+  - 1:1 and group chats
+  - Last message preview and time ordering
+  - Add/remove members in group chats
+- **Messaging**
+  - Text messages
+  - Media messages: images, videos, audio, and documents
+  - Edit or delete your own messages
+  - Read receipts
+- **Notifications**
+  - In-app notifications with custom sounds
+  - Respect system notification permissions
+- **Media experience**
+  - Fast uploads with progress
+  - Built-in image/video preview and voice message playback
+- **People and profiles**
+  - Browse users and view profile info
+  - Update online/offline status
+- **Personalization**
+  - Light/dark theme
+  - Multiple languages (localization-ready)
+- **Works everywhere**
+  - Web, iOS, Android, Windows, macOS, Linux
+  - Responsive layout across phones, tablets, and desktops
+- **Reliability**
+  - Local storage for resilience
+  - Friendly error screens and automatic recovery
+
+### Android Update Experience
+
+- In-app update check (Android):
+  - Update icon in Chats screen AppBar triggers a version check.
+  - Auto-check on app launch (Android only), rate-limited via SharedPreferences using `VersionConfig.updateCheckIntervalHours`.
+  - If a newer version is found, users see a modal with release notes and a Download button (opens the APK link).
+  - Web/iOS: update icon and auto-check are not shown.
+
+- Version source (remote JSON):
+  - Configured at `lib/config/version_config.dart` → `dropboxJsonUrl`.
+  - Expected JSON shape:
+    ```json
+    {
+      "version": "1.0.4",
+      "build_number": "5",
+      "download_url": "https://dl.dropboxusercontent.com/....apk",
+      "release_notes": "Bug fixes and improvements",
+      "force_update": false
+    }
+    ```
+  - APK link should be a direct-download URL (e.g., Dropbox direct link).
+
+- Manual trigger:
+  - Tap the update icon in the Chats screen AppBar to re-check immediately.
+
+- Relevant code:
+  - Client check and dialog: `lib/screens/chat_list_screen_mongodb.dart`
+  - Version logic and download helpers: `lib/services/version_check_service.dart`
+  - Configuration: `lib/config/version_config.dart`
+
+## ✅ Product Checklist
+
+- **Access and accounts**
+  - [ ] Register with email/password
+  - [ ] Log in/out successfully
+  - [ ] Session persists across app restarts
+- **Chats**
+  - [ ] See chat list with last message previews
+  - [ ] Create a new chat (1:1 or group)
+  - [ ] Add/remove members in a group chat
+  - [ ] Open a chat and load message history with pagination
+- **Messaging**
+  - [ ] Send/receive text messages
+  - [ ] Send media (image/video/audio/document) with optional caption
+  - [ ] Messages show correct timestamps and sender
+  - [ ] Read receipts update after viewing
+  - [ ] Edit your own message
+  - [ ] Delete your own message
+- **Notifications**
+  - [ ] Notification permission requested (mobile)
+  - [ ] Receive in-app notifications for new messages
+  - [ ] Tapping a notification opens the app
+- **Media experience**
+  - [ ] Upload shows progress feedback
+  - [ ] Image/video preview works inside the app
+  - [ ] Voice messages play correctly
+- **People and profiles**
+  - [ ] Users list loads (no passwords exposed)
+  - [ ] Profile details viewable
+  - [ ] Status (online/offline) updates
+- **Personalization**
+  - [ ] Switch between light/dark themes
+  - [ ] Language can be changed
+- **Reliability and UX**
+  - [ ] App handles network loss gracefully
+  - [ ] Error screens provide a way back to Home
+  - [ ] Onboarding screens appear only on first run
+- **Cross‑platform**
+  - [ ] Layout adapts for mobile and desktop
+  - [ ] Web build connects to the configured server
+- **Security (server)**
+  - [ ] Strong JWT secret configured (not default)
+  - [ ] CORS restricted to trusted origins in production
+  - [ ] Admin endpoints protected (Cloudflare Access optional)
+- **Performance**
+  - [ ] Database indexes created (users, chats, messages)
+  - [ ] Chat list loads promptly
+  - [ ] Message pagination is smooth
+
 ## 🤝 Contributing
 
 1. Fork the repository

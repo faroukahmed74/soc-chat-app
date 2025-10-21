@@ -91,6 +91,15 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
   Map<String, dynamic> _stats = {};
   bool _isLoadingStats = false;
   
+  DateTime _toCairo(DateTime dt) {
+    return dt.toUtc().add(const Duration(hours: 2));
+  }
+
+  String _formatCairo(DateTime dt, String pattern) {
+    final cairo = _toCairo(dt);
+    return DateFormat(pattern).format(cairo);
+  }
+  
 
   
   @override
@@ -892,7 +901,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                                     ),
                                   if (isLocked && lockedAt != null)
                                     Text(
-                                      'Locked: ${DateFormat('MMM dd, yyyy HH:mm').format(lockedAt.toDate())}',
+                                      'Locked: ${_formatCairo(lockedAt.toDate(), 'MMM dd, yyyy HH:mm')}',
                                       style: TextStyle(
                                         color: Colors.red.shade600,
                                         fontSize: 12,
@@ -907,9 +916,9 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                                     children: [
                                       Row(
                                         children: [
-                                          Text('Created: ${createdAt != null ? DateFormat('MMM dd, yyyy').format(createdAt.toDate()) : 'Unknown'}'),
+                                          Text('Created: ${createdAt != null ? _formatCairo(createdAt.toDate(), 'MMM dd, yyyy') : 'Unknown'}'),
                                           const Spacer(),
-                                          Text('Last seen: ${lastSeen != null ? DateFormat('MMM dd, HH:mm').format(lastSeen.toDate()) : 'Never'}'),
+                                          Text('Last seen: ${lastSeen != null ? _formatCairo(lastSeen.toDate(), 'MMM dd, HH:mm') : 'Never'}'),
                                         ],
                                       ),
                                       const SizedBox(height: 16),
@@ -1089,7 +1098,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                             Text(data['message'] ?? ''),
                             if (timestamp != null)
                               Text(
-                                'Sent: ${DateFormat('MMM dd, yyyy HH:mm').format(timestamp.toDate())}',
+                                'Sent: ${_formatCairo(timestamp.toDate(), 'MMM dd, yyyy HH:mm')}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey.shade600,
@@ -1307,7 +1316,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
                             ),
                             if (lastSeen != null)
                               Text(
-                                DateFormat('MMM dd, HH:mm').format(lastSeen.toDate()),
+                                _formatCairo(lastSeen.toDate(), 'MMM dd, HH:mm'),
                                 style: TextStyle(
                                   fontSize: 12,
                                   color: Colors.grey.shade600,
@@ -3267,4 +3276,4 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
       ),
     );
   }
-} 
+}

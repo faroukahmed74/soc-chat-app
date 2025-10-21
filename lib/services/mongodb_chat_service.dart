@@ -65,7 +65,14 @@ class MongoDBChatService {
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        return List<Map<String, dynamic>>.from(data);
+        // Support both router response { chats: [...] } and legacy raw array
+        if (data is Map && data['chats'] is List) {
+          return List<Map<String, dynamic>>.from(data['chats']);
+        }
+        if (data is List) {
+          return List<Map<String, dynamic>>.from(data);
+        }
+        return [];
       } else {
         throw Exception('Failed to load chats: ${response.statusCode}');
       }
@@ -82,8 +89,10 @@ class MongoDBChatService {
       if (token == null) throw Exception('No auth token');
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
+      // API uses page/limit at /api/messages/:chatId
+      final int page = (offset ~/ limit) + 1;
       final response = await http.get(
-        Uri.parse('$baseUrl/api/chats/$chatId/messages?limit=$limit&offset=$offset'),
+        Uri.parse('$baseUrl/api/messages/$chatId?limit=$limit&page=$page'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -92,8 +101,12 @@ class MongoDBChatService {
       );
 
       if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        return List<Map<String, dynamic>>.from(data);
+        final body = json.decode(response.body);
+        // Router returns { messages: [...], pagination: {...} }
+        final List<dynamic> messages = (body is Map && body['messages'] is List)
+            ? body['messages']
+            : (body is List ? body : []);
+        return List<Map<String, dynamic>>.from(messages);
       } else {
         throw Exception('Failed to load messages: ${response.statusCode}');
       }
@@ -111,20 +124,26 @@ class MongoDBChatService {
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final response = await http.post(
-        Uri.parse('$baseUrl/api/chats/$chatId/messages'),
+        Uri.parse('$baseUrl/api/messages'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
         body: json.encode({
+          'chatId': chatId,
           'content': content,
-          'messageType': 'text',
+          'type': 'text',
         }),
       );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
-        return json.decode(response.body);
+        final body = json.decode(response.body);
+        // Prefer standardized { messageData: {...} }
+        if (body is Map && body['messageData'] is Map) {
+          return Map<String, dynamic>.from(body['messageData']);
+        }
+        return Map<String, dynamic>.from(body);
       } else {
         throw Exception('Failed to send message: ${response.statusCode}');
       }
@@ -134,29 +153,39 @@ class MongoDBChatService {
     }
   }
 
-  /// Send a media message
-  Future<Map<String, dynamic>?> sendMediaMessage(String chatId, String mediaUrl, String messageType) async {
+  /// Send a media message (supports optional caption/content)
+  Future<Map<String, dynamic>?> sendMediaMessage(
+    String chatId,
+    String mediaUrl,
+    String messageType,
+    {String? content}
+  ) async {
     try {
       final token = await _getAuthToken();
       if (token == null) throw Exception('No auth token');
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final response = await http.post(
-        Uri.parse('$baseUrl/api/chats/$chatId/messages'),
+        Uri.parse('$baseUrl/api/messages'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
         body: json.encode({
-          'content': 'Media message',
-          'messageType': messageType,
+          'chatId': chatId,
+          'content': (content != null && content.isNotEmpty) ? content : 'Media message',
+          'type': messageType,
           'mediaUrl': mediaUrl,
         }),
       );
 
       if (response.statusCode == 201 || response.statusCode == 200) {
-        return json.decode(response.body);
+        final body = json.decode(response.body);
+        if (body is Map && body['messageData'] is Map) {
+          return Map<String, dynamic>.from(body['messageData']);
+        }
+        return Map<String, dynamic>.from(body);
       } else {
         throw Exception('Failed to send media message: ${response.statusCode}');
       }
@@ -260,7 +289,7 @@ class MongoDBChatService {
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final response = await http.patch(
-        Uri.parse('$baseUrl/api/chats/$chatId/messages/read'),
+        Uri.parse('$baseUrl/api/messages/$chatId/read'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -341,7 +370,7 @@ class MongoDBChatService {
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final response = await http.delete(
-        Uri.parse('$baseUrl/api/chats/$chatId/messages/$messageId'),
+        Uri.parse('$baseUrl/api/messages/$messageId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -363,8 +392,8 @@ class MongoDBChatService {
       if (token == null) throw Exception('No auth token');
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
-      final response = await http.patch(
-        Uri.parse('$baseUrl/api/chats/$chatId/messages/$messageId'),
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/messages/$messageId'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',

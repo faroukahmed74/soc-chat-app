@@ -11,9 +11,15 @@ import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
+import '../utils/group_chat_naming_utility.dart';
 import 'chat_screen_mongodb.dart';
 import 'user_search_screen.dart';
 import 'create_group_screen.dart';
+import '../services/version_check_service.dart';
+// import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import '../config/version_config.dart';
 
 class ChatListScreenMongoDB extends StatefulWidget {
   const ChatListScreenMongoDB({Key? key}) : super(key: key);
@@ -33,8 +39,12 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
   String _searchQuery = '';
   String? _currentUserId;
   String? _currentUserName;
+  String? _userRole;
   StreamSubscription? _chatsSubscription;
   late ThemeService _themeService;
+  final Map<String, String> _userNameCache = {};
+  final Set<String> _userNameFetching = {};
+  bool _isCheckingUpdate = false;
 
   @override
   void initState() {
@@ -44,7 +54,9 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
       if (mounted) setState(() {});
     });
     _initializeChatList();
+    _loadUserRole();
     _searchController.addListener(_onSearchChanged);
+    _maybeAutoCheckUpdate();
   }
 
   @override
@@ -81,6 +93,19 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
           _isLoading = false;
         });
       }
+    }
+  }
+
+  Future<void> _loadUserRole() async {
+    try {
+      final role = await _authService.getCurrentUserRole();
+      if (mounted) {
+        setState(() {
+          _userRole = role;
+        });
+      }
+    } catch (e) {
+      Log.e('Error loading user role', 'CHAT_LIST_MONGODB', e);
     }
   }
 
@@ -132,27 +157,87 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
 
   String _formatTimestamp(DateTime? timestamp) {
     if (timestamp == null) return '';
-    
-    final now = DateTime.now();
-    final difference = now.difference(timestamp);
+    // Convert to Cairo time (UTC+2)
+    final cairo = timestamp.toUtc().add(const Duration(hours: 2));
+    final nowCairo = DateTime.now().toUtc().add(const Duration(hours: 2));
+    final difference = nowCairo.difference(cairo);
 
     if (difference.inDays > 0) {
-      return '${timestamp.day}/${timestamp.month}';
+      return '${cairo.day}/${cairo.month}';
     } else if (difference.inHours > 0) {
-      return '${timestamp.hour}:${timestamp.minute.toString().padLeft(2, '0')}';
+      return '${cairo.hour}:${cairo.minute.toString().padLeft(2, '0')}';
     } else {
-      return '${timestamp.minute.toString().padLeft(2, '0')}';
+      return '${cairo.minute.toString().padLeft(2, '0')}';
     }
+  }
+
+  String _getChatTitle(Map<String, dynamic> chat) {
+    // Use the utility function for consistent naming
+    return GroupChatNamingUtility.getChatDisplayName(chat, currentUserId: _currentUserId);
+  }
+
+  Future<void> _ensureUserNameCached(String userId) async {
+    if (_userNameCache.containsKey(userId) || _userNameFetching.contains(userId)) return;
+    _userNameFetching.add(userId);
+    try {
+      final user = await _chatService.getUserDetails(userId);
+      final displayName = (user?['name'] ?? user?['displayName'] ?? user?['email'] ?? userId).toString();
+      _userNameCache[userId] = displayName;
+      if (mounted) setState(() {});
+    } finally {
+      _userNameFetching.remove(userId);
+    }
+  }
+
+  String _buildLastMessagePreview(Map<String, dynamic> chat, {required bool isGroup}) {
+    final lastMsgObj = chat['lastMessage'];
+    String content;
+    String? senderName;
+    String? senderId;
+    if (lastMsgObj is Map<String, dynamic>) {
+      content = (lastMsgObj['content'] ?? '').toString();
+      senderName = (lastMsgObj['senderName'] ?? '').toString();
+      senderId = (lastMsgObj['senderId'] ?? '').toString();
+    } else {
+      content = (lastMsgObj ?? '').toString();
+    }
+    if (isGroup) {
+      String prefix = '';
+      if (senderName != null && senderName.isNotEmpty) {
+        prefix = senderName;
+      } else if (senderId != null && senderId.isNotEmpty) {
+        final cached = _userNameCache[senderId];
+        if (cached == null) _ensureUserNameCached(senderId);
+        prefix = cached ?? '';
+      }
+      if (prefix.isNotEmpty) {
+        return '$prefix: $content';
+      }
+    }
+    return content;
   }
 
   Widget _buildChatTile(Map<String, dynamic> chat) {
     final chatId = chat['_id'] ?? chat['id'] ?? '';
-    final name = chat['name'] ?? 'Unknown Chat';
-    final lastMessage = chat['lastMessage'] ?? '';
-    final lastMessageTime = chat['lastMessageTime'] != null
-        ? DateTime.parse(chat['lastMessageTime'])
-        : null;
-    final isGroup = chat['type'] == 'group';
+    
+    // Debug: Log chat ID to help diagnose the issue
+    if (chatId.isEmpty) {
+      Log.w('Empty chat ID detected: $chat', 'CHAT_LIST_MONGODB');
+    }
+    final bool isGroup = chat['type'] == 'group';
+    final String name = _getChatTitle(chat);
+    // Support nested last message object or plain string
+    final lastMsgObj = chat['lastMessage'];
+    final String lastMessage = _buildLastMessagePreview(chat, isGroup: isGroup);
+    final lastMessageTimeStr = chat['lastMessageTime'] ?? (lastMsgObj is Map<String, dynamic> ? lastMsgObj['timestamp'] : null);
+    DateTime? lastMessageTime;
+    if (lastMessageTimeStr is String && lastMessageTimeStr.isNotEmpty) {
+      try {
+        lastMessageTime = DateTime.parse(lastMessageTimeStr);
+      } catch (_) {
+        lastMessageTime = null;
+      }
+    }
     final unreadCount = chat['unreadCount'] ?? 0;
 
     return ListTile(
@@ -257,6 +342,12 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
         backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
         foregroundColor: Colors.white,
         actions: [
+          if (!kIsWeb)
+            IconButton(
+              icon: const Icon(Icons.system_update_alt),
+              tooltip: 'Check for update',
+              onPressed: _checkForUpdate,
+            ),
           IconButton(
             icon: Icon(_themeService.isDarkMode ? Icons.light_mode : Icons.dark_mode),
             onPressed: () {
@@ -366,6 +457,15 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                 Navigator.pushNamed(context, '/create_group');
               },
             ),
+            if (_userRole == 'admin')
+              ListTile(
+                leading: const Icon(Icons.admin_panel_settings),
+                title: const Text('Admin Panel'),
+                onTap: () {
+                  Navigator.pop(context);
+                  Navigator.pushNamed(context, '/admin');
+                },
+              ),
             ListTile(
               leading: const Icon(Icons.logout),
               title: const Text('Logout'),
@@ -444,5 +544,129 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
         tooltip: 'Search Users',
       ),
     );
+  }
+
+  Future<void> _checkForUpdate() async {
+    if (_isCheckingUpdate) return;
+    setState(() => _isCheckingUpdate = true);
+    try {
+      final info = await VersionCheckService.checkForUpdates();
+      if (info == null) {
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              title: const Text('Update Check'),
+              content: const Text('Unable to check for updates right now.'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+              ],
+            ),
+          );
+        }
+        return;
+      }
+
+      if (info['hasUpdate'] == true) {
+        final latest = (info['latestVersion'] ?? '').toString();
+        final notes = (info['releaseNotes'] ?? 'Bug fixes and improvements').toString();
+        final url = (info['downloadUrl'] ?? '').toString();
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('New version available ($latest)'),
+            content: SingleChildScrollView(child: Text(notes)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Later')),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  if (url.isNotEmpty) {
+                    final uri = Uri.parse(url);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  }
+                },
+                child: const Text('Download'),
+              ),
+            ],
+          ),
+        );
+      } else {
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('You are up to date'),
+            content: const Text('No new updates are available.'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('Update Check Failed'),
+            content: Text('Error: $e'),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('OK')),
+            ],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isCheckingUpdate = false);
+    }
+  }
+
+  Future<void> _maybeAutoCheckUpdate() async {
+    if (kIsWeb) return;
+    // Only run on Android
+    if (defaultTargetPlatform != TargetPlatform.android) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final nowMs = DateTime.now().millisecondsSinceEpoch;
+      final lastMs = prefs.getInt('last_update_check_ms') ?? 0;
+      final intervalMs = Duration(hours: VersionConfig.updateCheckIntervalHours).inMilliseconds;
+      if (nowMs - lastMs < intervalMs) return;
+      await prefs.setInt('last_update_check_ms', nowMs);
+
+      final info = await VersionCheckService.checkForUpdates();
+      if (info == null) return;
+      if (info['hasUpdate'] == true) {
+        final latest = (info['latestVersion'] ?? '').toString();
+        final notes = (info['releaseNotes'] ?? 'Bug fixes and improvements').toString();
+        final url = (info['downloadUrl'] ?? '').toString();
+        if (!mounted) return;
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('New version available ($latest)'),
+            content: SingleChildScrollView(child: Text(notes)),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('Later')),
+              TextButton(
+                onPressed: () async {
+                  Navigator.pop(ctx);
+                  if (url.isNotEmpty) {
+                    final uri = Uri.parse(url);
+                    if (await canLaunchUrl(uri)) {
+                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    }
+                  }
+                },
+                child: const Text('Download'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (_) {}
   }
 }

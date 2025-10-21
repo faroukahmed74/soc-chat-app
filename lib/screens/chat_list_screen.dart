@@ -790,8 +790,31 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   Widget _buildLocalChatTile(Map<String, dynamic> chat) {
     final dynamic time = chat['lastMessageTime'] ?? chat['updatedAt'] ?? chat['createdAt'];
-    final String displayName = chat['name']?.toString() ?? 'Unknown Chat';
-    final bool isGroup = (chat['isGroup'] == true) || (chat['type'] == 'group') || (chat['isGroupChat'] == true);
+    // More robust group detection - check multiple possible fields
+    final bool isGroup = (chat['isGroup'] == true) || 
+                        (chat['type'] == 'group') || 
+                        (chat['isGroupChat'] == true) ||
+                        (chat['members'] != null && (chat['members'] as List).length > 2);
+    
+    // For group chats, always show the group name
+    String displayName;
+    if (isGroup) {
+      final groupName = chat['name']?.toString() ?? '';
+      if (groupName.isNotEmpty) {
+        displayName = groupName;
+      } else {
+        // Fallback: generate a group name from members if no name is set
+        final members = List<String>.from(chat['members'] ?? chat['memberIds'] ?? []);
+        if (members.length > 2) {
+          displayName = 'Group Chat (${members.length} members)';
+        } else {
+          displayName = 'Group';
+        }
+      }
+    } else {
+      displayName = chat['name']?.toString() ?? 'Unknown Chat';
+    }
+    
     final String chatId = (chat['id']?.toString() ?? chat['_id']?.toString() ?? '');
     final List<String> memberIds = List<String>.from(chat['members'] ?? chat['memberIds'] ?? []);
 
@@ -860,8 +883,30 @@ class _ChatListScreenState extends State<ChatListScreen> {
         final chat = filtered[index];
         final data = chat.data() as Map<String, dynamic>;
         final dynamic time = data['lastMessageTime'];
-        final String displayName = data['name']?.toString() ?? 'Chat';
-        final bool isGroup = (data['isGroup'] == true) || (data['type'] == 'group') || (data['isGroupChat'] == true);
+        // More robust group detection - check multiple possible fields
+        final bool isGroup = (data['isGroup'] == true) || 
+                            (data['type'] == 'group') || 
+                            (data['isGroupChat'] == true) ||
+                            (data['members'] != null && (data['members'] as List).length > 2);
+        
+        // For group chats, always show the group name
+        String displayName;
+        if (isGroup) {
+          final groupName = data['name']?.toString() ?? '';
+          if (groupName.isNotEmpty) {
+            displayName = groupName;
+          } else {
+            // Fallback: generate a group name from members if no name is set
+            final members = List<String>.from(data['members'] ?? []);
+            if (members.length > 2) {
+              displayName = 'Group Chat (${members.length} members)';
+            } else {
+              displayName = 'Group';
+            }
+          }
+        } else {
+          displayName = data['name']?.toString() ?? 'Chat';
+        }
 
         return ListTile(
           leading: CircleAvatar(

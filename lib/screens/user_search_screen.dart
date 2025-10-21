@@ -24,7 +24,9 @@
 // - Cross-platform: Unified search experience
 
 import 'package:flutter/material.dart';
+import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../services/local_auth_service.dart';
 import 'chat_screen_mongodb.dart';
 
 import '../services/theme_service.dart';
@@ -45,6 +47,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   String _searchQuery = '';
   bool _isLoading = false;
   late ThemeService _themeService;
+  String? _currentUserId;
 
   @override
   void initState() {
@@ -70,7 +73,35 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
       // Get current user ID from stored token
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
-      if (token == null) return;
+      if (token == null || token.isEmpty) {
+        if (mounted) {
+          setState(() { _isLoading = false; });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please log in to search users')),
+          );
+        }
+        return;
+      }
+      // Verify token with server (handles expired/invalid tokens gracefully on web)
+      final isValid = await LocalAuthService.verifyToken();
+      if (!isValid) {
+        await LocalAuthService.logout();
+        if (mounted) {
+          setState(() { _isLoading = false; });
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Session expired. Please log in again.')),
+          );
+        }
+        return;
+      }
+      // Resolve current user id
+      final prefsUser = prefs.getString('user_data');
+      if (prefsUser != null) {
+        try {
+          final currentUserObj = json.decode(prefsUser);
+          _currentUserId = (currentUserObj['id'] ?? currentUserObj['_id'])?.toString();
+        } catch (_) {}
+      }
       
       // Use physical server (MongoDB)
       final databaseService = await DatabaseConfig.getDatabaseService();
@@ -86,16 +117,28 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading users: $e')),
-        );
+        final msg = e.toString();
+        if (msg.contains('403')) {
+          await LocalAuthService.logout();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Access denied. Please log in again.')),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error loading users: $e')),
+          );
+        }
       }
     }
   }
 
   List<DocumentSnapshot> _getVisibleUsers(Set<String> blockedIds) {
     if (_allUsers == null) return [];
-    final visible = _allUsers!.where((user) => !blockedIds.contains(user.id)).toList();
+    final visible = _allUsers!
+        .where((user) =>
+            user.id != _currentUserId &&
+            !blockedIds.contains(user.id))
+        .toList();
     if (_searchQuery.isEmpty) return visible;
     final matches = <DocumentSnapshot>[];
     final rest = <DocumentSnapshot>[];
@@ -127,7 +170,17 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
       final userData = userDoc?.data() ?? {};
       
       // Create or find existing chat
-      final members = [otherUserId]; // For now, just the other user
+      // Include both the current user and the other user
+      final prefsUser = prefs.getString('user_data');
+      String? currentUserId;
+      if (prefsUser != null) {
+        final currentUserObj = json.decode(prefsUser);
+        currentUserId = currentUserObj['id'] ?? currentUserObj['_id'];
+      }
+      final members = [
+        if (currentUserId != null && currentUserId.isNotEmpty) currentUserId,
+        otherUserId,
+      ];
       Log.i('Attempting to start chat with: $otherUserId', 'USER_SEARCH');
       
       // Create new chat

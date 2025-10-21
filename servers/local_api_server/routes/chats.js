@@ -34,7 +34,7 @@ const authenticateToken = (req, res, next) => {
 // Create a new chat
 router.post('/', authenticateToken, async (req, res) => {
   try {
-    const { name, members } = req.body;
+    const { type, name, members } = req.body;
     
     // Validate input
     if (!name || !members || !Array.isArray(members)) {
@@ -46,6 +46,7 @@ router.post('/', authenticateToken, async (req, res) => {
     
     // Create chat
     const newChat = {
+      type: type || 'group', // Default to 'group' if type not specified
       name,
       members: members.map(id => new ObjectId(id)),
       createdBy: new ObjectId(req.user.id),
@@ -65,6 +66,7 @@ router.post('/', authenticateToken, async (req, res) => {
         _id: createdChat._id.toString(),
         id: createdChat._id.toString(),
         name: createdChat.name,
+        type: createdChat.type,
         members: createdChat.members.map(id => id.toString()),
         createdBy: createdChat.createdBy.toString(),
         createdAt: createdChat.createdAt,
@@ -94,11 +96,13 @@ router.get('/', authenticateToken, async (req, res) => {
       _id: chat._id.toString(),
       id: chat._id.toString(),
       name: chat.name,
+      type: chat.type || 'group', // Default to 'group' for existing chats
       members: chat.members.map(id => id.toString()),
       createdBy: chat.createdBy.toString(),
       createdAt: chat.createdAt,
       updatedAt: chat.updatedAt,
-      lastMessage: chat.lastMessage
+      lastMessage: chat.lastMessage,
+      lastMessageTime: chat.lastMessageTime
     }));
     
     res.status(200).json({

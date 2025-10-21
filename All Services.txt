@@ -1,0 +1,62 @@
+Here’s how to run and keep all required services up for both web and mobile (Android/iOS) platforms.
+
+Windows
+
+Start all: services_manager.bat start-all
+Stop all: services_manager.bat stop-all
+Restart all: services_manager.bat restart-all
+Status: services_manager.bat status
+Start individual:
+services_manager.bat start-mongo
+services_manager.bat start-api
+services_manager.bat start-ngrok
+services_manager.bat start-web
+services_manager.bat start-network
+services_manager.bat start-fcm
+Auto-start at boot:
+Install: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup_autostart.ps1 -TaskName "SOCChat-AutoStart"
+Remove: powershell -NoProfile -ExecutionPolicy Bypass -File scripts/remove_autostart.ps1 -TaskName "SOCChat-AutoStart"
+Run now: schtasks /run /TN SOCChat-AutoStart
+macOS/Linux
+
+Script: scripts/services_manager.sh
+Start all: ./scripts/services_manager.sh start-all
+Stop all: ./scripts/services_manager.sh stop-all
+Restart all: ./scripts/services_manager.sh restart-all
+Status: ./scripts/services_manager.sh status
+Start/stop one service:
+./scripts/services_manager.sh start <mongodb|api|ngrok|web|network|fcm>
+./scripts/services_manager.sh stop <mongodb|api|ngrok|web|network|fcm>
+Notes:
+MongoDB starts via systemctl (Linux) or brew services (macOS) if available.
+Logs and PIDs under scripts/run/.
+ngrok must be installed and authenticated: ngrok config add-authtoken <token>.
+Services Started
+
+API Server: http://localhost:3003 (servers/local_api_server/server.js)
+Web Proxy: http://localhost:8082 (serves build/web and proxies /api and Socket.IO via servers/server.js)
+ngrok: https://soc-chat-app.ngrok-free.app pointing to :3003
+Local Network URLs: :3004 via local_network_config.js
+FCM Server: :3000 via servers/fcm_server_production.js or fallback fcm_server.js
+MongoDB: Windows service or OS service if available
+Mobile App Connectivity
+
+Android/iOS should point to the public API URL: https://soc-chat-app.ngrok-free.app
+For builds, set API_BASE_URL_MOBILE if your app uses a dart-define:
+Android release: flutter build apk --release --dart-define=API_BASE_URL_MOBILE=https://soc-chat-app.ngrok-free.app
+iOS (on macOS): flutter build ios --release --dart-define=API_BASE_URL_MOBILE=https://soc-chat-app.ngrok-free.app
+Verification
+
+API proxy: curl http://localhost:8082/api/health should proxy to :3003
+Web app: open http://localhost:8082
+ngrok admin: http://localhost:4040 shows active tunnel
+Ports listening:
+3003 API, 8082 web, 3004 network URLs, 3000 FCM
+Windows status: services_manager.bat status
+macOS/Linux: ./scripts/services_manager.sh status
+Prerequisites
+
+Node.js and npm installed
+MongoDB installed and service available (MongoDB on Windows or mongod on systemd)
+ngrok installed and authtoken configured
+Flutter SDK installed if building or rebuilding the web app
