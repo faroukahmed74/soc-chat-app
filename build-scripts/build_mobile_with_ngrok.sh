@@ -17,7 +17,7 @@ CYAN='\033[0;36m'
 NC='\033[0m' # No Color
 
 # Default values
-NGROK_URL=""
+NGROK_URL="https://soc-chat-app.ngrok-free.app"
 PLATFORM="all"
 SKIP_NGROK_CHECK=false
 HELP=false

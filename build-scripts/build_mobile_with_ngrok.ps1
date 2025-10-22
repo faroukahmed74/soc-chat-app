@@ -5,7 +5,7 @@
 # Usage: .\build_mobile_with_ngrok.ps1 [options]
 
 param(
-    [string]$NgrokUrl = "",
+    [string]$NgrokUrl = "https://soc-chat-app.ngrok-free.app",
     [string]$Platform = "all",
     [switch]$SkipNgrokCheck,
     [switch]$Help
