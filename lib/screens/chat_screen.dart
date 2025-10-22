@@ -1056,61 +1056,82 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       ),
                     ),
                     
-                    // Media preview
+                    // Enhanced media preview
                     if (_selectedMediaBytes != null) ...[
-                      Container(
-                        margin: const EdgeInsets.only(bottom: 8),
-                        padding: const EdgeInsets.all(12),
+                      AnimatedContainer(
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeInOut,
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.all(16),
                         decoration: BoxDecoration(
-                          color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-                          borderRadius: BorderRadius.circular(12),
-                          border: Border.all(
-                            color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                          gradient: LinearGradient(
+                            colors: isDark 
+                                ? [Colors.grey[800]!, Colors.grey[700]!]
+                                : [Colors.white, Colors.grey[50]!],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
                           ),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Theme.of(context).primaryColor.withValues(alpha: 0.3),
+                            width: 1,
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.1),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: Row(
                           children: [
-                            // Media preview
-                            if (_selectedMediaType == 'image')
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.memory(
-                                  _selectedMediaBytes!,
-                                  width: 50,
-                                  height: 50,
-                                  fit: BoxFit.cover,
-                                ),
-                              )
-                            else if (_selectedMediaType == 'video')
-                              Container(
-                                width: 50,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  color: Colors.red.shade100,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.play_circle_outline,
-                                  color: Colors.red,
-                                  size: 30,
-                                ),
-                              )
-                            else
-                              Container(
-                                width: 50,
-                                height: 50,
-                                decoration: BoxDecoration(
-                                  color: Colors.blue.shade100,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: const Icon(
-                                  Icons.attach_file,
-                                  color: Colors.blue,
-                                  size: 30,
-                                ),
+                            // Enhanced media preview
+                            Container(
+                              width: 60,
+                              height: 60,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(12),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withValues(alpha: 0.1),
+                                    blurRadius: 4,
+                                    offset: const Offset(0, 2),
+                                  ),
+                                ],
                               ),
-                            const SizedBox(width: 12),
-                            // Media info
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(12),
+                                child: _selectedMediaType == 'image'
+                                    ? Image.memory(
+                                        _selectedMediaBytes!,
+                                        width: 60,
+                                        height: 60,
+                                        fit: BoxFit.cover,
+                                      )
+                                    : Container(
+                                        decoration: BoxDecoration(
+                                          gradient: LinearGradient(
+                                            colors: _selectedMediaType == 'video'
+                                                ? [Colors.red.shade400, Colors.red.shade600]
+                                                : [Colors.blue.shade400, Colors.blue.shade600],
+                                            begin: Alignment.topLeft,
+                                            end: Alignment.bottomRight,
+                                          ),
+                                        ),
+                                        child: Icon(
+                                          _selectedMediaType == 'video'
+                                              ? Icons.play_circle_filled
+                                              : Icons.insert_drive_file,
+                                          color: Colors.white,
+                                          size: 30,
+                                        ),
+                                      ),
+                              ),
+                            ),
+                            const SizedBox(width: 16),
+                            
+                            // Enhanced media info
                             Expanded(
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -1119,32 +1140,63 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                     _selectedMediaFileName ?? 'Media',
                                     style: TextStyle(
                                       fontWeight: FontWeight.w600,
+                                      fontSize: 16,
                                       color: isDark ? Colors.white : Colors.black87,
                                     ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
-                                  Text(
-                                    _selectedMediaType?.toUpperCase() ?? 'FILE',
-                                    style: TextStyle(
-                                      fontSize: 12,
-                                      color: Colors.grey.shade600,
-                                    ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          _selectedMediaType?.toUpperCase() ?? 'FILE',
+                                          style: TextStyle(
+                                            fontSize: 10,
+                                            fontWeight: FontWeight.bold,
+                                            color: Theme.of(context).primaryColor,
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '${(_selectedMediaBytes!.length / 1024).toStringAsFixed(1)} KB',
+                                        style: TextStyle(
+                                          fontSize: 12,
+                                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                                        ),
+                                      ),
+                                    ],
                                   ),
                                 ],
                               ),
                             ),
-                            // Remove button
-                            IconButton(
-                              onPressed: () {
-                                setState(() {
-                                  _selectedMediaBytes = null;
-                                  _selectedMediaType = null;
-                                  _selectedMediaFileName = null;
-                                });
-                              },
-                              icon: const Icon(Icons.close),
-                              iconSize: 20,
+                            
+                            // Enhanced remove button
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.red.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(8),
+                              ),
+                              child: IconButton(
+                                onPressed: () {
+                                  setState(() {
+                                    _selectedMediaBytes = null;
+                                    _selectedMediaType = null;
+                                    _selectedMediaFileName = null;
+                                  });
+                                },
+                                icon: const Icon(Icons.close),
+                                iconSize: 20,
+                                color: Colors.red,
+                                tooltip: 'Remove media',
+                              ),
                             ),
                           ],
                         ),
@@ -1165,6 +1217,24 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       ),
                       child: Row(
                         children: [
+                          // Attachment button
+                          Container(
+                            margin: const EdgeInsets.only(left: 8),
+                            decoration: BoxDecoration(
+                              color: isDark ? Colors.grey[700] : Colors.grey[100],
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: IconButton(
+                              onPressed: () => _showMediaOptions(context),
+                              icon: Icon(
+                                Icons.attach_file,
+                                color: isDark ? Colors.grey[300] : Colors.grey[600],
+                                size: 20,
+                              ),
+                              tooltip: 'Attach Media',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
                               controller: _messageController,
@@ -1202,40 +1272,56 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                               final hasText = value.text.trim().isNotEmpty;
                               final hasMedia = _selectedMediaBytes != null;
                               final canSend = hasText || hasMedia;
-                              return Container(
+                              
+                              return AnimatedContainer(
+                                duration: const Duration(milliseconds: 200),
                                 margin: const EdgeInsets.only(right: 8),
                                 decoration: BoxDecoration(
-                                  color: canSend 
-                                      ? theme.colorScheme.primary
-                                      : Colors.grey.shade300,
+                                  gradient: canSend 
+                                      ? LinearGradient(
+                                          colors: [
+                                            theme.colorScheme.primary,
+                                            theme.colorScheme.primary.withValues(alpha: 0.8),
+                                          ],
+                                          begin: Alignment.topLeft,
+                                          end: Alignment.bottomRight,
+                                        )
+                                      : null,
+                                  color: canSend ? null : Colors.grey.shade300,
                                   shape: BoxShape.circle,
                                   boxShadow: canSend ? [
                                     BoxShadow(
-                                      color: theme.colorScheme.primary.withValues(alpha: 0.3),
-                                      blurRadius: 8,
-                                      offset: const Offset(0, 2),
+                                      color: theme.colorScheme.primary.withValues(alpha: 0.4),
+                                      blurRadius: 12,
+                                      offset: const Offset(0, 3),
                                     ),
                                   ] : null,
                                 ),
-                                                            child: ScaleTransition(
-                              scale: _scaleAnimation,
-                              child: IconButton(
-                                onPressed: canSend ? _sendMessage : null,
-                                icon: AnimatedSwitcher(
-                                  duration: const Duration(milliseconds: 200),
-                                  child: Icon(
-                                    canSend ? Icons.send : Icons.send,
-                                    key: ValueKey(canSend),
-                                    color: canSend ? Colors.white : Colors.grey.shade600,
-                                    size: 20,
+                                child: ScaleTransition(
+                                  scale: _scaleAnimation,
+                                  child: IconButton(
+                                    onPressed: canSend ? _sendMessage : null,
+                                    icon: AnimatedSwitcher(
+                                      duration: const Duration(milliseconds: 300),
+                                      transitionBuilder: (child, animation) {
+                                        return ScaleTransition(
+                                          scale: animation,
+                                          child: child,
+                                        );
+                                      },
+                                      child: Icon(
+                                        canSend ? Icons.send_rounded : Icons.send_rounded,
+                                        key: ValueKey(canSend),
+                                        color: canSend ? Colors.white : Colors.grey.shade600,
+                                        size: 22,
+                                      ),
+                                    ),
+                                    tooltip: canSend ? 'Send Message' : 'Type a message or select media to send',
+                                    style: IconButton.styleFrom(
+                                      padding: const EdgeInsets.all(12),
+                                    ),
                                   ),
                                 ),
-                                tooltip: canSend ? 'Send Message' : 'Type a message or select media to send',
-                                style: IconButton.styleFrom(
-                                  padding: const EdgeInsets.all(12),
-                                ),
-                              ),
-                            ),
                               );
                             },
                           ),
@@ -1260,23 +1346,32 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             ),
           ),
           
-          // Floating Action Button for quick media access
+          // Enhanced Floating Action Button for quick media access
           Positioned(
-            right: isMobile ? 12 : 16,
+            right: isMobile ? 16 : 20,
             bottom: isMobile ? 180 : 200,
-            child: FloatingActionButton(
-              onPressed: () {
-                _showMediaOptions(context);
-              },
-              backgroundColor: theme.colorScheme.primary,
-              foregroundColor: Colors.white,
-              elevation: isMobile ? 6 : 8,
-              mini: isMobile,
-              child: Icon(
-                Icons.add,
-                size: isMobile ? 20 : 24,
+            child: Container(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(16),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                    blurRadius: 12,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
               ),
-              tooltip: 'Quick Media Options',
+              child: FloatingActionButton.extended(
+                onPressed: () {
+                  _showMediaOptions(context);
+                },
+                backgroundColor: theme.colorScheme.primary,
+                foregroundColor: Colors.white,
+                elevation: 0,
+                icon: const Icon(Icons.attach_file),
+                label: const Text('Media'),
+                tooltip: 'Quick Media Options',
+              ),
             ),
           ),
         ],
@@ -1361,40 +1456,71 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               if (!isCurrentUser) ...[
-                CircleAvatar(
-                  radius: 18,
-                  backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.2),
-                  child: Text(
-                    _getInitials(senderName),
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
-                      color: theme.colorScheme.primary,
+                Container(
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: CircleAvatar(
+                    radius: 20,
+                    backgroundColor: theme.colorScheme.primary.withValues(alpha: 0.1),
+                    child: Text(
+                      _getInitials(senderName),
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.primary,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+                const SizedBox(width: 12),
               ],
               Flexible(
                 child: Container(
                   padding: const EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: isCurrentUser 
-                        ? theme.colorScheme.primary
-                        : isDark 
-                            ? const Color(0xFF2A2A2A)
-                            : Colors.white,
+                    gradient: isCurrentUser 
+                        ? LinearGradient(
+                            colors: [
+                              theme.colorScheme.primary,
+                              theme.colorScheme.primary.withValues(alpha: 0.8),
+                            ],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          )
+                        : LinearGradient(
+                            colors: isDark 
+                                ? [const Color(0xFF2A2A2A), const Color(0xFF1E1E1E)]
+                                : [Colors.white, Colors.grey[50]!],
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                          ),
                     borderRadius: BorderRadius.only(
                       topLeft: const Radius.circular(20),
                       topRight: const Radius.circular(20),
                       bottomLeft: Radius.circular(isCurrentUser ? 20 : 8),
                       bottomRight: Radius.circular(isCurrentUser ? 8 : 20),
                     ),
+                    border: Border.all(
+                      color: isCurrentUser 
+                          ? Colors.transparent
+                          : (isDark ? Colors.grey[700]! : Colors.grey[200]!),
+                      width: 1,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.1),
-                        blurRadius: 8,
-                        offset: const Offset(0, 2),
+                        color: isCurrentUser 
+                            ? theme.colorScheme.primary.withValues(alpha: 0.3)
+                            : Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 12,
+                        offset: const Offset(0, 3),
                       ),
                     ],
                   ),
@@ -3558,147 +3684,275 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
+      isScrollControlled: true,
       builder: (context) => Container(
         decoration: BoxDecoration(
           color: _themeService.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.1),
+              blurRadius: 20,
+              offset: const Offset(0, -5),
+            ),
+          ],
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Handle bar
             Container(
               margin: const EdgeInsets.only(top: 12),
-              width: 40,
-              height: 4,
+              width: 50,
+              height: 5,
               decoration: BoxDecoration(
                 color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(2),
+                borderRadius: BorderRadius.circular(3),
               ),
             ),
-            const SizedBox(height: 20),
-            Text(
-              'Choose Media Type',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-              ),
-            ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 25),
+            
+            // Header
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
+              padding: const EdgeInsets.symmetric(horizontal: 24),
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildQuickMediaButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _pickImageFromGallery();
-                    },
-                    icon: Icons.photo_library,
-                    label: 'Gallery',
-                    color: Colors.blue,
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      Icons.attach_file,
+                      color: Theme.of(context).primaryColor,
+                      size: 20,
+                    ),
                   ),
-                  _buildQuickMediaButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _pickImageFromCamera();
-                    },
-                    icon: Icons.camera_alt,
-                    label: 'Camera',
-                    color: Colors.green,
-                  ),
-                  _buildQuickMediaButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _pickVideoFromGallery();
-                    },
-                    icon: Icons.video_library,
-                    label: 'Video',
-                    color: Colors.red,
-                  ),
-                  _buildQuickMediaButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _pickVideoFromCamera();
-                    },
-                    icon: Icons.videocam,
-                    label: 'Record',
-                    color: Colors.purple,
+                  const SizedBox(width: 12),
+                  Text(
+                    'Send Media',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                    ),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 8),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                'Choose what you want to share',
+                style: TextStyle(
+                  fontSize: 14,
+                  color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                ),
+              ),
+            ),
+            const SizedBox(height: 30),
+            
+            // Media options grid
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
                 children: [
-                  _buildQuickMediaButton(
+                  // First row
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildEnhancedMediaButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _pickImageFromGallery();
+                          },
+                          icon: Icons.photo_library,
+                          label: 'Gallery',
+                          subtitle: 'Photos & Videos',
+                          color: Colors.blue,
+                          isDark: _themeService.isDarkMode,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildEnhancedMediaButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _pickImageFromCamera();
+                          },
+                          icon: Icons.camera_alt,
+                          label: 'Camera',
+                          subtitle: 'Take Photo',
+                          color: Colors.green,
+                          isDark: _themeService.isDarkMode,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Second row
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildEnhancedMediaButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _pickVideoFromGallery();
+                          },
+                          icon: Icons.video_library,
+                          label: 'Video',
+                          subtitle: 'From Gallery',
+                          color: Colors.red,
+                          isDark: _themeService.isDarkMode,
+                        ),
+                      ),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: _buildEnhancedMediaButton(
+                          onPressed: () {
+                            Navigator.pop(context);
+                            _pickVideoFromCamera();
+                          },
+                          icon: Icons.videocam,
+                          label: 'Record',
+                          subtitle: 'Record Video',
+                          color: Colors.orange,
+                          isDark: _themeService.isDarkMode,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  
+                  // Document option
+                  _buildEnhancedMediaButton(
                     onPressed: () {
                       Navigator.pop(context);
                       _pickDocument();
                     },
-                    icon: Icons.attach_file,
-                    label: 'File',
-                    color: Colors.orange,
-                  ),
-
-                  _buildQuickMediaButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      Navigator.of(context).push(
-                        MaterialPageRoute(
-                          builder: (context) => const UploadProgressDemoScreen(),
-                        ),
-                      );
-                    },
-                    icon: Icons.cloud_upload,
-                    label: 'Progress',
-                    color: Colors.indigo,
+                    icon: Icons.insert_drive_file,
+                    label: 'Document',
+                    subtitle: 'Files & Documents',
+                    color: Colors.purple,
+                    isDark: _themeService.isDarkMode,
+                    isFullWidth: true,
                   ),
                 ],
               ),
             ),
+            
             const SizedBox(height: 30),
+            
+            // Cancel button
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 30),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(context),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(16),
+                    ),
+                    side: BorderSide(
+                      color: _themeService.isDarkMode ? Colors.grey[600]! : Colors.grey[300]!,
+                    ),
+                  ),
+                  child: Text(
+                    'Cancel',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: _themeService.isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                    ),
+                  ),
+                ),
+              ),
+            ),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildQuickMediaButton({
+  Widget _buildEnhancedMediaButton({
     required VoidCallback onPressed,
     required IconData icon,
     required String label,
+    required String subtitle,
     required Color color,
+    required bool isDark,
+    bool isFullWidth = false,
   }) {
-    return InkWell(
-      onTap: onPressed,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: 70,
-        height: 70,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
+    return Container(
+      width: isFullWidth ? double.infinity : null,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPressed,
           borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: color.withValues(alpha: 0.3)),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
+          child: Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: isDark 
+                  ? Colors.grey[800]?.withValues(alpha: 0.3)
+                  : Colors.grey[50],
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: color.withValues(alpha: 0.2),
+                width: 1,
               ),
             ),
-          ],
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: color,
+                    size: 24,
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios,
+                  size: 16,
+                  color: isDark ? Colors.grey[400] : Colors.grey[500],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );
