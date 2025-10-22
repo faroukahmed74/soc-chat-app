@@ -1,5 +1,5 @@
 ==== SOC Chat - SYSTEM PATH Diagnostic ====
-Timestamp: 2025-10-22T00:07:42.6149294+03:00
+Timestamp: 2025-10-22T15:48:58.9255416+03:00
 User: WIN-TS7V2JVVPTA$
 Session: 
 Machine PATH:
@@ -9,5 +9,5 @@ C:\Windows\system32\config\systemprofile\AppData\Local\Microsoft\WindowsApps;
 Node found: C:\Program Files\nodejs\node.exe
 Node version: v22.20.0
 ngrok found: C:\ProgramData\chocolatey\bin\ngrok.exe
-ngrok version: ngrok version 3.30.0
+ngrok version: Cannot find file at '..\\lib\ngrok\tools\ngrok.exe' (C:\ProgramData\chocolatey\lib\ngrok\tools\ngrok.exe). This usually indicates a missing or moved file.
 ==== End Diagnostic ====
