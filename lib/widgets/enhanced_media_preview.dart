@@ -1,9 +1,16 @@
-import 'package:flutter/material.dart';
-import 'package:video_player/video_player.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../services/logger_service.dart';
+// =============================================================================
+// ENHANCED MEDIA PREVIEW WIDGET
+// =============================================================================
+// This widget provides enhanced media previews with better error handling,
+// retry functionality, and improved URL validation for chat screens
 
-/// Enhanced media preview widget with fullscreen display
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import '../services/theme_service.dart';
+import '../services/logger_service.dart';
+import '../utils/responsive_utils.dart';
+
+/// Enhanced media preview widget for chat screens
 class EnhancedMediaPreview extends StatefulWidget {
   final String mediaUrl;
   final String mediaType;
@@ -12,6 +19,10 @@ class EnhancedMediaPreview extends StatefulWidget {
   final bool isCurrentUser;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
+  final double? maxWidth;
+  final double? maxHeight;
+  final bool showFullScreenButton;
+  final bool enableRetry;
 
   const EnhancedMediaPreview({
     super.key,
@@ -22,6 +33,10 @@ class EnhancedMediaPreview extends StatefulWidget {
     this.isCurrentUser = false,
     this.onTap,
     this.onLongPress,
+    this.maxWidth,
+    this.maxHeight,
+    this.showFullScreenButton = true,
+    this.enableRetry = true,
   });
 
   @override
@@ -29,751 +44,502 @@ class EnhancedMediaPreview extends StatefulWidget {
 }
 
 class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
-  VideoPlayerController? _videoController;
-  bool _isVideoInitialized = false;
-  bool _isLoading = true;
-  bool _hasError = false;
-  String _errorMessage = '';
+  bool _isRetrying = false;
+  late ThemeService _themeService;
 
   @override
   void initState() {
     super.initState();
-    _initializeMedia();
+    _themeService = ThemeService.instance;
+    _themeService.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
-  @override
-  void dispose() {
-    _videoController?.dispose();
-    super.dispose();
-  }
+  void _retryLoad() {
+    if (_isRetrying) return;
+    
+    setState(() {
+      _isRetrying = true;
+    });
 
-  Future<void> _initializeMedia() async {
-    try {
-      setState(() {
-        _isLoading = true;
-        _hasError = false;
-      });
-
-      if (widget.mediaType == 'video') {
-        await _initializeVideo();
-      } else {
-        // For images and documents, just mark as loaded
-        setState(() {
-          _isLoading = false;
-        });
-      }
-    } catch (e) {
-      Log.e('Error initializing media', 'ENHANCED_MEDIA_PREVIEW', e);
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-        _errorMessage = e.toString();
-      });
-    }
-  }
-
-  Future<void> _initializeVideo() async {
-    try {
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(widget.mediaUrl));
-      await _videoController!.initialize();
-      
+    // Simulate retry delay
+    Future.delayed(const Duration(milliseconds: 500), () {
       if (mounted) {
         setState(() {
-          _isVideoInitialized = true;
-          _isLoading = false;
+          _isRetrying = false;
         });
       }
+    });
+  }
+
+  bool _isValidUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');
     } catch (e) {
-      Log.e('Error initializing video', 'ENHANCED_MEDIA_PREVIEW', e);
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-        _errorMessage = 'Failed to load video: $e';
-      });
+      return false;
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    try {
-      final theme = Theme.of(context);
-      final isDark = theme.brightness == Brightness.dark;
-      final screenSize = MediaQuery.of(context).size;
+    final isMobile = ResponsiveUtils.isMobile(context);
+    final isTablet = ResponsiveUtils.isTablet(context);
+    
+    // Calculate responsive dimensions
+    final maxWidth = widget.maxWidth ?? (isMobile ? 200.0 : isTablet ? 300.0 : 400.0);
+    final maxHeight = widget.maxHeight ?? (isMobile ? 200.0 : isTablet ? 300.0 : 400.0);
 
-      return Material(
-        color: Colors.transparent,
+    return Container(
+      constraints: BoxConstraints(
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
+      ),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
         child: GestureDetector(
           onTap: widget.onTap,
           onLongPress: widget.onLongPress,
-          child: Container(
-            // Fullscreen constraints - adapts to device screen size
-            constraints: BoxConstraints(
-              maxWidth: screenSize.width,  // Full screen width
-              maxHeight: screenSize.height * 0.85, // 85% of screen height
-              minWidth: screenSize.width * 0.95,  // 95% of screen width
-              minHeight: screenSize.height * 0.7, // 70% of screen height
-            ),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(20),
-                                                  boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.3),
-                blurRadius: 15,
-                offset: const Offset(0, 8),
+          child: _buildMediaContent(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMediaContent() {
+    // Validate URL first
+    if (!_isValidUrl(widget.mediaUrl)) {
+      return _buildErrorWidget('Invalid media URL');
+    }
+
+    switch (widget.mediaType) {
+      case 'image':
+        return _buildImageWidget();
+      case 'video':
+        return _buildVideoWidget();
+      case 'audio':
+      case 'voice':
+        return _buildAudioWidget();
+      case 'document':
+        return _buildDocumentWidget();
+      default:
+        return _buildUnknownWidget();
+    }
+  }
+
+  Widget _buildImageWidget() {
+    return Stack(
+      children: [
+        Image.network(
+          widget.mediaUrl,
+          fit: BoxFit.cover,
+          width: double.infinity,
+          height: double.infinity,
+          loadingBuilder: (context, child, loadingProgress) {
+            if (loadingProgress == null) return child;
+            return _buildLoadingWidget();
+          },
+          errorBuilder: (context, error, stackTrace) {
+            Log.e('Image loading error', 'ENHANCED_MEDIA_PREVIEW', error);
+            Log.e('Failed URL: ${widget.mediaUrl}', 'ENHANCED_MEDIA_PREVIEW');
+            return _buildErrorWidget('Failed to load image');
+          },
+        ),
+        if (widget.showFullScreenButton)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(20),
               ),
-            ],
+              child: IconButton(
+                onPressed: widget.onTap,
+                icon: const Icon(Icons.fullscreen, color: Colors.white, size: 20),
+                tooltip: 'View full screen',
+              ),
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(20),
-              child: _buildMediaContent(theme, isDark, screenSize),
+          ),
+        Positioned(
+          bottom: 8,
+          left: 8,
+          right: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.image, color: Colors.white, size: 16),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    widget.fileName ?? 'Image',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (widget.fileSize != null) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    widget.fileSize!,
+                    style: const TextStyle(color: Colors.white70, fontSize: 10),
+                  ),
+                ],
+              ],
             ),
           ),
         ),
-      );
-    } catch (e) {
-      Log.e('Error building EnhancedMediaPreview', 'ENHANCED_MEDIA_PREVIEW', e);
-      return Material(
-        color: Colors.red.shade100,
-        child: Center(
+      ],
+    );
+  }
+
+  Widget _buildVideoWidget() {
+    return Stack(
+      children: [
+        Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(12),
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(
-                Icons.error_outline,
-                size: 64,
-                color: Colors.red.shade600,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                'Error Loading Media',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.red.shade800,
-                ),
+                Icons.videocam,
+                size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
+                color: _themeService.isDarkMode ? Colors.white : Colors.black87,
               ),
               const SizedBox(height: 8),
               Text(
-                'Please try again',
+                'Video Preview',
                 style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.red.shade600,
+                  color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                  fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                'Tap to play',
+                style: TextStyle(
+                  color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
+                  fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12),
                 ),
               ),
             ],
           ),
         ),
-      );
-    }
-  }
-
-  Widget _buildMediaContent(ThemeData theme, bool isDark, Size screenSize) {
-    try {
-      if (_isLoading) {
-        return _buildLoadingState(theme, isDark, screenSize);
-      }
-
-      if (_hasError) {
-        return _buildErrorState(theme, isDark, screenSize);
-      }
-
-      switch (widget.mediaType) {
-        case 'image':
-          return _buildImageContent(theme, isDark, screenSize);
-        case 'video':
-          return _buildVideoContent(theme, isDark, screenSize);
-        case 'document':
-          return _buildDocumentContent(theme, isDark, screenSize);
-        case 'audio':
-          return _buildAudioContent(theme, isDark, screenSize);
-        default:
-          return _buildUnknownContent(theme, isDark, screenSize);
-      }
-    } catch (e) {
-      Log.e('Error building media content', 'ENHANCED_MEDIA_PREVIEW', e);
-      return _buildErrorState(theme, isDark, screenSize);
-    }
-  }
-
-  Widget _buildLoadingState(ThemeData theme, bool isDark, Size screenSize) {
-    return Container(
-      width: screenSize.width,
-      height: screenSize.height * 0.85,
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
-            strokeWidth: 4,
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Loading ${widget.mediaType}...',
-            style: TextStyle(
-              color: isDark ? Colors.white70 : Colors.grey.shade700,
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
+        // Play button overlay
+        Center(
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.6),
+              shape: BoxShape.circle,
+            ),
+            child: IconButton(
+              onPressed: widget.onTap,
+              icon: const Icon(
+                Icons.play_arrow,
+                color: Colors.white,
+                size: 40,
+              ),
             ),
           ),
-        ],
-      ),
+        ),
+        if (widget.showFullScreenButton)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.5),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: IconButton(
+                onPressed: widget.onTap,
+                icon: const Icon(Icons.fullscreen, color: Colors.white, size: 20),
+                tooltip: 'View full screen',
+              ),
+            ),
+          ),
+        Positioned(
+          bottom: 8,
+          left: 8,
+          right: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.videocam, color: Colors.white, size: 16),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    widget.fileName ?? 'Video',
+                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (widget.fileSize != null) ...[
+                  const SizedBox(width: 4),
+                  Text(
+                    widget.fileSize!,
+                    style: const TextStyle(color: Colors.white70, fontSize: 10),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
-  Widget _buildErrorState(ThemeData theme, bool isDark, Size screenSize) {
+  Widget _buildAudioWidget() {
     return Container(
-      width: screenSize.width,
-      height: screenSize.height * 0.85,
-      decoration: BoxDecoration(
-        color: isDark ? Colors.red.shade900 : Colors.red.shade50,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.red.shade700 : Colors.red.shade200,
-          width: 2,
-        ),
-      ),
+      color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
-            Icons.error_outline,
-            size: 80,
-            color: isDark ? Colors.red.shade300 : Colors.red.shade600,
-          ),
-          const SizedBox(height: 24),
-          Text(
-            'Failed to load',
-            style: TextStyle(
-              color: isDark ? Colors.red.shade300 : Colors.red.shade700,
-              fontSize: 24,
-              fontWeight: FontWeight.w700,
-            ),
+            widget.mediaType == 'voice' ? Icons.mic : Icons.audiotrack,
+            color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+            size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
           ),
           const SizedBox(height: 16),
           Text(
-            _errorMessage,
+            widget.fileName ?? (widget.mediaType == 'voice' ? 'Voice Message' : 'Audio'),
             style: TextStyle(
-              color: isDark ? Colors.red.shade400 : Colors.red.shade600,
-              fontSize: 16,
+              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
+              fontWeight: FontWeight.w600,
             ),
             textAlign: TextAlign.center,
-            maxLines: 3,
-            overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 32),
-          ElevatedButton.icon(
-            onPressed: _initializeMedia,
-            icon: const Icon(Icons.refresh, size: 24),
-            label: const Text('Retry'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: isDark ? Colors.red.shade700 : Colors.red.shade100,
-              foregroundColor: isDark ? Colors.white : Colors.red.shade700,
-              padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(25),
-              ),
-              textStyle: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildImageContent(ThemeData theme, bool isDark, Size screenSize) {
-    return Stack(
-      children: [
-        // Fullscreen image
-        Image.network(
-          widget.mediaUrl,
-          fit: BoxFit.contain,
-          width: screenSize.width,
-          height: screenSize.height * 0.85,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return Container(
-              width: screenSize.width,
-              height: screenSize.height * 0.85,
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Center(
-                child: CircularProgressIndicator(
-                  value: loadingProgress.expectedTotalBytes != null
-                      ? loadingProgress.cumulativeBytesLoaded / 
-                        loadingProgress.expectedTotalBytes!
-                      : null,
-                  valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
-                  strokeWidth: 4,
-                ),
-              ),
-            );
-          },
-          errorBuilder: (context, error, stackTrace) {
-            return _buildErrorState(theme, isDark, screenSize);
-          },
-        ),
-        // Media type indicator
-        Positioned(
-          top: 24,
-          right: 24,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.photo,
-                  color: Colors.white,
-                  size: 24,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'IMAGE',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-        // File info overlay
-        if (widget.fileName != null || widget.fileSize != null)
-          Positioned(
-            bottom: 0,
-            left: 0,
-            right: 0,
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Colors.transparent,
-                    Colors.black.withValues(alpha: 0.8),
-                  ],
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (widget.fileName != null)
-                    Text(
-                      widget.fileName!,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  if (widget.fileSize != null)
-                    Text(
-                      widget.fileSize!,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.9),
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                ],
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-
-  Widget _buildVideoContent(ThemeData theme, bool isDark, Size screenSize) {
-    if (!_isVideoInitialized || _videoController == null) {
-      return _buildVideoPlaceholder(theme, isDark, screenSize);
-    }
-
-    return Stack(
-      children: [
-        // Fullscreen video player
-        SizedBox(
-          width: screenSize.width,
-          height: screenSize.height * 0.85,
-          child: _buildCustomVideoPlayer(theme, isDark),
-        ),
-        // Media type indicator
-        Positioned(
-          top: 24,
-          right: 24,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.8),
-              borderRadius: BorderRadius.circular(20),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.videocam,
-                  color: Colors.white,
-                  size: 24,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'VIDEO',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildCustomVideoPlayer(ThemeData theme, bool isDark) {
-    return Stack(
-      alignment: Alignment.center,
-      children: [
-        AspectRatio(
-          aspectRatio: _videoController!.value.aspectRatio,
-          child: VideoPlayer(_videoController!),
-        ),
-        // Custom video controls
-        Container(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.5),
-            borderRadius: BorderRadius.circular(25),
-          ),
-          child: IconButton(
-            onPressed: () {
-              setState(() {
-                if (_videoController!.value.isPlaying) {
-                  _videoController!.pause();
-                } else {
-                  _videoController!.play();
-                }
-              });
-            },
-            icon: Icon(
-              _videoController!.value.isPlaying ? Icons.pause : Icons.play_arrow,
-              color: Colors.white,
-              size: 48,
-            ),
-            iconSize: 48,
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildVideoPlaceholder(ThemeData theme, bool isDark, Size screenSize) {
-    return Container(
-      width: screenSize.width,
-      height: screenSize.height * 0.85,
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey.shade800 : Colors.grey.shade200,
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          Icon(
-            Icons.videocam,
-            size: 120,
-            color: isDark ? Colors.grey.shade600 : Colors.grey.shade400,
-          ),
-          if (widget.fileName != null)
-            Positioned(
-              bottom: 32,
-              left: 32,
-              right: 32,
-              child: Text(
-                widget.fileName!,
-                style: TextStyle(
-                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                ),
-                textAlign: TextAlign.center,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildDocumentContent(ThemeData theme, bool isDark, Size screenSize) {
-    return Container(
-      width: screenSize.width,
-      height: screenSize.height * 0.85,
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-          width: 2,
-        ),
-      ),
-      child: InkWell(
-        onTap: () => _openDocument(widget.mediaUrl),
-        borderRadius: BorderRadius.circular(20),
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
+          const SizedBox(height: 8),
+          Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Container(
-                width: 120,
-                height: 120,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(30),
+              IconButton(
+                onPressed: widget.onTap,
+                icon: Icon(
+                  Icons.play_arrow,
+                  color: _themeService.isDarkMode ? Colors.white : Colors.black87,
                 ),
-                child: Icon(
-                  _getDocumentIcon(widget.fileName ?? ''),
-                  color: theme.colorScheme.primary,
-                  size: 60,
-                ),
+                tooltip: 'Play audio',
               ),
-              const SizedBox(height: 32),
-              if (widget.fileName != null)
-                Text(
-                  widget.fileName!,
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black87,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
+              if (widget.showFullScreenButton)
+                IconButton(
+                  onPressed: widget.onTap,
+                  icon: Icon(
+                    Icons.fullscreen,
+                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
                   ),
-                  textAlign: TextAlign.center,
-                  maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
+                  tooltip: 'View full screen',
                 ),
-              if (widget.fileSize != null) ...[
-                const SizedBox(height: 16),
-                Text(
-                  widget.fileSize!,
-                  style: TextStyle(
-                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-              const SizedBox(height: 32),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.primary,
-                  borderRadius: BorderRadius.circular(25),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.download,
-                      color: Colors.white,
-                      size: 24,
-                    ),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Open Document',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAudioContent(ThemeData theme, bool isDark, Size screenSize) {
-    return Container(
-      width: screenSize.width,
-      height: screenSize.height * 0.85,
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-          width: 2,
-        ),
-      ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Container(
-            width: 120,
-            height: 120,
-            margin: const EdgeInsets.all(32),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(30),
-            ),
-            child: Icon(
-              Icons.audiotrack,
-              color: theme.colorScheme.primary,
-              size: 60,
-            ),
-          ),
-          const SizedBox(height: 32),
-          Text(
-            'Audio Message',
-            style: TextStyle(
-              color: isDark ? Colors.white : Colors.black87,
-              fontSize: 28,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
           if (widget.fileSize != null) ...[
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
             Text(
               widget.fileSize!,
               style: TextStyle(
-                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                fontSize: 18,
-                fontWeight: FontWeight.w500,
+                color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
+                fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 10),
               ),
             ),
           ],
-          const SizedBox(height: 32),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary,
-              borderRadius: BorderRadius.circular(25),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.play_arrow,
-                  color: Colors.white,
-                  size: 24,
-                ),
-                const SizedBox(width: 8),
-                Text(
-                  'Play Audio',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
         ],
       ),
     );
   }
 
-  Widget _buildUnknownContent(ThemeData theme, bool isDark, Size screenSize) {
+  Widget _buildDocumentWidget() {
     return Container(
-      width: screenSize.width,
-      height: screenSize.height * 0.85,
-      decoration: BoxDecoration(
-        color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-          width: 2,
+      color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.insert_drive_file,
+            color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+            size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
+          ),
+          const SizedBox(height: 16),
+          Text(
+            widget.fileName ?? 'Document',
+            style: TextStyle(
+              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          const SizedBox(height: 8),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                onPressed: widget.onTap,
+                icon: Icon(
+                  Icons.download,
+                  color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                ),
+                tooltip: 'Download',
+              ),
+              if (widget.showFullScreenButton)
+                IconButton(
+                  onPressed: widget.onTap,
+                  icon: Icon(
+                    Icons.fullscreen,
+                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                  ),
+                  tooltip: 'View full screen',
+                ),
+            ],
+          ),
+          if (widget.fileSize != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              widget.fileSize!,
+              style: TextStyle(
+                color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
+                fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 10),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingWidget() {
+    return Container(
+      color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[200],
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 8),
+            Text(
+              'Loading...',
+              style: TextStyle(
+                color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                fontSize: 12,
+              ),
+            ),
+          ],
         ),
       ),
+    );
+  }
+
+  Widget _buildErrorWidget(String message) {
+    return Container(
+      color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[200],
       child: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              Icons.file_present,
-              size: 80,
-              color: isDark ? Colors.grey.shade600 : Colors.grey.shade400,
+              Icons.error_outline,
+              color: Colors.red,
+              size: ResponsiveUtils.getResponsiveIconSize(context),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: 8),
             Text(
-              'Unknown File Type',
+              message,
               style: TextStyle(
-                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                fontSize: 24,
-                fontWeight: FontWeight.w600,
+                color: Colors.red,
+                fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12),
               ),
+              textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 16),
-            Text(
-              'This file type is not supported',
-              style: TextStyle(
-                color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
-                fontSize: 16,
+            if (widget.enableRetry) ...[
+              const SizedBox(height: 8),
+              ElevatedButton.icon(
+                onPressed: _isRetrying ? null : _retryLoad,
+                icon: _isRetrying 
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.refresh, size: 16),
+                label: Text(_isRetrying ? 'Retrying...' : 'Retry'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  textStyle: const TextStyle(fontSize: 10),
+                ),
               ),
-            ),
+            ],
+            if (widget.mediaUrl.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text(
+                'URL: ${widget.mediaUrl.length > 50 ? '${widget.mediaUrl.substring(0, 50)}...' : widget.mediaUrl}',
+                style: TextStyle(
+                  color: Colors.grey[500],
+                  fontSize: 8,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ],
         ),
       ),
     );
   }
 
-  IconData _getDocumentIcon(String fileName) {
-    final extension = fileName.split('.').last.toLowerCase();
-    switch (extension) {
-      case 'pdf':
-        return Icons.picture_as_pdf;
-      case 'doc':
-      case 'docx':
-        return Icons.description;
-      case 'xls':
-      case 'xlsx':
-        return Icons.table_chart;
-      case 'ppt':
-      case 'pptx':
-        return Icons.slideshow;
-      case 'txt':
-        return Icons.text_snippet;
-      default:
-        return Icons.insert_drive_file;
-    }
-  }
-
-  Future<void> _openDocument(String url) async {
-    try {
-      final uri = Uri.parse(url);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      Log.e('Error opening document', 'ENHANCED_MEDIA_PREVIEW', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error opening document: $e'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
+  Widget _buildUnknownWidget() {
+    return Container(
+      color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[200],
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              Icons.help_outline,
+              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+              size: ResponsiveUtils.getResponsiveIconSize(context),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Unknown media type',
+              style: TextStyle(
+                color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }

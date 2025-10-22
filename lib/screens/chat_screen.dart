@@ -16,6 +16,7 @@ import '../services/local_auth_service.dart';
 
 import '../services/enhanced_unified_media_service.dart';
 import '../widgets/enhanced_responsive_media_preview.dart';
+import '../widgets/enhanced_media_preview.dart';
 import '../services/enhanced_media_service.dart';
 import '../services/document_service.dart';
 import '../services/logger_service.dart';
@@ -1667,116 +1668,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 maxWidth: 250,
                 maxHeight: 250,
               ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Stack(
-                children: [
-                  Image.network(
-                    mediaUrl,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      Log.i('Loading image: $mediaUrl', 'CHAT_SCREEN');
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        width: 250,
-                        height: 200,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Center(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded / 
-                                      loadingProgress.expectedTotalBytes!
-                                    : null,
-                                strokeWidth: 3,
-                              ),
-                              const SizedBox(height: 8),
-                              Text(
-                                'Loading...',
-                                style: TextStyle(
-                                  color: Colors.grey[600],
-                                  fontSize: 12,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      Log.e('Image loading error', 'CHAT_SCREEN', error);
-                      Log.e('Failed URL: $mediaUrl', 'CHAT_SCREEN');
-                      return Container(
-                        width: 250,
-                        height: 200,
-                        decoration: BoxDecoration(
-                          color: Colors.grey.shade300,
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              Icons.broken_image,
-                              size: 50,
-                              color: Colors.grey[600],
-                            ),
-                            const SizedBox(height: 8),
-                            Text(
-                              'Failed to load image',
-                              style: TextStyle(
-                                color: Colors.grey[600],
-                                fontSize: 12,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'URL: ${mediaUrl.length > 50 ? '${mediaUrl.substring(0, 50)}...' : mediaUrl}',
-                              style: TextStyle(
-                                color: Colors.grey[500],
-                                fontSize: 10,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'Tap to retry',
-                              style: TextStyle(
-                                color: Colors.blue[600],
-                                fontSize: 10,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
-                  ),
-                  Positioned(
-                    top: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.all(6),
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.6),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: const Icon(
-                        Icons.photo,
-                        color: Colors.white,
-                        size: 16,
-                      ),
-                    ),
-                  ),
-                ],
+              child: EnhancedMediaPreview(
+                mediaUrl: mediaUrl,
+                mediaType: 'image',
+                fileName: data['fileName'] ?? 'Image',
+                fileSize: data['fileSize'],
+                onTap: () => _showMediaFullScreen(mediaUrl, 'image', text),
+                maxWidth: 250,
+                maxHeight: 200,
+                enableRetry: true,
               ),
             ),
-          ),
-          ),
           const SizedBox(height: 8),
         ],
         Text(
@@ -1804,84 +1706,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               maxWidth: 250,
               maxHeight: 200,
             ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(12),
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Video thumbnail with fallback
-                  Container(
-                    width: 250,
-                    height: 200,
-                    decoration: BoxDecoration(
-                      color: Colors.grey[800],
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: FutureBuilder<String?>(
-                      future: _generateVideoThumbnail(mediaUrl!),
-                      builder: (context, snapshot) {
-                        if (snapshot.hasData && snapshot.data != null) {
-                          return ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Image.network(
-                              snapshot.data!,
-                              width: 250,
-                              height: 200,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                Log.e('Video thumbnail loading error', 'CHAT_SCREEN', error);
-                                return _buildVideoPlaceholder();
-                              },
-                            ),
-                          );
-                        }
-                        return _buildVideoPlaceholder();
-                      },
-                    ),
-                  ),
-                  // Play button overlay
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      shape: BoxShape.circle,
-                    ),
-                    child: IconButton(
-                      onPressed: () {
-                        if (mediaUrl != null) {
-                          _playVideo(mediaUrl);
-                        }
-                      },
-                      icon: const Icon(
-                        Icons.play_arrow,
-                        color: Colors.white,
-                        size: 40,
-                      ),
-                    ),
-                  ),
-                  // Video duration indicator (if available)
-                  if (data['duration'] != null) ...[
-                    Positioned(
-                      bottom: 8,
-                      right: 8,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.7),
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                        child: Text(
-                          _formatDuration(Duration(seconds: data['duration'])),
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 10,
-                            fontWeight: FontWeight.w500,
-                          ),
-                      ),
-                    ),
-                  ),
-                  ],
-                ],
-              ),
+            child: EnhancedMediaPreview(
+              mediaUrl: mediaUrl!,
+              mediaType: 'video',
+              fileName: data['fileName'] ?? 'Video',
+              fileSize: data['fileSize'],
+              onTap: () => _playVideo(mediaUrl),
+              maxWidth: 250,
+              maxHeight: 200,
+              enableRetry: true,
             ),
           ),
           const SizedBox(height: 8),
@@ -1967,225 +1800,29 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     final duration = data['duration'] ?? 0;
     final messageId = data['id'] ?? '';
     
-    // Since this method is called for voice messages, always show the enhanced player
-    if (mediaUrl != null) {
-      // Use enhanced VoiceMessagePlayer for voice messages
-      return Container(
-        padding: const EdgeInsets.all(8),
-        decoration: BoxDecoration(
-          color: isCurrentUser ? Colors.blue.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isCurrentUser ? Colors.blue : Colors.grey,
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            // Play/Pause Button
-            GestureDetector(
-              onTap: () {
-                if (mediaUrl != null) {
-                  final isCurrentlyPlaying = _isPlayingMap[messageId] ?? false;
-                  if (isCurrentlyPlaying) {
-                    _pauseAudioPlayback(messageId);
-                  } else {
-                    _playVoiceMessage(mediaUrl, messageId: messageId);
-                  }
-                }
-              },
-              child: Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: isCurrentUser ? Colors.blue : Colors.grey.shade300,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  (_isPlayingMap[messageId] ?? false) ? Icons.pause : Icons.play_arrow,
-                  color: isCurrentUser ? Colors.white : Colors.black87,
-                  size: 20,
-                ),
-              ),
-            ),
-            const SizedBox(width: 12),
-            
-            // Voice Message Info
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  text,
-                  style: TextStyle(
-                    color: isCurrentUser ? Colors.white : Colors.black87,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Row(
-                  children: [
-                    Icon(
-                      Icons.mic,
-                      size: 16,
-                      color: isCurrentUser ? Colors.white70 : Colors.black54,
-                    ),
-                    const SizedBox(width: 4),
-                    Text(
-                      '${duration}s',
-                      style: TextStyle(
-                        color: isCurrentUser ? Colors.white70 : Colors.black54,
-                        fontSize: 12,
-                      ),
-                    ),
-                    if (_isPlayingMap[messageId] ?? false) ...[
-                      const SizedBox(width: 8),
-                      Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Colors.green,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-            
-            const SizedBox(width: 8),
-            
-            // Stop Button (if playing)
-            if (_isPlayingMap[messageId] ?? false)
-              GestureDetector(
-                onTap: () => _stopAudioPlayback(messageId),
-                child: Container(
-                  width: 32,
-                  height: 32,
-                  decoration: BoxDecoration(
-                    color: Colors.red.withOpacity(0.1),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.stop,
-                    color: Colors.red,
-                    size: 16,
-                  ),
-                ),
-              ),
-          ],
-        ),
-      );
-    }
-    
-    // Fallback to original implementation for other audio content
-    final isCurrentlyPlaying = _isPlayingMap[messageId] ?? false;
-    
     return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: isCurrentUser ? Colors.blue.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(
-          color: isCurrentUser ? Colors.blue : Colors.grey,
-          width: 1,
-        ),
+      constraints: const BoxConstraints(
+        maxWidth: 250,
+        maxHeight: 80,
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Play/Pause Button
-          GestureDetector(
-            onTap: () {
-              if (mediaUrl != null) {
-                if (isCurrentlyPlaying) {
-                  _pauseAudioPlayback(messageId);
-                } else {
-                  _playVoiceMessage(mediaUrl, messageId: messageId);
-                }
-              }
-            },
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: BoxDecoration(
-                color: isCurrentUser ? Colors.blue : Colors.grey.shade300,
-                shape: BoxShape.circle,
-              ),
-            child: Icon(
-                isCurrentlyPlaying ? Icons.pause : Icons.play_arrow,
-              color: isCurrentUser ? Colors.white : Colors.black87,
-                size: 20,
-              ),
-            ),
-          ),
-          const SizedBox(width: 12),
-          
-          // Voice Message Info
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                text,
-                style: TextStyle(
-                  color: isCurrentUser ? Colors.white : Colors.black87,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Row(
-                children: [
-                  Icon(
-                    Icons.mic,
-                    size: 16,
-                    color: isCurrentUser ? Colors.white70 : Colors.black54,
-                  ),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${duration}s',
-                    style: TextStyle(
-                      color: isCurrentUser ? Colors.white70 : Colors.black54,
-                      fontSize: 12,
-                    ),
-                  ),
-                  if (isCurrentlyPlaying) ...[
-                    const SizedBox(width: 8),
-                    Container(
-                      width: 8,
-                      height: 8,
-                      decoration: const BoxDecoration(
-                        color: Colors.green,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
-          ),
-          
-          const SizedBox(width: 8),
-          
-          // Stop Button (if playing)
-          if (isCurrentlyPlaying)
-            GestureDetector(
-              onTap: () => _stopAudioPlayback(messageId),
-              child: Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  shape: BoxShape.circle,
-                ),
-              child: Icon(
-                  Icons.stop,
-                  color: Colors.red,
-                  size: 16,
-                ),
-              ),
-            ),
-        ],
+      child: EnhancedMediaPreview(
+        mediaUrl: mediaUrl ?? '',
+        mediaType: 'voice',
+        fileName: text,
+        fileSize: '${duration}s',
+        onTap: () {
+          if (mediaUrl != null) {
+            final isCurrentlyPlaying = _isPlayingMap[messageId] ?? false;
+            if (isCurrentlyPlaying) {
+              _pauseAudioPlayback(messageId);
+            } else {
+              _playVoiceMessage(mediaUrl, messageId: messageId);
+            }
+          }
+        },
+        maxWidth: 250,
+        maxHeight: 80,
+        enableRetry: true,
       ),
     );
   }
@@ -2220,83 +1857,24 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       }
     }
     
-    final fileIcon = DocumentService.getFileIcon(extension);
-    final fileColor = Color(DocumentService.getFileColor(extension));
-    
-    return GestureDetector(
-      onTap: () {
-        if (mediaUrl != null) {
-          _showMediaFullScreen(mediaUrl, 'document', fileName);
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: isCurrentUser ? Colors.blue.withValues(alpha: 0.1) : Colors.grey.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: fileColor.withValues(alpha: 0.3),
-            width: 1,
-          ),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              fileIcon,
-              style: TextStyle(fontSize: 32),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    fileName,
-                    style: TextStyle(
-                      color: isCurrentUser ? Colors.white : Colors.black87,
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    fileType,
-                    style: TextStyle(
-                      color: isCurrentUser ? Colors.white70 : Colors.black54,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  const SizedBox(height: 2),
-                  Text(
-                    fileSize,
-                    style: TextStyle(
-                      color: isCurrentUser ? Colors.white60 : Colors.black45,
-                      fontSize: 10,
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Tap to open',
-                    style: TextStyle(
-                      color: fileColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Icon(
-              Icons.open_in_new,
-              color: fileColor,
-              size: 20,
-            ),
-          ],
-        ),
+    return Container(
+      constraints: const BoxConstraints(
+        maxWidth: 250,
+        maxHeight: 100,
+      ),
+      child: EnhancedMediaPreview(
+        mediaUrl: mediaUrl ?? '',
+        mediaType: 'document',
+        fileName: fileName,
+        fileSize: fileSize,
+        onTap: () {
+          if (mediaUrl != null) {
+            _showMediaFullScreen(mediaUrl, 'document', fileName);
+          }
+        },
+        maxWidth: 250,
+        maxHeight: 100,
+        enableRetry: true,
       ),
     );
   }
