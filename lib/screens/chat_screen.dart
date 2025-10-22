@@ -87,6 +87,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   String? _groupKey;
   
   late ThemeService _themeService;
+  
+  // Media selection state
+  Uint8List? _selectedMediaBytes;
+  String? _selectedMediaType;
+  String? _selectedMediaFileName;
+  bool _isUploadingMedia = false;
   final Map<String, String> _messageStatuses = {};
   final Map<String, Map<String, dynamic>> _messageCache = {};
   StreamSubscription<QuerySnapshot>? _messagesSubscription;
@@ -1050,6 +1056,101 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       ),
                     ),
                     
+                    // Media preview
+                    if (_selectedMediaBytes != null) ...[
+                      Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            // Media preview
+                            if (_selectedMediaType == 'image')
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.memory(
+                                  _selectedMediaBytes!,
+                                  width: 50,
+                                  height: 50,
+                                  fit: BoxFit.cover,
+                                ),
+                              )
+                            else if (_selectedMediaType == 'video')
+                              Container(
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  color: Colors.red.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.play_circle_outline,
+                                  color: Colors.red,
+                                  size: 30,
+                                ),
+                              )
+                            else
+                              Container(
+                                width: 50,
+                                height: 50,
+                                decoration: BoxDecoration(
+                                  color: Colors.blue.shade100,
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: const Icon(
+                                  Icons.attach_file,
+                                  color: Colors.blue,
+                                  size: 30,
+                                ),
+                              ),
+                            const SizedBox(width: 12),
+                            // Media info
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _selectedMediaFileName ?? 'Media',
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      color: isDark ? Colors.white : Colors.black87,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  Text(
+                                    _selectedMediaType?.toUpperCase() ?? 'FILE',
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: Colors.grey.shade600,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            // Remove button
+                            IconButton(
+                              onPressed: () {
+                                setState(() {
+                                  _selectedMediaBytes = null;
+                                  _selectedMediaType = null;
+                                  _selectedMediaFileName = null;
+                                });
+                              },
+                              icon: const Icon(Icons.close),
+                              iconSize: 20,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                    
                                         Container(
                       decoration: BoxDecoration(
                         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
@@ -1099,14 +1200,16 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                             valueListenable: _messageController,
                             builder: (context, value, child) {
                               final hasText = value.text.trim().isNotEmpty;
+                              final hasMedia = _selectedMediaBytes != null;
+                              final canSend = hasText || hasMedia;
                               return Container(
                                 margin: const EdgeInsets.only(right: 8),
                                 decoration: BoxDecoration(
-                                  color: hasText 
+                                  color: canSend 
                                       ? theme.colorScheme.primary
                                       : Colors.grey.shade300,
                                   shape: BoxShape.circle,
-                                  boxShadow: hasText ? [
+                                  boxShadow: canSend ? [
                                     BoxShadow(
                                       color: theme.colorScheme.primary.withValues(alpha: 0.3),
                                       blurRadius: 8,
@@ -1117,17 +1220,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                                             child: ScaleTransition(
                               scale: _scaleAnimation,
                               child: IconButton(
-                                onPressed: hasText ? _sendMessage : null,
+                                onPressed: canSend ? _sendMessage : null,
                                 icon: AnimatedSwitcher(
                                   duration: const Duration(milliseconds: 200),
                                   child: Icon(
-                                    hasText ? Icons.send : Icons.send,
-                                    key: ValueKey(hasText),
-                                    color: hasText ? Colors.white : Colors.grey.shade600,
+                                    canSend ? Icons.send : Icons.send,
+                                    key: ValueKey(canSend),
+                                    color: canSend ? Colors.white : Colors.grey.shade600,
                                     size: 20,
                                   ),
                                 ),
-                                tooltip: hasText ? 'Send Message' : 'Type a message to send',
+                                tooltip: canSend ? 'Send Message' : 'Type a message or select media to send',
                                 style: IconButton.styleFrom(
                                   padding: const EdgeInsets.all(12),
                                 ),
@@ -2238,7 +2341,9 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _sendMessage() async {
     final messageText = _messageController.text.trim();
-    if (messageText.isEmpty) return;
+    final hasMedia = _selectedMediaBytes != null;
+    
+    if (messageText.isEmpty && !hasMedia) return;
 
     // Generate temporary message ID for tracking
     final tempMessageId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
@@ -2253,10 +2358,23 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       // Trigger send animation
       _scaleController.forward().then((_) => _scaleController.reverse());
 
-      if (DatabaseConfig.usePhysicalServer) {
-        await _sendLocalMessage(messageText);
+      if (hasMedia) {
+        // Send media with optional text caption
+        await _uploadAndSendMedia(_selectedMediaBytes!, _selectedMediaType!, messageText.isNotEmpty ? messageText : '📎 Media');
+        
+        // Clear media selection
+        setState(() {
+          _selectedMediaBytes = null;
+          _selectedMediaType = null;
+          _selectedMediaFileName = null;
+        });
       } else {
-        await _sendFirebaseMessage(messageText);
+        // Send text message
+        if (DatabaseConfig.usePhysicalServer) {
+          await _sendLocalMessage(messageText);
+        } else {
+          await _sendFirebaseMessage(messageText);
+        }
       }
 
       _messageController.clear();
@@ -2410,7 +2528,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     try {
       final result = await EnhancedMediaService.pickImageFromGallery(context);
       if (result != null) {
-        await _uploadAndSendMedia(result.bytes, 'image', '📷 Image from gallery');
+        setState(() {
+          _selectedMediaBytes = result.bytes;
+          _selectedMediaType = 'image';
+          _selectedMediaFileName = result.fileName;
+        });
+        Navigator.pop(context); // Close the media options modal
       }
     } catch (e) {
       Log.e('Error picking image from gallery', 'CHAT_SCREEN', e);
@@ -2424,7 +2547,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     try {
       final result = await EnhancedMediaService.pickImageFromCamera(context);
       if (result != null) {
-        await _uploadAndSendMedia(result.bytes, 'image', '📷 Photo from camera');
+        setState(() {
+          _selectedMediaBytes = result.bytes;
+          _selectedMediaType = 'image';
+          _selectedMediaFileName = result.fileName;
+        });
+        Navigator.pop(context); // Close the media options modal
       }
     } catch (e) {
       Log.e('Error picking image from camera', 'CHAT_SCREEN', e);
@@ -3580,7 +3708,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     try {
       final result = await EnhancedMediaService.pickVideoFromGallery(context);
       if (result != null) {
-        await _uploadAndSendMedia(result.bytes, 'video', '🎥 Video from gallery');
+        setState(() {
+          _selectedMediaBytes = result.bytes;
+          _selectedMediaType = 'video';
+          _selectedMediaFileName = result.fileName;
+        });
+        Navigator.pop(context); // Close the media options modal
       }
     } catch (e) {
       Log.e('Error picking video from gallery', 'CHAT_SCREEN', e);
@@ -3594,7 +3727,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     try {
       final result = await EnhancedMediaService.recordVideo(context);
       if (result != null) {
-        await _uploadAndSendMedia(result.bytes, 'video', '🎥 Video from camera');
+        setState(() {
+          _selectedMediaBytes = result.bytes;
+          _selectedMediaType = 'video';
+          _selectedMediaFileName = result.fileName;
+        });
+        Navigator.pop(context); // Close the media options modal
       }
     } catch (e) {
       Log.e('Error recording video', 'CHAT_SCREEN', e);

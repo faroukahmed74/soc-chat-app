@@ -306,6 +306,8 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
   Widget _buildMediaPreview(ThemeData theme, bool isDark) {
     if (_selectedMedia == null) return const SizedBox.shrink();
 
+    Log.i('Building media preview for: ${_selectedMedia!.fileName}', 'ENHANCED_MEDIA_SENDER');
+
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
@@ -318,6 +320,23 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
       ),
       child: Row(
         children: [
+          // Debug indicator
+          Container(
+            padding: const EdgeInsets.all(4),
+            decoration: BoxDecoration(
+              color: Colors.red,
+              borderRadius: BorderRadius.circular(4),
+            ),
+            child: const Text(
+              'PREVIEW',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 8,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+          const SizedBox(width: 8),
           // Media icon
           Container(
             width: 48,
