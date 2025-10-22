@@ -15,7 +15,6 @@ import 'package:http/http.dart' as http;
 import 'config/database_config.dart';
 
 import 'screens/login_screen.dart';
-import 'screens/register_screen_mongodb.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -25,7 +24,7 @@ import 'services/localization_service.dart';
 import 'services/local_message_storage.dart';
 import 'services/local_auth_service.dart';
 
-import 'services/unified_notification_service.dart';
+import 'services/enhanced_notification_service.dart';
 import 'services/logger_service.dart';
 import 'widgets/error_boundary.dart';
 import 'routes/native_routes.dart' if (dart.library.html) 'routes/web_routes.dart' as app_routes;
@@ -389,12 +388,17 @@ class _MainAppState extends State<MainApp> {
                     : null;
               } else {
                 // On mobile, fire a local notification
-                await UnifiedNotificationService().sendChatMessageNotification(
+                await EnhancedNotificationService().sendLocalNotification(
                   title: senderName,
                   body: content.isNotEmpty ? content : 'New message',
-                  chatId: chatId,
-                  senderId: (msg['senderId'] ?? '').toString(),
-                  senderName: senderName,
+                  payload: json.encode({
+                    'type': 'chat_message',
+                    'chatId': chatId,
+                    'senderId': (msg['senderId'] ?? '').toString(),
+                    'senderName': senderName,
+                    'timestamp': DateTime.now().toIso8601String(),
+                  }),
+                  channelId: 'chat_notifications',
                 );
               }
             }
@@ -439,13 +443,13 @@ class _MainAppState extends State<MainApp> {
         }
       }
 
-      // Initialize basic notification services for physical server
+      // Initialize enhanced notification services for physical server
       try {
-        final unified = UnifiedNotificationService();
-        await unified.initialize();
-        Log.i('Unified notification service initialized', 'MAIN_APP');
+        final enhanced = EnhancedNotificationService();
+        await enhanced.initialize();
+        Log.i('Enhanced notification service initialized', 'MAIN_APP');
       } catch (e) {
-        Log.e('Unified notification service failed', 'MAIN_APP', e);
+        Log.e('Enhanced notification service failed', 'MAIN_APP', e);
       }
 
       // Send startup notification if user is logged in

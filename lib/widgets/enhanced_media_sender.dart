@@ -52,101 +52,103 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
           ),
         ],
       ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Header
-          Row(
-            children: [
-              Icon(
-                Icons.attach_file,
-                color: theme.colorScheme.primary,
-                size: 24,
-              ),
-              const SizedBox(width: 12),
-              Text(
-                'Send Media',
+      child: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Row(
+              children: [
+                Icon(
+                  Icons.attach_file,
+                  color: theme.colorScheme.primary,
+                  size: 24,
+                ),
+                const SizedBox(width: 12),
+                Text(
+                  'Send Media',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: isDark ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const Spacer(),
+                IconButton(
+                  onPressed: widget.onClose,
+                  icon: Icon(
+                    Icons.close,
+                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            
+            // Media selection buttons
+            if (_selectedMedia == null) _buildMediaSelectionButtons(theme, isDark),
+
+            // Selected media preview
+            if (_selectedMedia != null) _buildMediaPreview(theme, isDark),
+
+            // Caption input
+            if (_selectedMedia != null) ...[
+              const SizedBox(height: 16),
+              TextField(
+                controller: _captionController,
+                decoration: InputDecoration(
+                  hintText: 'Add a caption...',
+                  hintStyle: TextStyle(
+                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: theme.colorScheme.primary,
+                      width: 2,
+                    ),
+                  ),
+                  filled: true,
+                  fillColor: isDark ? Colors.grey.shade800 : Colors.grey.shade50,
+                ),
                 style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
                   color: isDark ? Colors.white : Colors.black87,
                 ),
-              ),
-              const Spacer(),
-              IconButton(
-                onPressed: widget.onClose,
-                icon: Icon(
-                  Icons.close,
-                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                ),
+                maxLines: 3,
               ),
             ],
-          ),
-          const SizedBox(height: 16),
-          
-          // Media selection buttons
-          if (_selectedMedia == null) _buildMediaSelectionButtons(theme, isDark),
 
-          // Selected media preview
-          if (_selectedMedia != null) _buildMediaPreview(theme, isDark),
+            // Upload progress
+            if (_isUploading) ...[
+              const SizedBox(height: 16),
+              _buildUploadProgress(theme, isDark),
+            ],
 
-          // Caption input
-          if (_selectedMedia != null) ...[
-            const SizedBox(height: 16),
-            TextField(
-              controller: _captionController,
-              decoration: InputDecoration(
-                hintText: 'Add a caption...',
-                hintStyle: TextStyle(
-                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-                  ),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-                  ),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide(
-                    color: theme.colorScheme.primary,
-                    width: 2,
-                  ),
-                ),
-                filled: true,
-                fillColor: isDark ? Colors.grey.shade800 : Colors.grey.shade50,
-              ),
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-              ),
-              maxLines: 3,
-            ),
+            // Error message
+            if (_uploadError != null) ...[
+              const SizedBox(height: 16),
+              _buildErrorMessage(theme, isDark),
+            ],
+
+            // Action buttons
+            if (_selectedMedia != null) ...[
+              const SizedBox(height: 16),
+              _buildActionButtons(theme, isDark),
+            ],
           ],
-
-          // Upload progress
-          if (_isUploading) ...[
-            const SizedBox(height: 16),
-            _buildUploadProgress(theme, isDark),
-          ],
-
-          // Error message
-          if (_uploadError != null) ...[
-            const SizedBox(height: 16),
-            _buildErrorMessage(theme, isDark),
-          ],
-
-          // Action buttons
-          if (_selectedMedia != null) ...[
-            const SizedBox(height: 16),
-            _buildActionButtons(theme, isDark),
-          ],
-        ],
+        ),
       ),
     );
   }

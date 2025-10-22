@@ -483,6 +483,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       ),
                     ),
                     const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.pushNamed(context, '/notification-test');
+                        },
+                        icon: const Icon(Icons.notifications_active),
+                        label: const Text('Test Notifications'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     const Text(
                       'Admin-only testing tools for debugging and system verification',
                       style: TextStyle(fontSize: 12, color: Colors.grey),

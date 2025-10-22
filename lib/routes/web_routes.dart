@@ -8,6 +8,7 @@ import '../screens/user_search_screen.dart';
 import '../screens/user_profile_web_screen.dart';
 import '../screens/create_group_screen.dart';
 import '../screens/settings_screen.dart';
+import '../screens/notification_test_screen.dart';
 
 import '../services/theme_service.dart';
 
@@ -21,6 +22,7 @@ Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
     '/search': (_) => const UserSearchScreen(),
     '/profile': (_) => const UserProfileWebScreen(),
     '/create_group': (_) => const CreateGroupScreen(),
+    '/notification-test': (_) => const NotificationTestScreen(),
     '/settings': (_) => SettingsScreen(
       onThemeChanged: (bool dark) =>
           themeService.setTheme(dark ? ThemeMode.dark : ThemeMode.light),

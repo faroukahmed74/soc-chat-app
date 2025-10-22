@@ -108,7 +108,10 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
         // Media sender overlay
         if (_showMediaSender)
           Container(
-            height: 300,
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.of(context).size.height * 0.6,
+              minHeight: 200,
+            ),
             child: EnhancedMediaSender(
               chatId: widget.chatId,
               onMediaSent: (mediaUrl, type, text) {

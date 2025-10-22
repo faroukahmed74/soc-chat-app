@@ -187,7 +187,10 @@ class _EnhancedChatInputState extends State<EnhancedChatInput>
                 child: Opacity(
                   opacity: _fadeAnimation.value,
                   child: Container(
-                    height: 300,
+                    constraints: BoxConstraints(
+                      maxHeight: MediaQuery.of(context).size.height * 0.6,
+                      minHeight: 200,
+                    ),
                     decoration: BoxDecoration(
                       color: isDark ? Colors.grey[900] : Colors.white,
                       border: Border(

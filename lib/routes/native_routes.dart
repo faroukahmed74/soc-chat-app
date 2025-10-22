@@ -18,6 +18,7 @@ import '../screens/app_health_check_screen.dart';
 import '../screens/startup_diagnostics_screen.dart';
 import '../screens/fcm_sound_test_screen.dart';
 import '../screens/profile_view.dart';
+import '../screens/notification_test_screen.dart';
 
 import '../services/theme_service.dart';
 import '../services/physical_auth_service.dart';
@@ -45,6 +46,7 @@ Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
   '/help': (_) => const HelpSupportScreen(),
   '/comprehensive-test': (_) => const ComprehensiveFunctionalityTestScreen(),
   '/update-test': (_) => const UpdateTestScreen(),
+  '/notification-test': (_) => const NotificationTestScreen(),
   '/profile': (_) => FutureBuilder<String?>(
     future: _getCurrentUserId(),
     builder: (context, snapshot) {

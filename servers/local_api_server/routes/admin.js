@@ -527,4 +527,117 @@ router.delete('/chats/:id', verifyAdminToken, async (req, res) => {
   }
 });
 
+// Get all reports
+router.get('/reports', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    
+    // Check if reports collection exists, if not return empty array
+    const collections = await db.listCollections().toArray();
+    const reportsCollectionExists = collections.some(c => c.name === 'reports');
+    
+    if (!reportsCollectionExists) {
+      return res.json([]);
+    }
+    
+    const reports = await db.collection('reports')
+      .find({})
+      .sort({ createdAt: -1 })
+      .toArray();
+    
+    res.json(reports.map(report => ({
+      id: report._id,
+      type: report.type || 'general',
+      description: report.description || '',
+      reporterId: report.reporterId,
+      reporterName: report.reporterName || 'Unknown',
+      reportedUserId: report.reportedUserId,
+      reportedUserName: report.reportedUserName || 'Unknown',
+      chatId: report.chatId,
+      messageId: report.messageId,
+      status: report.status || 'pending',
+      createdAt: report.createdAt,
+      resolvedAt: report.resolvedAt,
+      resolvedBy: report.resolvedBy
+    })));
+  } catch (error) {
+    console.error('Error getting reports:', error);
+    res.status(500).json({ error: 'Failed to get reports' });
+  }
+});
+
+// Get analytics data
+router.get('/analytics', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    
+    // Get user analytics
+    const totalUsers = await db.collection('users').countDocuments();
+    const activeUsers = await db.collection('users').countDocuments({ 
+      lastLoginAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } 
+    });
+    const newUsersToday = await db.collection('users').countDocuments({
+      createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+    });
+    
+    // Get chat analytics
+    const totalChats = await db.collection('chats').countDocuments();
+    const groupChats = await db.collection('chats').countDocuments({ type: 'group' });
+    const privateChats = await db.collection('chats').countDocuments({ type: 'private' });
+    
+    // Get message analytics
+    const totalMessages = await db.collection('messages').countDocuments();
+    const messagesToday = await db.collection('messages').countDocuments({
+      createdAt: { $gte: new Date(new Date().setHours(0, 0, 0, 0)) }
+    });
+    
+    // Get message types
+    const messageTypes = await db.collection('messages').aggregate([
+      { $group: { _id: '$type', count: { $sum: 1 } } },
+      { $sort: { count: -1 } }
+    ]).toArray();
+    
+    // Get user activity by day (last 7 days)
+    const userActivity = await db.collection('users').aggregate([
+      {
+        $match: {
+          lastLoginAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+        }
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d', date: '$lastLoginAt' }
+          },
+          count: { $sum: 1 }
+        }
+      },
+      { $sort: { _id: 1 } }
+    ]).toArray();
+    
+    res.json({
+      users: {
+        total: totalUsers,
+        active: activeUsers,
+        newToday: newUsersToday,
+        activityByDay: userActivity
+      },
+      chats: {
+        total: totalChats,
+        group: groupChats,
+        private: privateChats
+      },
+      messages: {
+        total: totalMessages,
+        today: messagesToday,
+        types: messageTypes
+      },
+      generatedAt: new Date()
+    });
+  } catch (error) {
+    console.error('Error getting analytics:', error);
+    res.status(500).json({ error: 'Failed to get analytics' });
+  }
+});
+
 module.exports = router;

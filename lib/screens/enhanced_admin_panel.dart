@@ -872,12 +872,12 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
         leading: CircleAvatar(
           backgroundColor: isLocked ? Colors.red : Colors.blue,
           child: Text(
-            user['username']?.substring(0, 1).toUpperCase() ?? 'U',
+            (user['displayName'] ?? user['email'] ?? 'U').substring(0, 1).toUpperCase(),
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
           ),
         ),
         title: Text(
-          user['username'] ?? 'Unknown',
+          user['displayName'] ?? user['email'] ?? 'Unknown User',
           style: TextStyle(
             fontWeight: FontWeight.w600,
             color: isLocked ? Colors.red : null,
@@ -1276,13 +1276,24 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'System Analytics',
-            style: TextStyle(
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
-              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-            ),
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'System Analytics',
+                  style: TextStyle(
+                    fontSize: 24,
+                    fontWeight: FontWeight.bold,
+                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                  ),
+                ),
+              ),
+              ElevatedButton.icon(
+                onPressed: _loadAnalytics,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh'),
+              ),
+            ],
           ),
           const SizedBox(height: 24),
           
@@ -1292,12 +1303,28 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
             _buildAnalyticsContent()
           else
             Center(
-              child: Text(
-                'No analytics data available',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Colors.grey,
-                ),
+              child: Column(
+                children: [
+                  const Icon(
+                    Icons.analytics_outlined,
+                    size: 64,
+                    color: Colors.grey,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    'No analytics data available',
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: Colors.grey,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _loadAnalytics,
+                    icon: const Icon(Icons.refresh),
+                    label: const Text('Load Analytics'),
+                  ),
+                ],
               ),
             ),
         ],
@@ -1306,9 +1333,13 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
   }
 
   Widget _buildAnalyticsContent() {
+    final users = _analytics!['users'] as Map<String, dynamic>? ?? {};
+    final chats = _analytics!['chats'] as Map<String, dynamic>? ?? {};
+    final messages = _analytics!['messages'] as Map<String, dynamic>? ?? {};
+    
     return Column(
       children: [
-        // Analytics cards would go here
+        // User Analytics
         Card(
           elevation: 4,
           shape: RoundedRectangleBorder(
@@ -1320,19 +1351,237 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Analytics Data',
+                  'User Analytics',
                   style: TextStyle(
                     fontSize: 18,
                     fontWeight: FontWeight.bold,
+                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
                   ),
                 ),
                 const SizedBox(height: 16),
-                const Text('Analytics implementation coming soon...'),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildAnalyticsCard(
+                        'Total Users',
+                        '${users['total'] ?? 0}',
+                        Icons.people,
+                        Colors.blue,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildAnalyticsCard(
+                        'Active Users',
+                        '${users['active'] ?? 0}',
+                        Icons.person,
+                        Colors.green,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildAnalyticsCard(
+                        'New Today',
+                        '${users['newToday'] ?? 0}',
+                        Icons.person_add,
+                        Colors.orange,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Container(),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        
+        // Chat Analytics
+        Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Chat Analytics',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildAnalyticsCard(
+                        'Total Chats',
+                        '${chats['total'] ?? 0}',
+                        Icons.chat,
+                        Colors.purple,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildAnalyticsCard(
+                        'Group Chats',
+                        '${chats['group'] ?? 0}',
+                        Icons.group,
+                        Colors.indigo,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildAnalyticsCard(
+                        'Private Chats',
+                        '${chats['private'] ?? 0}',
+                        Icons.person,
+                        Colors.teal,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Container(),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 16),
+        
+        // Message Analytics
+        Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Message Analytics',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildAnalyticsCard(
+                        'Total Messages',
+                        '${messages['total'] ?? 0}',
+                        Icons.message,
+                        Colors.red,
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: _buildAnalyticsCard(
+                        'Messages Today',
+                        '${messages['today'] ?? 0}',
+                        Icons.today,
+                        Colors.pink,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                if (messages['types'] != null && (messages['types'] as List).isNotEmpty) ...[
+                  Text(
+                    'Message Types',
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  ...(messages['types'] as List).map<Widget>((type) => 
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 4),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${type['_id'] ?? 'Unknown'}:',
+                            style: TextStyle(
+                              color: _themeService.isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                            ),
+                          ),
+                          Text(
+                            '${type['count'] ?? 0}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.bold,
+                              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  Widget _buildAnalyticsCard(String title, String value, IconData icon, Color color) {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, color: color, size: 32),
+          const SizedBox(height: 8),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 24,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: 12,
+              color: _themeService.isDarkMode ? Colors.grey[300] : Colors.grey[700],
+            ),
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ),
     );
   }
 
