@@ -3681,18 +3681,33 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   }
 
   void _showMediaOptions(BuildContext context) {
+    final isWeb = kIsWeb;
+    final isIOS = defaultTargetPlatform == TargetPlatform.iOS;
+    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
+    final isMobile = MediaQuery.of(context).size.width < 600;
+    
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
+      isDismissible: true,
+      enableDrag: true,
+      useSafeArea: true,
       builder: (context) => Container(
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+          maxWidth: isWeb ? 500 : double.infinity,
+        ),
         decoration: BoxDecoration(
           color: _themeService.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(isWeb ? 16 : 25),
+            bottom: isWeb ? const Radius.circular(16) : Radius.zero,
+          ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 20,
+              color: Colors.black.withValues(alpha: isWeb ? 0.2 : 0.1),
+              blurRadius: isWeb ? 30 : 20,
               offset: const Offset(0, -5),
             ),
           ],
@@ -3700,172 +3715,137 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // Handle bar
+            // Enhanced handle bar
             Container(
-              margin: const EdgeInsets.only(top: 12),
-              width: 50,
-              height: 5,
+              margin: EdgeInsets.only(top: isWeb ? 8 : 12),
+              width: isWeb ? 40 : 50,
+              height: isWeb ? 4 : 5,
               decoration: BoxDecoration(
                 color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(3),
+                borderRadius: BorderRadius.circular(isWeb ? 2 : 3),
               ),
             ),
-            const SizedBox(height: 25),
+            SizedBox(height: isWeb ? 20 : 25),
             
-            // Header
+            // Enhanced header with platform-specific styling
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: EdgeInsets.symmetric(horizontal: isWeb ? 20 : 24),
               child: Row(
                 children: [
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: EdgeInsets.all(isWeb ? 6 : 8),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
+                      gradient: LinearGradient(
+                        colors: [
+                          Theme.of(context).primaryColor.withValues(alpha: 0.1),
+                          Theme.of(context).primaryColor.withValues(alpha: 0.05),
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ),
+                      borderRadius: BorderRadius.circular(isWeb ? 10 : 12),
+                      border: Border.all(
+                        color: Theme.of(context).primaryColor.withValues(alpha: 0.2),
+                        width: 1,
+                      ),
                     ),
                     child: Icon(
-                      Icons.attach_file,
+                      Icons.attach_file_rounded,
                       color: Theme.of(context).primaryColor,
-                      size: 20,
+                      size: isWeb ? 18 : 20,
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Text(
-                    'Send Media',
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                  SizedBox(width: isWeb ? 10 : 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Send Media',
+                          style: TextStyle(
+                            fontSize: isWeb ? 18 : 20,
+                            fontWeight: FontWeight.bold,
+                            color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                          ),
+                        ),
+                        if (isWeb) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            'Choose what you want to share',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ],
                     ),
                   ),
+                  // Platform-specific close button for web
+                  if (isWeb)
+                    IconButton(
+                      onPressed: () => Navigator.pop(context),
+                      icon: Icon(
+                        Icons.close_rounded,
+                        color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                        size: 20,
+                      ),
+                      tooltip: 'Close',
+                    ),
                 ],
               ),
             ),
-            const SizedBox(height: 8),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                'Choose what you want to share',
-                style: TextStyle(
-                  fontSize: 14,
-                  color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            if (!isWeb) ...[
+              const SizedBox(height: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Text(
+                  'Choose what you want to share',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 30),
+            ],
+            SizedBox(height: isWeb ? 20 : 30),
             
-            // Media options grid
+            // Enhanced media options grid with platform-specific layouts
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
-                children: [
-                  // First row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildEnhancedMediaButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _pickImageFromGallery();
-                          },
-                          icon: Icons.photo_library,
-                          label: 'Gallery',
-                          subtitle: 'Photos & Videos',
-                          color: Colors.blue,
-                          isDark: _themeService.isDarkMode,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildEnhancedMediaButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _pickImageFromCamera();
-                          },
-                          icon: Icons.camera_alt,
-                          label: 'Camera',
-                          subtitle: 'Take Photo',
-                          color: Colors.green,
-                          isDark: _themeService.isDarkMode,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Second row
-                  Row(
-                    children: [
-                      Expanded(
-                        child: _buildEnhancedMediaButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _pickVideoFromGallery();
-                          },
-                          icon: Icons.video_library,
-                          label: 'Video',
-                          subtitle: 'From Gallery',
-                          color: Colors.red,
-                          isDark: _themeService.isDarkMode,
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: _buildEnhancedMediaButton(
-                          onPressed: () {
-                            Navigator.pop(context);
-                            _pickVideoFromCamera();
-                          },
-                          icon: Icons.videocam,
-                          label: 'Record',
-                          subtitle: 'Record Video',
-                          color: Colors.orange,
-                          isDark: _themeService.isDarkMode,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  
-                  // Document option
-                  _buildEnhancedMediaButton(
-                    onPressed: () {
-                      Navigator.pop(context);
-                      _pickDocument();
-                    },
-                    icon: Icons.insert_drive_file,
-                    label: 'Document',
-                    subtitle: 'Files & Documents',
-                    color: Colors.purple,
-                    isDark: _themeService.isDarkMode,
-                    isFullWidth: true,
-                  ),
-                ],
+              padding: EdgeInsets.symmetric(horizontal: isWeb ? 20 : 24),
+              child: isWeb 
+                  ? _buildWebMediaGrid(context, isMobile)
+                  : _buildMobileMediaGrid(context, isMobile),
+            ),
+            
+            SizedBox(height: isWeb ? 20 : 30),
+            
+            // Enhanced cancel button with platform-specific styling
+            Padding(
+              padding: EdgeInsets.fromLTRB(
+                isWeb ? 20 : 24, 
+                0, 
+                isWeb ? 20 : 24, 
+                isWeb ? 20 : 30,
               ),
-            ),
-            
-            const SizedBox(height: 30),
-            
-            // Cancel button
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 0, 24, 30),
               child: SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: EdgeInsets.symmetric(vertical: isWeb ? 12 : 16),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(isWeb ? 12 : 16),
                     ),
                     side: BorderSide(
                       color: _themeService.isDarkMode ? Colors.grey[600]! : Colors.grey[300]!,
+                      width: isWeb ? 1.5 : 1,
                     ),
                   ),
                   child: Text(
                     'Cancel',
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: isWeb ? 14 : 16,
                       fontWeight: FontWeight.w600,
                       color: _themeService.isDarkMode ? Colors.grey[300] : Colors.grey[700],
                     ),
@@ -3874,6 +3854,271 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               ),
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Web-specific media grid layout
+  Widget _buildWebMediaGrid(BuildContext context, bool isMobile) {
+    return Column(
+      children: [
+        // First row - Gallery and Camera
+        Row(
+          children: [
+            Expanded(
+              child: _buildWebMediaButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _pickImageFromGallery();
+                },
+                icon: Icons.photo_library_rounded,
+                label: 'Gallery',
+                subtitle: 'Photos & Videos',
+                color: Colors.blue,
+                isDark: _themeService.isDarkMode,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildWebMediaButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _pickImageFromCamera();
+                },
+                icon: Icons.camera_alt_rounded,
+                label: 'Camera',
+                subtitle: 'Take Photo',
+                color: Colors.green,
+                isDark: _themeService.isDarkMode,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        
+        // Second row - Video and Record
+        Row(
+          children: [
+            Expanded(
+              child: _buildWebMediaButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _pickVideoFromGallery();
+                },
+                icon: Icons.video_library_rounded,
+                label: 'Video',
+                subtitle: 'From Gallery',
+                color: Colors.red,
+                isDark: _themeService.isDarkMode,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: _buildWebMediaButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _pickVideoFromCamera();
+                },
+                icon: Icons.videocam_rounded,
+                label: 'Record',
+                subtitle: 'Record Video',
+                color: Colors.orange,
+                isDark: _themeService.isDarkMode,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        
+        // Document option
+        _buildWebMediaButton(
+          onPressed: () {
+            Navigator.pop(context);
+            _pickDocument();
+          },
+          icon: Icons.insert_drive_file_rounded,
+          label: 'Document',
+          subtitle: 'Files & Documents',
+          color: Colors.purple,
+          isDark: _themeService.isDarkMode,
+          isFullWidth: true,
+        ),
+      ],
+    );
+  }
+
+  /// Mobile-specific media grid layout
+  Widget _buildMobileMediaGrid(BuildContext context, bool isMobile) {
+    return Column(
+      children: [
+        // First row
+        Row(
+          children: [
+            Expanded(
+              child: _buildEnhancedMediaButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _pickImageFromGallery();
+                },
+                icon: Icons.photo_library,
+                label: 'Gallery',
+                subtitle: 'Photos & Videos',
+                color: Colors.blue,
+                isDark: _themeService.isDarkMode,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildEnhancedMediaButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _pickImageFromCamera();
+                },
+                icon: Icons.camera_alt,
+                label: 'Camera',
+                subtitle: 'Take Photo',
+                color: Colors.green,
+                isDark: _themeService.isDarkMode,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        
+        // Second row
+        Row(
+          children: [
+            Expanded(
+              child: _buildEnhancedMediaButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _pickVideoFromGallery();
+                },
+                icon: Icons.video_library,
+                label: 'Video',
+                subtitle: 'From Gallery',
+                color: Colors.red,
+                isDark: _themeService.isDarkMode,
+              ),
+            ),
+            const SizedBox(width: 16),
+            Expanded(
+              child: _buildEnhancedMediaButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  _pickVideoFromCamera();
+                },
+                icon: Icons.videocam,
+                label: 'Record',
+                subtitle: 'Record Video',
+                color: Colors.orange,
+                isDark: _themeService.isDarkMode,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 16),
+        
+        // Document option
+        _buildEnhancedMediaButton(
+          onPressed: () {
+            Navigator.pop(context);
+            _pickDocument();
+          },
+          icon: Icons.insert_drive_file,
+          label: 'Document',
+          subtitle: 'Files & Documents',
+          color: Colors.purple,
+          isDark: _themeService.isDarkMode,
+          isFullWidth: true,
+        ),
+      ],
+    );
+  }
+
+  /// Web-specific media button with enhanced styling
+  Widget _buildWebMediaButton({
+    required VoidCallback onPressed,
+    required IconData icon,
+    required String label,
+    required String subtitle,
+    required Color color,
+    required bool isDark,
+    bool isFullWidth = false,
+  }) {
+    return Container(
+      width: isFullWidth ? double.infinity : null,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onPressed: onPressed,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: isDark 
+                  ? Colors.grey[800]?.withValues(alpha: 0.3)
+                  : Colors.grey[50],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: color.withValues(alpha: 0.2),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: color.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(
+                    icon,
+                    color: color,
+                    size: 18,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        subtitle,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: isDark ? Colors.grey[400] : Colors.grey[600],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 14,
+                  color: isDark ? Colors.grey[400] : Colors.grey[500],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

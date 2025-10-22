@@ -83,73 +83,9 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
             ],
           ),
           const SizedBox(height: 16),
-
-          // Debug info
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.blue.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Debug: Media selected: ${_selectedMedia != null ? "YES (${_selectedMedia!.type})" : "NO"} | Uploading: $_isUploading',
-                style: const TextStyle(fontSize: 12, color: Colors.blue),
-              ),
-              if (_selectedMedia != null) ...[
-                Text(
-                  'File: ${_selectedMedia!.fileName}',
-                  style: const TextStyle(fontSize: 10, color: Colors.blue),
-                ),
-                Text(
-                  'Size: ${_selectedMedia!.originalSize} bytes',
-                  style: const TextStyle(fontSize: 10, color: Colors.blue),
-                ),
-                Text(
-                  'Send button enabled: ${!_isUploading && _selectedMedia != null}',
-                  style: const TextStyle(fontSize: 10, color: Colors.blue),
-                ),
-              ],
-            ],
-          ),
-        ),
-          const SizedBox(height: 8),
-          
-          // Test button for debugging
-          ElevatedButton.icon(
-            onPressed: () async {
-              Log.i('Test button pressed - Current state: Media=${_selectedMedia != null}, Uploading=$_isUploading', 'ENHANCED_MEDIA_SENDER');
-              if (_selectedMedia != null) {
-                Log.i('Selected media details: ${_selectedMedia!.fileName}, ${_selectedMedia!.type}, ${_selectedMedia!.originalSize} bytes', 'ENHANCED_MEDIA_SENDER');
-              }
-            },
-            icon: const Icon(Icons.bug_report),
-            label: const Text('Test Permissions'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 8),
           
           // Media selection buttons
           if (_selectedMedia == null) _buildMediaSelectionButtons(theme, isDark),
-          
-          // Permission test button
-          const SizedBox(height: 16),
-          OutlinedButton.icon(
-            onPressed: () => PermissionTestService.testAllPermissions(context),
-            icon: const Icon(Icons.security, size: 16),
-            label: const Text('Test Permissions'),
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(20),
-              ),
-            ),
-          ),
 
           // Selected media preview
           if (_selectedMedia != null) _buildMediaPreview(theme, isDark),
@@ -320,23 +256,6 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
       ),
       child: Row(
         children: [
-          // Debug indicator
-          Container(
-            padding: const EdgeInsets.all(4),
-            decoration: BoxDecoration(
-              color: Colors.red,
-              borderRadius: BorderRadius.circular(4),
-            ),
-            child: const Text(
-              'PREVIEW',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 8,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ),
-          const SizedBox(width: 8),
           // Media icon
           Container(
             width: 48,
