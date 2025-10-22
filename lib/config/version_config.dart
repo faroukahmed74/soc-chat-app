@@ -3,7 +3,7 @@ class VersionConfig {
   // Replace these with your actual Dropbox sharing links
   
   // JSON file containing version information
-  static const String dropboxJsonUrl = 'https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/version_info.json?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1';
+  static const String dropboxJsonUrl = 'https://raw.githubusercontent.com/faroukahmed74/soc-chat-app/main/version_info.json';
   
   // APK file for download
   static const String dropboxApkUrl = 'https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1';

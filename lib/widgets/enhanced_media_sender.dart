@@ -85,15 +85,51 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
           const SizedBox(height: 16),
 
           // Debug info
-          Container(
-            padding: const EdgeInsets.all(8),
-            decoration: BoxDecoration(
-              color: Colors.blue.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Text(
-              'Debug: Media selected: ${_selectedMedia != null ? "YES (${_selectedMedia!.type})" : "NO"} | Uploading: $_isUploading',
-              style: const TextStyle(fontSize: 12, color: Colors.blue),
+        Container(
+          padding: const EdgeInsets.all(8),
+          decoration: BoxDecoration(
+            color: Colors.blue.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Debug: Media selected: ${_selectedMedia != null ? "YES (${_selectedMedia!.type})" : "NO"} | Uploading: $_isUploading',
+                style: const TextStyle(fontSize: 12, color: Colors.blue),
+              ),
+              if (_selectedMedia != null) ...[
+                Text(
+                  'File: ${_selectedMedia!.fileName}',
+                  style: const TextStyle(fontSize: 10, color: Colors.blue),
+                ),
+                Text(
+                  'Size: ${_selectedMedia!.originalSize} bytes',
+                  style: const TextStyle(fontSize: 10, color: Colors.blue),
+                ),
+                Text(
+                  'Send button enabled: ${!_isUploading && _selectedMedia != null}',
+                  style: const TextStyle(fontSize: 10, color: Colors.blue),
+                ),
+              ],
+            ],
+          ),
+        ),
+          const SizedBox(height: 8),
+          
+          // Test button for debugging
+          ElevatedButton.icon(
+            onPressed: () async {
+              Log.i('Test button pressed - Current state: Media=${_selectedMedia != null}, Uploading=$_isUploading', 'ENHANCED_MEDIA_SENDER');
+              if (_selectedMedia != null) {
+                Log.i('Selected media details: ${_selectedMedia!.fileName}, ${_selectedMedia!.type}, ${_selectedMedia!.originalSize} bytes', 'ENHANCED_MEDIA_SENDER');
+              }
+            },
+            icon: const Icon(Icons.bug_report),
+            label: const Text('Test Permissions'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.orange,
+              foregroundColor: Colors.white,
             ),
           ),
           const SizedBox(height: 8),
@@ -470,7 +506,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
         const SizedBox(width: 16),
         Expanded(
           child: ElevatedButton(
-            onPressed: _isUploading ? null : _uploadMedia,
+            onPressed: (_isUploading || _selectedMedia == null) ? null : _uploadMedia,
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.colorScheme.primary,
               foregroundColor: Colors.white,

@@ -13,8 +13,6 @@ import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
 import '../utils/group_chat_naming_utility.dart';
 import 'chat_screen_mongodb.dart';
-import 'user_search_screen.dart';
-import 'create_group_screen.dart';
 import '../services/version_check_service.dart';
 // import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -342,7 +340,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
         backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
         foregroundColor: Colors.white,
         actions: [
-          if (!kIsWeb)
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
             IconButton(
               icon: const Icon(Icons.system_update_alt),
               tooltip: 'Check for update',

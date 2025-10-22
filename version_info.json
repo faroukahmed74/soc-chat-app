@@ -1,89 +1,10 @@
 {
-  "version": "1.0.0",
-  "build_number": "1",
-  "release_date": "2025-10-20",
+  "version": "1.0.1",
+  "build_number": "2",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "highlights": [
-    "Cross-platform chat app (Android, iOS, Web) using Flutter",
-    "Physical server mode: Node/Express + MongoDB backend (no Firebase dependency)",
-    "Realtime messaging via Socket.IO with polling fallback",
-    "Media sharing (images, video, audio, documents) with upload progress",
-    "Local notifications on mobile (channels/sounds); browser notifications on web",
-    "User search, profiles, group management, admin panel",
-    "Theming (light/dark) and localization-ready",
-    "Web and native route parity (web-optimized chat list)",
-    "Android in-app update check (manual icon + auto-check on launch)"
-  ],
-  "features": {
-    "authentication": [
-      "Email/password login & registration",
-      "Token storage with server-side validation on launch"
-    ],
-    "chats": [
-      "1:1 and group chats",
-      "Last message preview and unread counts",
-      "Add/remove members (server-validated)"
-    ],
-    "messaging": [
-      "Text and media messages (image/video/audio/document)",
-      "Edit/delete own messages",
-      "Read receipts",
-      "Realtime updates via Socket.IO rooms"
-    ],
-    "media": [
-      "Per-chat upload folders served under /uploads",
-      "Upload progress UI and in-app previews",
-      "Voice playback support"
-    ],
-    "notifications": [
-      "Unified local notifications on Android/iOS",
-      "Multiple channels with custom sounds (chat/group/broadcast)",
-      "Web uses browser notifications behavior"
-    ],
-    "admin": [
-      "Users/chats/messages overview",
-      "Broadcast messages",
-      "System health (API/MongoDB/ngrok)",
-      "Optional Cloudflare Access protection"
-    ],
-    "routing": [
-      "Platform-aware routes",
-      "Web uses ChatListScreenWebMongoDB; mobile uses ChatListScreenMongoDB",
-      "Settings and create-group exposed on both"
-    ],
-    "update_system_android": [
-      "AppBar update icon triggers version check against version_info.json",
-      "Auto-check on launch with interval control",
-      "Modal shows release notes and opens direct APK link"
-    ]
-  },
-  "backend": {
-    "api": "Express.js with MongoDB",
-    "security": ["helmet", "rate-limit", "CORS", "ngrok proxy support"],
-    "auth": "JWT (7-day) with route protection",
-    "media": "multer-based uploads with static hosting",
-    "realtime": "Socket.IO rooms per chat",
-    "indexes": [
-      "users.email unique",
-      "chats.members + updatedAt",
-      "messages.chatId + createdAt"
-    ]
-  },
-  "platforms": {
-    "android": {
-      "status": "ready",
-      "notes": "Release APK build via flutter build apk --release; update system enabled"
-    },
-    "ios": {
-      "status": "ready (requires macOS/Xcode)",
-      "notes": "Build with flutter build ios --release and archive in Xcode"
-    },
-    "web": {
-      "status": "ready",
-      "notes": "Web-optimized chat list and route parity"
-    }
-  },
-  "release_notes": [
-    "Initial 1.0.0: MongoDB backend, chat/media, notifications, admin panel, web parity, and Android update system"
-  ]
+  "release_notes": "Bug fixes and improvements:\n- Fixed chat duplication issues\n- Enhanced display names for chats\n- Improved responsive design\n- Fixed Invalid ChatID error\n- Added user name caching for better performance\n- Fixed update icon to only show on Android platforms",
+  "force_update": false,
+  "minimum_version": "1.0.0",
+  "update_available": true,
+  "last_updated": "2024-01-20T10:00:00Z"
 }

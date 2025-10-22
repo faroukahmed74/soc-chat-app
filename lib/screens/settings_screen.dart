@@ -48,7 +48,6 @@ import '../services/logger_service.dart';
 import '../widgets/update_dialog.dart';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import '../services/local_auth_service.dart';
 import '../config/database_config.dart';
 
 class SettingsScreen extends StatefulWidget {
@@ -554,19 +553,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     title: const Text('Version'),
                     subtitle: const Text('1.0.0 (Build 1)'),
                   ),
-                  ListTile(
-                    leading: const Icon(Icons.update),
-                    title: const Text('Check for Updates'),
-                    subtitle: const Text('Check if a new version is available'),
-                    onTap: () => _checkForUpdates(context),
-                    trailing: _isLoading
-                        ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.arrow_forward_ios),
-                  ),
+                  if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
+                    ListTile(
+                      leading: const Icon(Icons.update),
+                      title: const Text('Check for Updates'),
+                      subtitle: const Text('Check if a new version is available'),
+                      onTap: () => _checkForUpdates(context),
+                      trailing: _isLoading
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.arrow_forward_ios),
+                    ),
                 ],
               ),
               
