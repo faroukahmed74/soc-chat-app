@@ -569,4 +569,230 @@ class MongoDBAdminService {
       return null;
     }
   }
+
+  /// Get system analytics
+  Future<Map<String, dynamic>> getAnalytics() async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final uri = Uri.parse('$baseUrl/api/admin/analytics');
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Failed to get analytics: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting analytics', 'MONGODB_ADMIN_SERVICE', e);
+      rethrow;
+    }
+  }
+
+  /// Get enhanced system health status
+  Future<Map<String, dynamic>> getEnhancedSystemHealth() async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final uri = Uri.parse('$baseUrl/api/admin/health');
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Failed to get system health: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting system health', 'MONGODB_ADMIN_SERVICE', e);
+      rethrow;
+    }
+  }
+
+  /// Broadcast message to all users
+  Future<void> broadcastMessage(String message, String title) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final uri = Uri.parse('$baseUrl/api/admin/broadcast');
+      final response = await http.post(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({
+          'message': message,
+          'title': title,
+          'timestamp': DateTime.now().toIso8601String(),
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to broadcast message: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error broadcasting message', 'MONGODB_ADMIN_SERVICE', e);
+      rethrow;
+    }
+  }
+
+  /// Lock user account
+  Future<void> lockUser(String userId, String reason) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final uri = Uri.parse('$baseUrl/api/admin/users/$userId/lock');
+      final response = await http.post(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({
+          'reason': reason,
+          'lockedAt': DateTime.now().toIso8601String(),
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to lock user: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error locking user', 'MONGODB_ADMIN_SERVICE', e);
+      rethrow;
+    }
+  }
+
+  /// Unlock user account
+  Future<void> unlockUser(String userId) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final uri = Uri.parse('$baseUrl/api/admin/users/$userId/unlock');
+      final response = await http.post(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to unlock user: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error unlocking user', 'MONGODB_ADMIN_SERVICE', e);
+      rethrow;
+    }
+  }
+
+  /// Enhanced delete user account
+  Future<void> deleteUserEnhanced(String userId) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final uri = Uri.parse('$baseUrl/api/admin/users/$userId');
+      final response = await http.delete(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to delete user: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error deleting user', 'MONGODB_ADMIN_SERVICE', e);
+      rethrow;
+    }
+  }
+
+  /// Get all reports
+  Future<List<Map<String, dynamic>>> getAllReports() async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final uri = Uri.parse('$baseUrl/api/admin/reports');
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data);
+      } else {
+        throw Exception('Failed to get reports: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting reports', 'MONGODB_ADMIN_SERVICE', e);
+      rethrow;
+    }
+  }
+
+  /// Enhanced export system data
+  Future<Map<String, dynamic>> exportDataEnhanced() async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final uri = Uri.parse('$baseUrl/api/admin/export');
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        return json.decode(response.body);
+      } else {
+        throw Exception('Failed to export data: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error exporting data', 'MONGODB_ADMIN_SERVICE', e);
+      rethrow;
+    }
+  }
 }
