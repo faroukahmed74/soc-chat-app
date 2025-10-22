@@ -14,6 +14,8 @@ import '../services/database_service.dart' as db;
 import '../config/database_config.dart';
 import '../services/local_auth_service.dart';
 
+import '../services/enhanced_unified_media_service.dart';
+import '../widgets/enhanced_responsive_media_preview.dart';
 import '../services/enhanced_media_service.dart';
 import '../services/document_service.dart';
 import '../services/logger_service.dart';
@@ -2652,11 +2654,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _pickImageFromGallery() async {
     try {
-      final result = await EnhancedMediaService.pickImageFromGallery(context);
+      final result = await EnhancedUnifiedMediaService.pickImageFromGallery(context);
       if (result != null) {
         setState(() {
           _selectedMediaBytes = result.bytes;
-          _selectedMediaType = 'image';
+          _selectedMediaType = result.type;
           _selectedMediaFileName = result.fileName;
         });
         Navigator.pop(context); // Close the media options modal
@@ -2671,11 +2673,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _pickImageFromCamera() async {
     try {
-      final result = await EnhancedMediaService.pickImageFromCamera(context);
+      final result = await EnhancedUnifiedMediaService.pickImageFromCamera(context);
       if (result != null) {
         setState(() {
           _selectedMediaBytes = result.bytes;
-          _selectedMediaType = 'image';
+          _selectedMediaType = result.type;
           _selectedMediaFileName = result.fileName;
         });
         Navigator.pop(context); // Close the media options modal
@@ -4205,7 +4207,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _pickVideoFromGallery() async {
     try {
-      final result = await EnhancedMediaService.pickVideoFromGallery(context);
+      final result = await EnhancedUnifiedMediaService.pickVideoFromGallery(context);
       if (result != null) {
         setState(() {
           _selectedMediaBytes = result.bytes;
@@ -4224,7 +4226,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   Future<void> _pickVideoFromCamera() async {
     try {
-      final result = await EnhancedMediaService.recordVideo(context);
+      final result = await EnhancedUnifiedMediaService.pickVideoFromCamera(context);
       if (result != null) {
         setState(() {
           _selectedMediaBytes = result.bytes;
@@ -4292,7 +4294,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   void _showMediaFullScreen(String mediaUrl, String type, String text) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => EnhancedMediaPreview(
+        builder: (context) => EnhancedResponsiveMediaPreview(
           mediaUrl: mediaUrl,
           mediaType: type,
           fileName: text,
