@@ -1,10 +1,10 @@
 {
-  "version": "1.0.1",
-  "build_number": "2",
+  "version": "1.0.0",
+  "build_number": "1",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "Bug fixes and improvements:\n- Fixed chat duplication issues\n- Enhanced display names for chats\n- Improved responsive design\n- Fixed Invalid ChatID error\n- Added user name caching for better performance\n- Fixed update icon to only show on Android platforms",
+  "release_notes": "SOC Chat App v1.0.0 - Full Release:\n- Enhanced admin panel with analytics and reports\n- Fixed user display names (no more 'Unknown')\n- Comprehensive notification system with socket.io\n- Fixed media sending modal layout\n- Responsive design across all platforms\n- Real-time chat functionality\n- Cross-platform compatibility (Android, iOS, Web)\n- Enhanced UI/UX throughout the app",
   "force_update": false,
   "minimum_version": "1.0.0",
-  "update_available": true,
-  "last_updated": "2024-01-20T10:00:00Z"
+  "update_available": false,
+  "last_updated": "2024-01-20T12:00:00Z"
 }
