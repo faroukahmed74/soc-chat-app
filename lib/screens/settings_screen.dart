@@ -383,20 +383,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       children: [
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: () {
-                              Navigator.pushNamed(context, '/permission-test');
-                            },
-                            icon: const Icon(Icons.bug_report),
-                            label: const Text('Test Permissions'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: Theme.of(context).colorScheme.secondary,
-                              foregroundColor: Colors.white,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: ElevatedButton.icon(
                             onPressed: () async {
                               try {
                                 // Test local notification

@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'dart:typed_data';
+import 'package:flutter/foundation.dart';
 import '../services/improved_media_service.dart';
 import '../services/logger_service.dart';
-import '../services/permission_test_service.dart';
 
 /// Enhanced media sender widget with progress tracking and media preview
 class EnhancedMediaSender extends StatefulWidget {
@@ -165,34 +164,81 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
           ),
         ),
         const SizedBox(height: 16),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-          children: [
-            _buildMediaButton(
-              icon: Icons.photo_library,
-              label: 'Gallery',
-              color: Colors.blue,
-              onTap: () => _pickImageFromGallery(),
-            ),
-            _buildMediaButton(
-              icon: Icons.camera_alt,
-              label: 'Camera',
-              color: Colors.green,
-              onTap: () => _pickImageFromCamera(),
-            ),
-            _buildMediaButton(
-              icon: Icons.video_library,
-              label: 'Video',
-              color: Colors.red,
-              onTap: () => _pickVideoFromGallery(),
-            ),
-            _buildMediaButton(
-              icon: Icons.attach_file,
-              label: 'Document',
-              color: Colors.orange,
-              onTap: () => _pickDocument(),
-            ),
-          ],
+        LayoutBuilder(
+          builder: (context, constraints) {
+            final screenWidth = constraints.maxWidth;
+            final isWeb = kIsWeb;
+            final isTablet = screenWidth > 600;
+            
+            // Responsive button size and layout
+            double buttonSize;
+            int buttonsPerRow;
+            
+            if (isWeb) {
+              buttonSize = 100;
+              buttonsPerRow = 4;
+            } else if (isTablet) {
+              buttonSize = 90;
+              buttonsPerRow = 4;
+            } else {
+              buttonSize = 80;
+              buttonsPerRow = 2; // Mobile: 2x2 grid
+            }
+            
+            final buttons = [
+              _buildMediaButton(
+                icon: Icons.photo_library,
+                label: 'Gallery',
+                color: Colors.blue,
+                onTap: () => _pickImageFromGallery(),
+                size: buttonSize,
+              ),
+              _buildMediaButton(
+                icon: Icons.camera_alt,
+                label: 'Camera',
+                color: Colors.green,
+                onTap: () => _pickImageFromCamera(),
+                size: buttonSize,
+              ),
+              _buildMediaButton(
+                icon: Icons.video_library,
+                label: 'Video',
+                color: Colors.red,
+                onTap: () => _pickVideoFromGallery(),
+                size: buttonSize,
+              ),
+              _buildMediaButton(
+                icon: Icons.attach_file,
+                label: 'Document',
+                color: Colors.orange,
+                onTap: () => _pickDocument(),
+                size: buttonSize,
+              ),
+            ];
+            
+            if (buttonsPerRow == 2) {
+              // Mobile: 2x2 grid
+              return Column(
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: buttons.take(2).toList(),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: buttons.skip(2).toList(),
+                  ),
+                ],
+              );
+            } else {
+              // Web/Tablet: single row
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                children: buttons,
+              );
+            }
+          },
         ),
       ],
     );
@@ -203,13 +249,14 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
     required String label,
     required Color color,
     required VoidCallback onTap,
+    required double size,
   }) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        width: 80,
-        height: 80,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(16),
@@ -224,14 +271,14 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
             Icon(
               icon,
               color: color,
-              size: 32,
+              size: size * 0.4, // Responsive icon size
             ),
             const SizedBox(height: 4),
             Text(
               label,
               style: TextStyle(
                 color: color,
-                fontSize: 12,
+                fontSize: size * 0.15, // Responsive font size
                 fontWeight: FontWeight.w600,
               ),
             ),
