@@ -12,7 +12,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../utils/responsive_utils.dart';
-import 'enhanced_unified_media_service.dart';
+import '../services/enhanced_unified_media_service.dart';
 
 /// Enhanced responsive media preview widget
 class EnhancedResponsiveMediaPreview extends StatefulWidget {

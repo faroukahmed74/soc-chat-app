@@ -13,9 +13,9 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:dio/dio.dart';
 import '../config/database_config.dart';
 import 'logger_service.dart';
-import 'secure_media_service.dart';
 import 'web_media_service.dart' if (dart.library.io) 'web_media_stub.dart';
 
 /// Enhanced media result with comprehensive metadata
@@ -557,12 +557,40 @@ class EnhancedUnifiedMediaService {
       Log.i('Starting media upload', 'ENHANCED_MEDIA_SERVICE');
 
       if (DatabaseConfig.usePhysicalServer) {
-        return await SecureMediaService.uploadMediaToStorage(
-          mediaResult.bytes,
-          mediaResult.fileName,
-          mediaResult.mimeType,
-          chatId,
+        // Upload media via HTTP endpoint
+        final baseUrl = DatabaseConfig.physicalServerUrl;
+        Log.i('Uploading to: $baseUrl/api/media/upload', 'ENHANCED_MEDIA_SERVICE');
+        Log.i('File details: ${mediaResult.fileName}, size: ${mediaResult.bytes.length}, type: ${mediaResult.mimeType}', 'ENHANCED_MEDIA_SERVICE');
+        
+        final dio = Dio(BaseOptions(baseUrl: baseUrl));
+        final formData = FormData.fromMap({
+          'media': MultipartFile.fromBytes(
+            mediaResult.bytes,
+            filename: mediaResult.fileName,
+          ),
+          'type': mediaResult.mimeType,
+        });
+
+        final response = await dio.post(
+          '/api/media/upload',
+          data: formData,
+          onSendProgress: (sent, total) {
+            if (total > 0) {
+              final progress = sent / total;
+              Log.i('Upload progress: ${(progress * 100).toStringAsFixed(1)}%', 'ENHANCED_MEDIA_SERVICE');
+              onProgress?.call(progress);
+            }
+          },
         );
+
+        Log.i('Upload response: ${response.statusCode}', 'ENHANCED_MEDIA_SERVICE');
+        Log.i('Upload response data: ${response.data}', 'ENHANCED_MEDIA_SERVICE');
+
+        if (response.statusCode == 200 && response.data['mediaUrl'] != null) {
+          return response.data['mediaUrl'];
+        } else {
+          throw Exception('Upload failed: ${response.data}');
+        }
       } else {
         // Firebase upload implementation
         return await _uploadToFirebase(mediaResult, chatId, onProgress);
