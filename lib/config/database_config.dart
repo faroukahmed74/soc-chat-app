@@ -19,7 +19,7 @@ class DatabaseConfig {
   );
   static const String webServerUrl = String.fromEnvironment(
     'API_BASE_URL_WEB',
-    defaultValue: 'http://10.120.4.230:8082',
+    defaultValue: 'http://localhost:3003',
   );
   // Backwards compatibility: single define still supported
   static const String serverUrl = String.fromEnvironment(
@@ -187,40 +187,40 @@ class DatabaseConfig {
 String _resolveServerUrl() {
   // Prefer runtime override if present
   if (DatabaseConfig._cachedOverrideUrl.isNotEmpty) {
+    print('Using runtime override URL: ${DatabaseConfig._cachedOverrideUrl}');
     return DatabaseConfig._cachedOverrideUrl;
   }
+  
   if (kIsWeb) {
+    print('Platform: Web detected');
     // For web builds, use configured web server URL first (not page origin)
     if (DatabaseConfig.webServerUrl.isNotEmpty) {
+      print('Using web server URL: ${DatabaseConfig.webServerUrl}');
       return DatabaseConfig.webServerUrl;
     }
     // Fallback to unified API_BASE_URL
     if (DatabaseConfig.serverUrl.isNotEmpty) {
+      print('Using fallback server URL: ${DatabaseConfig.serverUrl}');
       return DatabaseConfig.serverUrl;
     }
-    // Final fallback: try to use current page origin but change port to API port
-    try {
-      final origin = Uri.base.origin;
-      if (_isValidUrl(origin)) {
-        // Replace port 8082 with 3003 for API server
-        final uri = Uri.parse(origin);
-        if (uri.port == 8082) {
-          return '${uri.scheme}://${uri.host}:3003';
-        }
-        return origin;
-      }
-    } catch (_) {}
+    // Final fallback: use localhost for web
+    print('Using final fallback: http://localhost:3003');
+    return 'http://localhost:3003';
   } else {
+    print('Platform: Mobile/Desktop detected');
     // Mobile/desktop builds use platform-specific URL first
     if (DatabaseConfig.mobileServerUrl.isNotEmpty) {
+      print('Using mobile server URL: ${DatabaseConfig.mobileServerUrl}');
       return DatabaseConfig.mobileServerUrl;
     }
     if (DatabaseConfig.serverUrl.isNotEmpty) {
+      print('Using fallback server URL: ${DatabaseConfig.serverUrl}');
       return DatabaseConfig.serverUrl;
     }
   }
-  // Final fallback to local IP (should not happen due to defaults)
-  return 'http://192.168.0.117:3003';
+  // Final fallback to ngrok URL (should not happen due to defaults)
+  print('Using final fallback: https://soc-chat-app.ngrok-free.app');
+  return 'https://soc-chat-app.ngrok-free.app';
 }
 
 bool _isValidUrl(String url) {
