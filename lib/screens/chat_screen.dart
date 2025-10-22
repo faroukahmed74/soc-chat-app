@@ -1710,6 +1710,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     },
                     errorBuilder: (context, error, stackTrace) {
                       Log.e('Image loading error', 'CHAT_SCREEN', error);
+                      Log.e('Failed URL: $mediaUrl', 'CHAT_SCREEN');
                       return Container(
                         width: 250,
                         height: 200,
@@ -1741,6 +1742,14 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                                 fontSize: 10,
                               ),
                               textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'Tap to retry',
+                              style: TextStyle(
+                                color: Colors.blue[600],
+                                fontSize: 10,
+                              ),
                             ),
                           ],
                         ),

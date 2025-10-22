@@ -195,6 +195,21 @@ try {
 // Serve uploaded media statically
 app.use('/uploads', express.static(UPLOADS_DIR));
 
+// Test endpoint to verify static file serving
+app.get('/test-uploads', (req, res) => {
+  try {
+    const fs = require('fs');
+    const files = fs.readdirSync(UPLOADS_DIR, { recursive: true });
+    res.json({
+      uploadsDir: UPLOADS_DIR,
+      files: files.slice(0, 10), // Show first 10 files
+      totalFiles: files.length
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Configure multer storage for chat media
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
@@ -631,10 +646,27 @@ app.post('/api/media/upload', authenticateToken, (req, res) => {
     
     // Detect platform and use appropriate base URL
     const userAgent = req.get('User-Agent') || '';
-    const isWeb = userAgent.includes('Mozilla') && !userAgent.includes('Mobile');
+    const referer = req.get('Referer') || '';
+    
+    // More robust platform detection
+    const isWeb = userAgent.includes('Mozilla') && 
+                  !userAgent.includes('Mobile') && 
+                  !userAgent.includes('Android') &&
+                  !userAgent.includes('iPhone') &&
+                  !userAgent.includes('iPad');
+    
+    // Also check if it's coming from a web browser
+    const isWebReferer = referer.includes('localhost') || referer.includes('127.0.0.1');
+    
+    console.log('Platform detection:', {
+      userAgent: userAgent.substring(0, 100),
+      referer: referer.substring(0, 50),
+      isWeb: isWeb,
+      isWebReferer: isWebReferer
+    });
     
     let baseUrl;
-    if (isWeb) {
+    if (isWeb || isWebReferer) {
       // For web clients, use localhost
       baseUrl = process.env.WEB_BASE_URL || 'http://localhost:3003';
     } else {
