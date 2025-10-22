@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../services/theme_service.dart';
+import 'enhanced_media_preview.dart';
 
 class ModernMessageBubble extends StatefulWidget {
   final Map<String, dynamic> message;
@@ -33,7 +34,6 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
   late AnimationController _animationController;
   late Animation<double> _scaleAnimation;
   late Animation<double> _fadeAnimation;
-  final ThemeService _themeService = ThemeService();
 
   @override
   void initState() {
@@ -272,54 +272,19 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
         if (mediaUrl != null && mediaUrl.isNotEmpty)
           GestureDetector(
             onTap: () => widget.onMediaTap(mediaUrl, 'image', content),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                mediaUrl,
-                width: 200,
-                height: 200,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return Container(
-                    width: 200,
-                    height: 200,
-                    color: isDark ? Colors.grey[800] : Colors.grey[200],
-                    child: Center(
-                      child: CircularProgressIndicator(
-                        value: loadingProgress.expectedTotalBytes != null
-                            ? loadingProgress.cumulativeBytesLoaded /
-                                loadingProgress.expectedTotalBytes!
-                            : null,
-                      ),
-                    ),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 200,
-                    height: 200,
-                    color: isDark ? Colors.grey[800] : Colors.grey[200],
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.broken_image,
-                          color: isDark ? Colors.grey[400] : Colors.grey[600],
-                          size: 32,
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Failed to load image',
-                          style: TextStyle(
-                            color: isDark ? Colors.grey[400] : Colors.grey[600],
-                            fontSize: 12,
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                },
+            child: Container(
+              constraints: const BoxConstraints(
+                maxWidth: 200,
+                maxHeight: 200,
+              ),
+              child: EnhancedMediaPreview(
+                mediaUrl: mediaUrl,
+                mediaType: 'image',
+                fileName: content.isNotEmpty ? content : 'Image',
+                onTap: () => widget.onMediaTap(mediaUrl, 'image', content),
+                maxWidth: 200,
+                maxHeight: 200,
+                enableRetry: true,
               ),
             ),
           ),
@@ -348,43 +313,18 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
           GestureDetector(
             onTap: () => widget.onMediaTap(mediaUrl, 'video', content),
             child: Container(
-              width: 200,
-              height: 150,
-              decoration: BoxDecoration(
-                color: isDark ? Colors.grey[800] : Colors.grey[200],
-                borderRadius: BorderRadius.circular(8),
+              constraints: const BoxConstraints(
+                maxWidth: 200,
+                maxHeight: 150,
               ),
-              child: Stack(
-                children: [
-                  Center(
-                    child: Icon(
-                      Icons.play_circle_filled,
-                      size: 48,
-                      color: widget.isCurrentUser
-                          ? Colors.white70
-                          : (isDark ? Colors.white70 : Colors.black54),
-                    ),
-                  ),
-                  Positioned(
-                    bottom: 8,
-                    right: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: Colors.black54,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: const Text(
-                        'VIDEO',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+              child: EnhancedMediaPreview(
+                mediaUrl: mediaUrl,
+                mediaType: 'video',
+                fileName: content.isNotEmpty ? content : 'Video',
+                onTap: () => widget.onMediaTap(mediaUrl, 'video', content),
+                maxWidth: 200,
+                maxHeight: 150,
+                enableRetry: true,
               ),
             ),
           ),
@@ -406,52 +346,46 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
   }
 
   Widget _buildAudioMessage(String content, String? mediaUrl, bool isDark) {
-    return Row(
-      children: [
-        Icon(
-          Icons.audiotrack,
-          color: widget.isCurrentUser
-              ? Colors.white70
-              : (isDark ? Colors.white70 : Colors.black54),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            content.isNotEmpty ? content : 'Audio message',
-            style: TextStyle(
-              color: widget.isCurrentUser
-                  ? Colors.white
-                  : (isDark ? Colors.white : Colors.black87),
-              fontSize: 16,
-            ),
-          ),
-        ),
-      ],
+    return Container(
+      constraints: const BoxConstraints(
+        maxWidth: 200,
+        maxHeight: 80,
+      ),
+      child: EnhancedMediaPreview(
+        mediaUrl: mediaUrl ?? '',
+        mediaType: 'voice',
+        fileName: content.isNotEmpty ? content : 'Audio message',
+        onTap: () {
+          if (mediaUrl != null) {
+            widget.onMediaTap(mediaUrl, 'audio', content);
+          }
+        },
+        maxWidth: 200,
+        maxHeight: 80,
+        enableRetry: true,
+      ),
     );
   }
 
   Widget _buildDocumentMessage(String content, String? mediaUrl, bool isDark) {
-    return Row(
-      children: [
-        Icon(
-          Icons.insert_drive_file,
-          color: widget.isCurrentUser
-              ? Colors.white70
-              : (isDark ? Colors.white70 : Colors.black54),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Text(
-            content.isNotEmpty ? content : 'Document',
-            style: TextStyle(
-              color: widget.isCurrentUser
-                  ? Colors.white
-                  : (isDark ? Colors.white : Colors.black87),
-              fontSize: 16,
-            ),
-          ),
-        ),
-      ],
+    return Container(
+      constraints: const BoxConstraints(
+        maxWidth: 200,
+        maxHeight: 100,
+      ),
+      child: EnhancedMediaPreview(
+        mediaUrl: mediaUrl ?? '',
+        mediaType: 'document',
+        fileName: content.isNotEmpty ? content : 'Document',
+        onTap: () {
+          if (mediaUrl != null) {
+            widget.onMediaTap(mediaUrl, 'document', content);
+          }
+        },
+        maxWidth: 200,
+        maxHeight: 100,
+        enableRetry: true,
+      ),
     );
   }
 
