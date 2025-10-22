@@ -40,6 +40,7 @@ abstract class DatabaseService {
   Future<void> updateUserStatus(String userId, String status);
   Stream<QuerySnapshot> watchChatMessages(String chatId);
   Future<DocumentReference> createChat(String type, String name, List<String> memberIds);
+  Future<DocumentReference> findOrCreateChat(String type, String name, List<String> memberIds);
   Future<void> addUserToChat(String chatId, String userId);
   Future<void> removeUserFromChat(String chatId, String userId);
 }
@@ -233,6 +234,38 @@ class MongoDBService implements DatabaseService {
       } else {
         throw Exception('Failed to create chat: ${response.statusCode}');
       }
+    } catch (e) {
+      throw Exception('Network error: $e');
+    }
+  }
+
+  @override
+  Future<DocumentReference> findOrCreateChat(String type, String name, List<String> memberIds) async {
+    try {
+      // For private chats with exactly 2 members, check if chat already exists
+      if (type == 'private' && memberIds.length == 2) {
+        final response = await http.post(
+          Uri.parse('$baseUrl/api/chats/find-existing'),
+          headers: {
+            'Authorization': 'Bearer $authToken',
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
+          body: json.encode({
+            'userId1': memberIds[0],
+            'userId2': memberIds[1],
+          }),
+        );
+        
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          final chatId = data['chat']['_id'] ?? data['chat']['id'] ?? '';
+          return _createDocumentReference(chatId, 'chats');
+        }
+      }
+      
+      // Create new chat if none exists
+      return await createChat(type, name, memberIds);
     } catch (e) {
       throw Exception('Network error: $e');
     }

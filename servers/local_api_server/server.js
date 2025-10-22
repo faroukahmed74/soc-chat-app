@@ -734,26 +734,112 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
   }
 });
 
+// Create a new chat
 app.post('/api/chats', authenticateToken, async (req, res) => {
   try {
     const { type, name, members } = req.body;
     
+    if (!name || !members || !Array.isArray(members)) {
+      return res.status(400).json({ error: 'Chat name and members array are required' });
+    }
+    
+    // For private chats, check if chat already exists between the two users
+    if (type === 'private' && members.length === 2) {
+      const existingChat = await db.collection('chats').findOne({
+        type: 'private',
+        members: { 
+          $all: [new ObjectId(members[0]), new ObjectId(members[1])],
+          $size: 2
+        }
+      });
+      
+      if (existingChat) {
+        return res.json({
+          _id: existingChat._id.toString(),
+          id: existingChat._id.toString(),
+          name: existingChat.name,
+          type: existingChat.type,
+          members: existingChat.members.map(id => id.toString()),
+          createdBy: existingChat.createdBy.toString(),
+          createdAt: existingChat.createdAt,
+          updatedAt: existingChat.updatedAt,
+          lastMessage: existingChat.lastMessage,
+          lastMessageTime: existingChat.lastMessageTime
+        });
+      }
+    }
+    
+    // Create new chat
     const chat = {
-      type,
+      type: type || 'group',
       name,
-      members: Array.isArray(members) ? members.map(id => new ObjectId(id)) : [],
+      members: members.map(id => new ObjectId(id)),
+      createdBy: new ObjectId(req.user.id),
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      lastMessage: null,
+      lastMessageTime: null
     };
     
     const result = await db.collection('chats').insertOne(chat);
+    const createdChat = await db.collection('chats').findOne({ _id: result.insertedId });
     
     res.status(201).json({
-      id: result.insertedId,
-      ...chat
+      _id: createdChat._id.toString(),
+      id: createdChat._id.toString(),
+      name: createdChat.name,
+      type: createdChat.type,
+      members: createdChat.members.map(id => id.toString()),
+      createdBy: createdChat.createdBy.toString(),
+      createdAt: createdChat.createdAt,
+      updatedAt: createdChat.updatedAt,
+      lastMessage: createdChat.lastMessage,
+      lastMessageTime: createdChat.lastMessageTime
     });
   } catch (err) {
-    console.error(err);
+    console.error('Create chat error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Find existing chat between two users
+app.post('/api/chats/find-existing', authenticateToken, async (req, res) => {
+  try {
+    const { userId1, userId2 } = req.body;
+    
+    if (!userId1 || !userId2) {
+      return res.status(400).json({ error: 'Both userId1 and userId2 are required' });
+    }
+    
+    // Find chat where both users are members and it's a private chat
+    const chat = await db.collection('chats').findOne({
+      type: 'private',
+      members: { 
+        $all: [new ObjectId(userId1), new ObjectId(userId2)],
+        $size: 2
+      }
+    });
+    
+    if (chat) {
+      res.json({
+        chat: {
+          _id: chat._id.toString(),
+          id: chat._id.toString(),
+          name: chat.name,
+          type: chat.type,
+          members: chat.members.map(id => id.toString()),
+          createdBy: chat.createdBy.toString(),
+          createdAt: chat.createdAt,
+          updatedAt: chat.updatedAt,
+          lastMessage: chat.lastMessage,
+          lastMessageTime: chat.lastMessageTime
+        }
+      });
+    } else {
+      res.status(404).json({ message: 'No existing chat found' });
+    }
+  } catch (err) {
+    console.error('Find existing chat error:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });

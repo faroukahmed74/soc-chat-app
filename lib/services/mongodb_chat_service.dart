@@ -195,11 +195,61 @@ class MongoDBChatService {
     }
   }
 
+  /// Find existing chat between two users
+  Future<Map<String, dynamic>?> findExistingChat(String userId1, String userId2) async {
+    try {
+      Log.i('findExistingChat called for users: $userId1 and $userId2', 'MONGODB_CHAT_SERVICE');
+      
+      final token = await _getAuthToken();
+      if (token == null) {
+        Log.e('No auth token available', 'MONGODB_CHAT_SERVICE');
+        throw Exception('No auth token');
+      }
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/chats/find-existing'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({
+          'userId1': userId1,
+          'userId2': userId2,
+        }),
+      );
+
+      Log.i('findExistingChat response status: ${response.statusCode}', 'MONGODB_CHAT_SERVICE');
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        Log.i('Found existing chat: ${data['chat']?['_id']}', 'MONGODB_CHAT_SERVICE');
+        return data['chat'];
+      } else if (response.statusCode == 404) {
+        // No existing chat found
+        Log.i('No existing chat found between users', 'MONGODB_CHAT_SERVICE');
+        return null;
+      } else {
+        Log.e('Failed to find existing chat: ${response.statusCode} - ${response.body}', 'MONGODB_CHAT_SERVICE');
+        throw Exception('Failed to find existing chat: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error finding existing chat', 'MONGODB_CHAT_SERVICE', e);
+      return null;
+    }
+  }
+
   /// Create a new chat
   Future<Map<String, dynamic>?> createChat(String type, String name, List<String> memberIds) async {
     try {
+      Log.i('createChat called with type: $type, name: $name, members: $memberIds', 'MONGODB_CHAT_SERVICE');
+      
       final token = await _getAuthToken();
-      if (token == null) throw Exception('No auth token');
+      if (token == null) {
+        Log.e('No auth token available for chat creation', 'MONGODB_CHAT_SERVICE');
+        throw Exception('No auth token');
+      }
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final response = await http.post(
@@ -216,13 +266,40 @@ class MongoDBChatService {
         }),
       );
 
+      Log.i('createChat response status: ${response.statusCode}', 'MONGODB_CHAT_SERVICE');
+
       if (response.statusCode == 201 || response.statusCode == 200) {
-        return json.decode(response.body);
+        final data = json.decode(response.body);
+        Log.i('Successfully created chat: ${data['_id'] ?? data['id']}', 'MONGODB_CHAT_SERVICE');
+        return data;
       } else {
+        Log.e('Failed to create chat: ${response.statusCode} - ${response.body}', 'MONGODB_CHAT_SERVICE');
         throw Exception('Failed to create chat: ${response.statusCode}');
       }
     } catch (e) {
       Log.e('Error creating chat', 'MONGODB_CHAT_SERVICE', e);
+      return null;
+    }
+  }
+
+  /// Find or create chat between two users
+  Future<Map<String, dynamic>?> findOrCreateChat(String type, String name, List<String> memberIds) async {
+    try {
+      Log.i('findOrCreateChat called with type: $type, name: $name, members: $memberIds', 'MONGODB_CHAT_SERVICE');
+      
+      // The server now handles duplicate detection, so we can just call createChat
+      // The server will return existing chat if found, or create new one
+      Log.i('Creating/finding chat between: ${memberIds.join(', ')}', 'MONGODB_CHAT_SERVICE');
+      final chat = await createChat(type, name, memberIds);
+      if (chat != null) {
+        Log.i('Successfully created/found chat: ${chat['_id']}', 'MONGODB_CHAT_SERVICE');
+        return chat;
+      } else {
+        Log.e('Failed to create/find chat', 'MONGODB_CHAT_SERVICE');
+        return null;
+      }
+    } catch (e) {
+      Log.e('Error in findOrCreateChat', 'MONGODB_CHAT_SERVICE', e);
       return null;
     }
   }

@@ -21,6 +21,7 @@ import '../services/chat_management_service.dart';
 import '../services/fcm_notification_service.dart';
 import '../services/secure_media_service.dart';
 import '../utils/responsive_utils.dart';
+import '../utils/group_chat_naming_utility.dart';
 import '../widgets/enhanced_media_preview.dart';
 import '../widgets/voice_message_player.dart';
 
@@ -576,6 +577,28 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     }
   }
 
+  Future<String> _getEnhancedChatName() async {
+    try {
+      // Create a chat object for the naming utility
+      final chatData = <String, dynamic>{
+        'name': widget.chatName,
+        'isGroup': widget.isGroupChat,
+        'isGroupChat': widget.isGroupChat,
+        'type': widget.isGroupChat ? 'group' : 'private',
+        'members': widget.userIds ?? [],
+      };
+      
+      // Use the enhanced naming utility
+      return await GroupChatNamingUtility.getChatDisplayNameAsync(
+        chatData,
+        currentUserId: _currentUserId,
+      );
+    } catch (e) {
+      Log.e('Error getting enhanced chat name', 'CHAT_SCREEN', e);
+      return widget.chatName;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -603,12 +626,18 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Text(
-                    widget.chatName,
-                    style: const TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
-                    ),
+                  FutureBuilder<String>(
+                    future: _getEnhancedChatName(),
+                    builder: (context, snapshot) {
+                      final displayName = snapshot.data ?? widget.chatName;
+                      return Text(
+                        displayName,
+                        style: const TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      );
+                    },
                   ),
                   if (widget.isGroupChat)
                     Text(

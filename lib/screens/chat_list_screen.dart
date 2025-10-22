@@ -36,6 +36,8 @@ import '../services/theme_service.dart';
 import '../services/logger_service.dart'; // Added import for logging
 import '../config/database_config.dart';
 import '../services/local_auth_service.dart';
+import '../utils/responsive_utils.dart';
+import '../utils/group_chat_naming_utility.dart';
 // Firebase imports removed - using MongoDB/ngrok API only
  
 
@@ -55,6 +57,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   bool _isFCMHealthy = false;
   late ThemeService _themeService;
   late VoidCallback _themeListener;
+  String? _currentUserId;
   Map<String, dynamic>? _localUser;
   bool _isLoadingLocalUser = true;
   
@@ -84,6 +87,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         if (mounted) {
           setState(() {
             _localUser = userData;
+            _currentUserId = userData?['id'];
             _isLoadingLocalUser = false;
           });
         }
@@ -573,7 +577,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
         children: [
           // Search Bar
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: ResponsiveUtils.getResponsivePadding(context),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -779,6 +783,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
              lastMessage.contains(_searchQuery.toLowerCase());
     }).toList();
 
+    // Preload user names for better performance
+    _preloadUserNamesForChats(filteredChats);
+
     return ListView.builder(
       itemCount: filteredChats.length,
       itemBuilder: (context, index) {
@@ -786,6 +793,29 @@ class _ChatListScreenState extends State<ChatListScreen> {
         return _buildLocalChatTile(chat);
       },
     );
+  }
+
+  void _preloadUserNamesForChats(List<Map<String, dynamic>> chats) {
+    try {
+      final List<String> userIds = <String>[];
+      
+      // Collect all user IDs from chats
+      for (final chat in chats) {
+        final members = List<String>.from(chat['members'] ?? chat['memberIds'] ?? []);
+        for (final memberId in members) {
+          if (memberId != _currentUserId && !userIds.contains(memberId)) {
+            userIds.add(memberId);
+          }
+        }
+      }
+      
+      if (userIds.isNotEmpty) {
+        // Preload user names asynchronously
+        GroupChatNamingUtility.preloadUserNames(userIds);
+      }
+    } catch (e) {
+      Log.e('Error preloading user names', 'CHAT_LIST_SCREEN', e);
+    }
   }
 
   Widget _buildLocalChatTile(Map<String, dynamic> chat) {
@@ -796,24 +826,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
                         (chat['isGroupChat'] == true) ||
                         (chat['members'] != null && (chat['members'] as List).length > 2);
     
-    // For group chats, always show the group name
-    String displayName;
-    if (isGroup) {
-      final groupName = chat['name']?.toString() ?? '';
-      if (groupName.isNotEmpty) {
-        displayName = groupName;
-      } else {
-        // Fallback: generate a group name from members if no name is set
-        final members = List<String>.from(chat['members'] ?? chat['memberIds'] ?? []);
-        if (members.length > 2) {
-          displayName = 'Group Chat (${members.length} members)';
-        } else {
-          displayName = 'Group';
-        }
-      }
-    } else {
-      displayName = chat['name']?.toString() ?? 'Unknown Chat';
-    }
+    // Use enhanced naming utility for consistent display names
+    String displayName = GroupChatNamingUtility.getChatDisplayName(chat, currentUserId: _currentUserId);
     
     final String chatId = (chat['id']?.toString() ?? chat['_id']?.toString() ?? '');
     final List<String> memberIds = List<String>.from(chat['members'] ?? chat['memberIds'] ?? []);
@@ -889,24 +903,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
                             (data['isGroupChat'] == true) ||
                             (data['members'] != null && (data['members'] as List).length > 2);
         
-        // For group chats, always show the group name
-        String displayName;
-        if (isGroup) {
-          final groupName = data['name']?.toString() ?? '';
-          if (groupName.isNotEmpty) {
-            displayName = groupName;
-          } else {
-            // Fallback: generate a group name from members if no name is set
-            final members = List<String>.from(data['members'] ?? []);
-            if (members.length > 2) {
-              displayName = 'Group Chat (${members.length} members)';
-            } else {
-              displayName = 'Group';
-            }
-          }
-        } else {
-          displayName = data['name']?.toString() ?? 'Chat';
-        }
+        // Use enhanced naming utility for consistent display names
+        String displayName = GroupChatNamingUtility.getChatDisplayName(data, currentUserId: _currentUserId);
 
         return ListTile(
           leading: CircleAvatar(

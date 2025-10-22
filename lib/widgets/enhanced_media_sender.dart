@@ -84,6 +84,20 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
           ),
           const SizedBox(height: 16),
 
+          // Debug info
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.blue.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              'Debug: Media selected: ${_selectedMedia != null ? "YES (${_selectedMedia!.type})" : "NO"} | Uploading: $_isUploading',
+              style: const TextStyle(fontSize: 12, color: Colors.blue),
+            ),
+          ),
+          const SizedBox(height: 8),
+          
           // Media selection buttons
           if (_selectedMedia == null) _buildMediaSelectionButtons(theme, isDark),
           
@@ -300,13 +314,13 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${_selectedMedia!.type.toUpperCase()} • ${_selectedMedia!.formattedSize}',
+                  '${_selectedMedia!.type.toUpperCase()} • ${_formatFileSize(_selectedMedia!.optimizedSize)}',
                   style: TextStyle(
                     color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
                     fontSize: 12,
                   ),
                 ),
-                if (_selectedMedia!.isOptimized) ...[
+                if (_selectedMedia!.optimizedSize < _selectedMedia!.originalSize) ...[
                   const SizedBox(height: 4),
                   Row(
                     children: [
@@ -317,7 +331,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        'Optimized (${(_selectedMedia!.compressionRatio * 100).toStringAsFixed(0)}%)',
+                        'Optimized (${((1 - _selectedMedia!.optimizedSize / _selectedMedia!.originalSize) * 100).toStringAsFixed(0)}%)',
                         style: const TextStyle(
                           color: Colors.green,
                           fontSize: 10,
@@ -504,12 +518,17 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
 
   Future<void> _pickImageFromGallery() async {
     try {
+      Log.i('Starting image pick from gallery', 'ENHANCED_MEDIA_SENDER');
       final result = await ImprovedMediaService.pickImageFromGallery(context);
+      Log.i('Image pick result: ${result != null ? "Success" : "Null"}', 'ENHANCED_MEDIA_SENDER');
       if (result != null) {
         setState(() {
           _selectedMedia = result;
           _uploadError = null;
         });
+        Log.i('Media selected successfully: ${result.type}', 'ENHANCED_MEDIA_SENDER');
+      } else {
+        Log.w('No media selected from gallery', 'ENHANCED_MEDIA_SENDER');
       }
     } catch (e) {
       Log.e('Error picking image from gallery', 'ENHANCED_MEDIA_SENDER', e);
@@ -519,12 +538,17 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
 
   Future<void> _pickImageFromCamera() async {
     try {
+      Log.i('Starting image pick from camera', 'ENHANCED_MEDIA_SENDER');
       final result = await ImprovedMediaService.pickImageFromCamera(context);
+      Log.i('Camera pick result: ${result != null ? "Success" : "Null"}', 'ENHANCED_MEDIA_SENDER');
       if (result != null) {
         setState(() {
           _selectedMedia = result;
           _uploadError = null;
         });
+        Log.i('Media selected successfully: ${result.type}', 'ENHANCED_MEDIA_SENDER');
+      } else {
+        Log.w('No media selected from camera', 'ENHANCED_MEDIA_SENDER');
       }
     } catch (e) {
       Log.e('Error picking image from camera', 'ENHANCED_MEDIA_SENDER', e);
@@ -633,5 +657,12 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
         ),
       );
     }
+  }
+
+  String _formatFileSize(int bytes) {
+    if (bytes < 1024) return '$bytes B';
+    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
+    if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 }

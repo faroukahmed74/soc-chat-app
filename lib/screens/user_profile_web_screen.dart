@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import '../services/physical_auth_service.dart';
 import '../services/theme_service.dart';
+import '../utils/responsive_utils.dart';
 
 class UserProfileWebScreen extends StatefulWidget {
   const UserProfileWebScreen({Key? key}) : super(key: key);
@@ -79,34 +80,38 @@ class _UserProfileWebScreenState extends State<UserProfileWebScreen> {
           child: _loading
               ? const CircularProgressIndicator()
               : ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 600),
+                  constraints: ResponsiveUtils.getResponsiveCardConstraints(context),
                   child: Card(
                     elevation: 2,
                     child: Padding(
-                      padding: const EdgeInsets.all(24),
+                      padding: ResponsiveUtils.getResponsivePadding(context),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           CircleAvatar(
-                            radius: 40,
+                            radius: ResponsiveUtils.getResponsiveAvatarRadius(context),
                             backgroundColor: primary,
                             child: Text(
                               (displayName.isNotEmpty ? displayName[0] : (email.isNotEmpty ? email[0] : 'U')).toUpperCase(),
-                              style: const TextStyle(color: Colors.white, fontSize: 28, fontWeight: FontWeight.bold),
+                              style: TextStyle(
+                                color: Colors.white, 
+                                fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 28.0), 
+                                fontWeight: FontWeight.bold
+                              ),
                             ),
                           ),
-                          const SizedBox(height: 16),
+                          SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context)),
                           Text(
                             displayName.isNotEmpty ? displayName : 'Unknown User',
-                            style: TextStyle(color: fg, fontSize: 20, fontWeight: FontWeight.w600),
+                            style: ResponsiveUtils.getResponsiveHeadingStyle(context, color: fg),
                           ),
-                          const SizedBox(height: 8),
+                          SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context) / 2),
                           if (email.isNotEmpty)
                             Text(
                               email,
                               style: TextStyle(color: fg.withValues(alpha: 0.7)),
                             ),
-                          const SizedBox(height: 24),
+                          SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context) * 1.5),
                           Wrap(
                             spacing: 12,
                             runSpacing: 12,

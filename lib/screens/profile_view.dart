@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import '../utils/responsive_utils.dart';
 
 class ProfileView extends StatelessWidget {
   final String userId;
@@ -24,6 +25,13 @@ class ProfileView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isIOS = Theme.of(context).platform == TargetPlatform.iOS;
+    
+    // Responsive dimensions
+    final avatarRadius = ResponsiveUtils.getResponsiveAvatarRadius(context);
+    final titleFontSize = ResponsiveUtils.getResponsiveFontSize(context, baseSize: 22.0);
+    final bodyFontSize = ResponsiveUtils.getResponsiveFontSize(context, baseSize: 16.0);
+    final spacing = ResponsiveUtils.getResponsiveSpacing(context);
+    
     return FutureBuilder<DocumentSnapshot>(
       future: FirebaseFirestore.instance.collection('users').doc(userId).get(),
       builder: (context, snapshot) {
@@ -36,32 +44,32 @@ class ProfileView extends StatelessWidget {
         if (data == null) {
           return Center(
             child: isIOS
-                ? const Text('User not found.', style: TextStyle(fontSize: 18))
-                : const Text('User not found.'),
+                ? Text('User not found.', style: TextStyle(fontSize: titleFontSize))
+                : Text('User not found.', style: TextStyle(fontSize: titleFontSize)),
           );
         }
         final content = Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             CircleAvatar(
-              radius: 48,
+              radius: avatarRadius,
               backgroundImage: (data['photoUrl'] ?? '').isNotEmpty
                   ? NetworkImage(data['photoUrl'])
                   : null,
               child: (data['photoUrl'] ?? '').isEmpty
-                  ? const Icon(Icons.person, size: 48)
+                  ? Icon(Icons.person, size: avatarRadius)
                   : null,
             ),
-            const SizedBox(height: 16),
-            Text(data['username'] ?? '', style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 8),
-            Text(data['email'] ?? '', style: const TextStyle(fontSize: 16)),
+            SizedBox(height: spacing),
+            Text(data['username'] ?? '', style: TextStyle(fontSize: titleFontSize, fontWeight: FontWeight.bold)),
+            SizedBox(height: spacing / 2),
+            Text(data['email'] ?? '', style: TextStyle(fontSize: bodyFontSize)),
             if ((data['phoneNumber'] ?? '').isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 8.0),
-                child: Text(data['phoneNumber'], style: const TextStyle(fontSize: 16)),
+                padding: EdgeInsets.only(top: spacing / 2),
+                child: Text(data['phoneNumber'], style: TextStyle(fontSize: bodyFontSize)),
               ),
-            const SizedBox(height: 24),
+            SizedBox(height: spacing * 1.5),
             Row(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -71,7 +79,7 @@ class ProfileView extends StatelessWidget {
                       style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
                   onPressed: () => _blockUser(context, userId, data),
                 ),
-                const SizedBox(width: 8),
+                SizedBox(width: spacing / 2),
                 ElevatedButton.icon(
                   icon: const Icon(Icons.report),
                   label: const Text('Report'),
@@ -84,7 +92,7 @@ class ProfileView extends StatelessWidget {
         );
         return isIOS
             ? CupertinoPageScaffold(child: SafeArea(child: content))
-            : Padding(padding: const EdgeInsets.all(24.0), child: content);
+            : Padding(padding: ResponsiveUtils.getResponsivePadding(context), child: content);
       },
     );
   }

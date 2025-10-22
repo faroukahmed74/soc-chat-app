@@ -33,6 +33,7 @@ import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../config/database_config.dart';
 import '../services/database_service.dart';
+import '../services/mongodb_chat_service.dart';
 
 class UserSearchScreen extends StatefulWidget {
   const UserSearchScreen({Key? key}) : super(key: key);
@@ -183,11 +184,32 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
       ];
       Log.i('Attempting to start chat with: $otherUserId', 'USER_SEARCH');
       
-      // Create new chat
-      final chatRef = await databaseService.createChat('private', userData['username'] ?? userData['email'] ?? 'Unknown User', members);
-      final chatId = chatRef.id;
+      // Find existing chat or create new one
+      final chatService = MongoDBChatService();
+      final chatData = await chatService.findOrCreateChat('private', userData['username'] ?? userData['email'] ?? 'Unknown User', members);
       
-      Log.i('New chat created: $chatId', 'USER_SEARCH');
+      if (chatData == null) {
+        Log.e('Failed to create or find chat', 'USER_SEARCH');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to create or find chat')),
+          );
+        }
+        return;
+      }
+      
+      final chatId = chatData['_id'] ?? chatData['id'] ?? '';
+      Log.i('Chat found/created: $chatId', 'USER_SEARCH');
+      
+      if (chatId.isEmpty) {
+        Log.e('Chat ID is empty after creation', 'USER_SEARCH');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Invalid chat ID')),
+          );
+        }
+        return;
+      }
       
       await Future.delayed(const Duration(milliseconds: 300));
       if (mounted) {
