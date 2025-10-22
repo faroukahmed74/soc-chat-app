@@ -7,10 +7,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
+import 'dart:typed_data';
 import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
 import '../services/physical_auth_service.dart';
+import '../services/enhanced_unified_media_service.dart';
+import '../services/document_service.dart';
 import '../widgets/enhanced_chat_input.dart';
 import '../widgets/enhanced_media_preview.dart';
 import '../widgets/enhanced_responsive_media_preview.dart';
@@ -46,6 +49,12 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
   String? _currentUserName;
   StreamSubscription? _messagesSubscription;
   late ThemeService _themeService;
+  
+  // Media selection state
+  Uint8List? _selectedMediaBytes;
+  String? _selectedMediaType;
+  String? _selectedMediaFileName;
+  bool _isUploadingMedia = false;
 
   @override
   void initState() {
@@ -173,6 +182,82 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
           _isSending = false;
         });
       }
+    }
+  }
+
+  Future<void> _pickImageFromGallery() async {
+    try {
+      final result = await EnhancedUnifiedMediaService.pickImageFromGallery(context);
+      if (result != null) {
+        setState(() {
+          _selectedMediaBytes = result.bytes;
+          _selectedMediaType = result.type;
+          _selectedMediaFileName = result.fileName;
+        });
+      }
+    } catch (e) {
+      Log.e('Error picking image from gallery', 'CHAT_SCREEN_WEB_MONGODB', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick image: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickImageFromCamera() async {
+    try {
+      final result = await EnhancedUnifiedMediaService.pickImageFromCamera(context);
+      if (result != null) {
+        setState(() {
+          _selectedMediaBytes = result.bytes;
+          _selectedMediaType = result.type;
+          _selectedMediaFileName = result.fileName;
+        });
+      }
+    } catch (e) {
+      Log.e('Error picking image from camera', 'CHAT_SCREEN_WEB_MONGODB', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to take photo: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickVideoFromGallery() async {
+    try {
+      final result = await EnhancedUnifiedMediaService.pickVideoFromGallery(context);
+      if (result != null) {
+        setState(() {
+          _selectedMediaBytes = result.bytes;
+          _selectedMediaType = 'video';
+          _selectedMediaFileName = result.fileName;
+        });
+      }
+    } catch (e) {
+      Log.e('Error picking video from gallery', 'CHAT_SCREEN_WEB_MONGODB', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick video: $e')),
+      );
+    }
+  }
+
+  Future<void> _pickDocument() async {
+    try {
+      final result = await DocumentService.pickDocument();
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        final fileBytes = file.bytes;
+        if (fileBytes != null) {
+          setState(() {
+            _selectedMediaBytes = fileBytes;
+            _selectedMediaType = 'document';
+            _selectedMediaFileName = file.name;
+          });
+        }
+      }
+    } catch (e) {
+      Log.e('Error picking document', 'CHAT_SCREEN_WEB_MONGODB', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Failed to pick document: $e')),
+      );
     }
   }
 
@@ -455,6 +540,16 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
             onSendMedia: _sendMediaMessage,
             chatId: widget.chatId,
             isEnabled: !_isSending,
+            selectedMediaBytes: _selectedMediaBytes,
+            selectedMediaType: _selectedMediaType,
+            selectedMediaFileName: _selectedMediaFileName,
+            onClearMedia: () {
+              setState(() {
+                _selectedMediaBytes = null;
+                _selectedMediaType = null;
+                _selectedMediaFileName = null;
+              });
+            },
           ),
         ],
       ),

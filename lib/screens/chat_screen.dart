@@ -2304,13 +2304,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         final file = result.files.first;
         final fileBytes = file.bytes;
         if (fileBytes != null) {
-          await _uploadAndSendMedia(
-            fileBytes, 
-            'document', 
-            '${file.name}|${DocumentService.getFileType(file.extension)}|${DocumentService.formatFileSize(file.size)}',
-            extension: file.extension,
-            mimeType: file.extension != null ? DocumentService.mimeTypes[file.extension!.toLowerCase()] : null,
-          );
+          setState(() {
+            _selectedMediaBytes = fileBytes;
+            _selectedMediaType = 'document';
+            _selectedMediaFileName = file.name;
+          });
+          Navigator.pop(context); // Close the media options modal
         }
       }
     } catch (e) {

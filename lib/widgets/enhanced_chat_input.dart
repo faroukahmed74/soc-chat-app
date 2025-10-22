@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'dart:typed_data';
 import '../widgets/emoji_picker.dart';
 import '../widgets/enhanced_media_sender.dart';
 
@@ -10,6 +11,12 @@ class EnhancedChatInput extends StatefulWidget {
   final Future<void> Function(String, String, {String? content}) onSendMedia;
   final String chatId;
   final bool isEnabled;
+  
+  // Media selection state
+  final Uint8List? selectedMediaBytes;
+  final String? selectedMediaType;
+  final String? selectedMediaFileName;
+  final VoidCallback? onClearMedia;
 
   const EnhancedChatInput({
     super.key,
@@ -18,6 +25,10 @@ class EnhancedChatInput extends StatefulWidget {
     required this.onSendMedia,
     required this.chatId,
     this.isEnabled = true,
+    this.selectedMediaBytes,
+    this.selectedMediaType,
+    this.selectedMediaFileName,
+    this.onClearMedia,
   });
 
   @override
@@ -141,6 +152,145 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
               _focusNode.requestFocus();
             },
           ),
+
+        // Media preview
+        if (widget.selectedMediaBytes != null) ...[
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: isDark 
+                    ? [Colors.grey[800]!, Colors.grey[700]!]
+                    : [Colors.white, Colors.grey[50]!],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: theme.primaryColor.withValues(alpha: 0.3),
+                width: 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.1),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Row(
+              children: [
+                // Media thumbnail
+                Container(
+                  width: 60,
+                  height: 60,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: widget.selectedMediaType == 'image'
+                        ? Image.memory(
+                            widget.selectedMediaBytes!,
+                            width: 60,
+                            height: 60,
+                            fit: BoxFit.cover,
+                          )
+                        : Container(
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: widget.selectedMediaType == 'video'
+                                    ? [Colors.red.shade400, Colors.red.shade600]
+                                    : [Colors.blue.shade400, Colors.blue.shade600],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                            ),
+                            child: Icon(
+                              widget.selectedMediaType == 'video'
+                                  ? Icons.play_circle_filled
+                                  : Icons.insert_drive_file,
+                              color: Colors.white,
+                              size: 30,
+                            ),
+                          ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                
+                // Media info
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.selectedMediaFileName ?? 'Media',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 16,
+                          color: isDark ? Colors.white : Colors.black87,
+                        ),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: theme.primaryColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                            child: Text(
+                              widget.selectedMediaType?.toUpperCase() ?? 'FILE',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: theme.primaryColor,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            '${(widget.selectedMediaBytes!.length / 1024).toStringAsFixed(1)} KB',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isDark ? Colors.grey[400] : Colors.grey[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                
+                // Remove button
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.red.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: IconButton(
+                    onPressed: widget.onClearMedia,
+                    icon: const Icon(Icons.close),
+                    iconSize: 20,
+                    color: Colors.red,
+                    tooltip: 'Remove media',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
 
         // Main input area
         Container(
