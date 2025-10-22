@@ -215,14 +215,25 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
   void _downloadMedia() async {
     try {
       final uri = Uri.parse(widget.mediaUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
+      
+      // For documents, try to open in browser first
+      if (widget.mediaType == 'document') {
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          _showErrorSnackBar('Cannot open document. Please try downloading manually.');
+        }
       } else {
-        _showErrorSnackBar('Cannot open media');
+        // For images and videos, try to open in browser
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          _showErrorSnackBar('Cannot open media');
+        }
       }
     } catch (e) {
       Log.e('Error downloading media', 'ENHANCED_RESPONSIVE_MEDIA_PREVIEW', e);
-      _showErrorSnackBar('Failed to download media');
+      _showErrorSnackBar('Failed to download media: ${e.toString()}');
     }
   }
 
@@ -869,14 +880,25 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
   void _downloadMedia() async {
     try {
       final uri = Uri.parse(widget.mediaUrl);
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri);
+      
+      // For documents, try to open in browser first
+      if (widget.mediaType == 'document') {
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          _showErrorSnackBar('Cannot open document. Please try downloading manually.');
+        }
       } else {
-        _showErrorSnackBar('Cannot open media');
+        // For images and videos, try to open in browser
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.externalApplication);
+        } else {
+          _showErrorSnackBar('Cannot open media');
+        }
       }
     } catch (e) {
       Log.e('Error downloading media', 'ENHANCED_FULL_SCREEN_MEDIA_PREVIEW', e);
-      _showErrorSnackBar('Failed to download media');
+      _showErrorSnackBar('Failed to download media: ${e.toString()}');
     }
   }
 

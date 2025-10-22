@@ -628,9 +628,18 @@ app.post('/api/media/upload', authenticateToken, (req, res) => {
 
     // Build public URL to the uploaded file
     const relativePath = path.join('chat_media', chatId, req.file.filename).replace(/\\/g, '/');
-    const computedHost = req.get('host');
-    const baseUrl = process.env.PUBLIC_BASE_URL || `${req.protocol}://${computedHost}`;
+    
+    // Use ngrok URL for media serving
+    const baseUrl = process.env.PUBLIC_BASE_URL || 'https://soc-chat-app.ngrok-free.app';
     const mediaUrl = `${baseUrl}/uploads/${relativePath}`;
+    
+    console.log('Media upload successful:', {
+      fileName: req.file.filename,
+      chatId,
+      type,
+      mediaUrl,
+      fileSize: req.file.size
+    });
 
     return res.status(201).json({
       mediaUrl,

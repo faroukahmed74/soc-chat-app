@@ -1675,6 +1675,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     mediaUrl,
                     fit: BoxFit.cover,
                     loadingBuilder: (context, child, loadingProgress) {
+                      Log.i('Loading image: $mediaUrl', 'CHAT_SCREEN');
                       if (loadingProgress == null) return child;
                       return Container(
                         width: 250,
@@ -1708,6 +1709,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       );
                     },
                     errorBuilder: (context, error, stackTrace) {
+                      Log.e('Image loading error', 'CHAT_SCREEN', error);
                       return Container(
                         width: 250,
                         height: 200,
@@ -1725,11 +1727,20 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'Failed to load',
+                              'Failed to load image',
                               style: TextStyle(
                                 color: Colors.grey[600],
                                 fontSize: 12,
                               ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              'URL: ${mediaUrl.length > 50 ? '${mediaUrl.substring(0, 50)}...' : mediaUrl}',
+                              style: TextStyle(
+                                color: Colors.grey[500],
+                                fontSize: 10,
+                              ),
+                              textAlign: TextAlign.center,
                             ),
                           ],
                         ),
@@ -1809,6 +1820,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                               height: 200,
                               fit: BoxFit.cover,
                               errorBuilder: (context, error, stackTrace) {
+                                Log.e('Video thumbnail loading error', 'CHAT_SCREEN', error);
                                 return _buildVideoPlaceholder();
                               },
                             ),
@@ -1901,11 +1913,19 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           ),
           const SizedBox(height: 8),
           Text(
-            'Video',
+            'Video Preview',
             style: TextStyle(
               color: Colors.white.withValues(alpha: 0.7),
               fontSize: 14,
               fontWeight: FontWeight.w500,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'Tap to play',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.5),
+              fontSize: 12,
             ),
           ),
         ],
@@ -2773,13 +2793,26 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       if (DatabaseConfig.usePhysicalServer) {
         // Physical server path: upload via SecureMediaService and send via HTTP API
         try {
-          // Upload media to physical server
-          final mediaUrl = await SecureMediaService.uploadMediaToStorage(
-            bytes,
-            fileName,
-            mimeType ?? 'application/octet-stream',
+          // Upload media to physical server using EnhancedMediaService
+          final mediaResult = MediaResult(
+            bytes: bytes,
+            type: type,
+            fileName: fileName,
+            mimeType: mimeType ?? 'application/octet-stream',
+            originalSize: bytes.length,
+            optimizedSize: bytes.length,
+          );
+          
+          final mediaUrl = await EnhancedMediaService.uploadMediaWithProgress(
+            mediaResult,
             widget.chatId,
           );
+
+          Log.i('Media upload result: $mediaUrl', 'CHAT_SCREEN');
+
+          if (mediaUrl == null || mediaUrl.isEmpty) {
+            throw Exception('Failed to upload media - no URL returned');
+          }
 
           // Send message through DatabaseService
           final databaseService = await DatabaseConfig.getDatabaseService();

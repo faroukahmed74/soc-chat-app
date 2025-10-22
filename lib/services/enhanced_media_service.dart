@@ -275,6 +275,9 @@ class EnhancedMediaService {
           if (caption != null && caption.isNotEmpty) 'caption': caption,
         });
 
+        Log.i('Uploading to: $baseUrl/api/media/upload', 'ENHANCED_MEDIA');
+        Log.i('File details: ${media.fileName}, size: ${media.bytes.length}, type: ${media.type}', 'ENHANCED_MEDIA');
+        
         final response = await dio.post(
           '/api/media/upload',
           data: formData,
@@ -287,6 +290,9 @@ class EnhancedMediaService {
           },
         );
 
+        Log.i('Upload response: ${response.statusCode}', 'ENHANCED_MEDIA');
+        Log.i('Upload response data: ${response.data}', 'ENHANCED_MEDIA');
+
         if (response.statusCode == 201 && response.data is Map) {
           final data = response.data as Map;
           final mediaUrl = data['mediaUrl'] as String?;
@@ -294,10 +300,12 @@ class EnhancedMediaService {
             Log.i('Media upload completed (server): $mediaUrl', 'ENHANCED_MEDIA');
             return mediaUrl;
           }
+          Log.e('Upload succeeded but no mediaUrl returned', 'ENHANCED_MEDIA');
           throw Exception('Upload succeeded but no mediaUrl returned');
         } else {
           final code = response.statusCode ?? 0;
           final msg = response.statusMessage ?? 'Unknown error';
+          Log.e('Upload failed: HTTP $code $msg', 'ENHANCED_MEDIA');
           throw Exception('Upload failed: HTTP $code $msg');
         }
       }
