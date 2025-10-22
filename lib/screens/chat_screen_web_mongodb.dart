@@ -7,14 +7,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'dart:typed_data';
 import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
 import '../services/physical_auth_service.dart';
-import '../widgets/enhanced_media_sender.dart';
 import '../widgets/enhanced_chat_input.dart';
-import '../widgets/full_screen_media_preview.dart';
+import '../widgets/enhanced_media_preview.dart';
+import '../widgets/enhanced_responsive_media_preview.dart';
 
 class ChatScreenWebMongoDB extends StatefulWidget {
   final String chatId;
@@ -296,21 +295,19 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
                       children: [
                         GestureDetector(
                           onTap: () => _showFullScreenMedia(message['mediaUrl'] ?? '', 'image', content),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              message['mediaUrl'] ?? '',
-                              width: 200,
-                              height: 200,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  width: 200,
-                                  height: 200,
-                                  color: Colors.grey[300],
-                                  child: const Icon(Icons.broken_image),
-                                );
-                              },
+                          child: Container(
+                            constraints: const BoxConstraints(
+                              maxWidth: 200,
+                              maxHeight: 200,
+                            ),
+                            child: EnhancedMediaPreview(
+                              mediaUrl: message['mediaUrl'] ?? '',
+                              mediaType: 'image',
+                              fileName: content,
+                              onTap: () => _showFullScreenMedia(message['mediaUrl'] ?? '', 'image', content),
+                              maxWidth: 200,
+                              maxHeight: 200,
+                              enableRetry: true,
                             ),
                           ),
                         ),
@@ -333,18 +330,18 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          width: 200,
-                          height: 150,
-                          decoration: BoxDecoration(
-                            color: Colors.black,
-                            borderRadius: BorderRadius.circular(8),
+                          constraints: const BoxConstraints(
+                            maxWidth: 200,
+                            maxHeight: 150,
                           ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.play_circle_filled,
-                              color: Colors.white,
-                              size: 50,
-                            ),
+                          child: EnhancedMediaPreview(
+                            mediaUrl: message['mediaUrl'] ?? '',
+                            mediaType: 'video',
+                            fileName: content,
+                            onTap: () => _showFullScreenMedia(message['mediaUrl'] ?? '', 'video', content),
+                            maxWidth: 200,
+                            maxHeight: 150,
+                            enableRetry: true,
                           ),
                         ),
                         if (content.isNotEmpty)
@@ -403,7 +400,7 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
   void _showFullScreenMedia(String mediaUrl, String mediaType, String fileName) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (context) => FullScreenMediaPreview(
+        builder: (context) => EnhancedFullScreenMediaPreview(
           mediaUrl: mediaUrl,
           mediaType: mediaType,
           fileName: fileName.isNotEmpty ? fileName : null,
