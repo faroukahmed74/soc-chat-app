@@ -444,7 +444,7 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
               child: Column(
                 children: [
                   Text(
-                    'Version 1.0.0',
+                    'Version 1.0.1',
                     style: TextStyle(
                       fontSize: 11,
                       color: _themeService.isDarkMode ? Colors.grey[500] : Colors.grey[600],

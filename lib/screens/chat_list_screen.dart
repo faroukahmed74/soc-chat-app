@@ -568,7 +568,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                   ),
                   const SizedBox(height: 4),
                   Text(
-                    'Version 1.0.0',
+                    'Version 1.0.1',
                     style: TextStyle(
                       fontSize: 11,
                       color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
