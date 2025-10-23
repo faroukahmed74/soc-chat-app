@@ -271,7 +271,9 @@ class MongoDBChatService {
       if (response.statusCode == 201 || response.statusCode == 200) {
         final data = json.decode(response.body);
         Log.i('Successfully created chat: ${data['_id'] ?? data['id']}', 'MONGODB_CHAT_SERVICE');
-        return data;
+        
+        // Return the chat data directly if it's in the root, or extract from 'chat' field
+        return data['chat'] ?? data;
       } else {
         Log.e('Failed to create chat: ${response.statusCode} - ${response.body}', 'MONGODB_CHAT_SERVICE');
         throw Exception('Failed to create chat: ${response.statusCode}');

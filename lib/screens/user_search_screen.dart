@@ -9,14 +9,12 @@
 // - User search with real-time filtering
 // - User profile viewing and interaction
 // - Chat initiation with other users
-// - User blocking and reporting
 // - Responsive design with adaptive layouts
 //
 // ARCHITECTURE:
 // - Uses StreamBuilder for real-time search results
 // - Implements responsive design with MediaQuery
 // - Provides user interaction capabilities
-// - Supports user management actions
 //
 // PLATFORM SUPPORT:
 // - Web: Full functionality with responsive design
@@ -198,7 +196,10 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
         return;
       }
       
+      // Extract chat ID from the response structure
+      // The service now returns chat data directly
       final chatId = chatData['_id'] ?? chatData['id'] ?? '';
+      
       Log.i('Chat found/created: $chatId', 'USER_SEARCH');
       
       if (chatId.isEmpty) {
@@ -229,36 +230,6 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
           SnackBar(content: Text('Error starting chat: $e')),
         );
       }
-    }
-  }
-
-  // Block user functionality (simplified for physical server)
-  Future<void> _blockUser(String userId, dynamic userData) async {
-    try {
-      // Implementation for blocking user via physical server
-      Log.i('Blocking user: $userId', 'USER_SEARCH');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('User blocked successfully')),
-        );
-      }
-    } catch (e) {
-      Log.e('Error blocking user', 'USER_SEARCH', e);
-    }
-  }
-
-  // Report user functionality (simplified for physical server)
-  Future<void> _reportUser(String userId, dynamic userData) async {
-    try {
-      // Implementation for reporting user via physical server
-      Log.i('Reporting user: $userId', 'USER_SEARCH');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('User reported successfully')),
-        );
-      }
-    } catch (e) {
-      Log.e('Error reporting user', 'USER_SEARCH', e);
     }
   }
 
@@ -343,43 +314,19 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                             ),
                             subtitle: Text(email),
                             trailing: isWideScreen
-                                ? Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      ElevatedButton.icon(
-                                        icon: const Icon(Icons.chat, size: 16),
-                                        label: const Text('Chat'),
-                                        style: ElevatedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                        ),
-                                        onPressed: () => _startChat(userId),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      IconButton(
-                                        icon: const Icon(Icons.block),
-                                        tooltip: 'Block',
-                                        onPressed: () => _blockUser(userId, user),
-                                      ),
-                                      IconButton(
-                                        icon: const Icon(Icons.report),
-                                        tooltip: 'Report',
-                                        onPressed: () => _reportUser(userId, user),
-                                      ),
-                                    ],
+                                ? ElevatedButton.icon(
+                                    icon: const Icon(Icons.chat, size: 16),
+                                    label: const Text('Chat'),
+                                    style: ElevatedButton.styleFrom(
+                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    ),
+                                    onPressed: () => _startChat(userId),
                                   )
                                 : PopupMenuButton<String>(
                                     icon: const Icon(Icons.more_vert),
                                     onSelected: (value) {
-                                      switch (value) {
-                                        case 'chat':
-                                          _startChat(userId);
-                                          break;
-                                        case 'block':
-                                          _blockUser(userId, user);
-                                          break;
-                                        case 'report':
-                                          _reportUser(userId, user);
-                                          break;
+                                      if (value == 'chat') {
+                                        _startChat(userId);
                                       }
                                     },
                                     itemBuilder: (context) => [
@@ -390,26 +337,6 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                                             Icon(Icons.chat, color: Colors.blue),
                                             SizedBox(width: 8),
                                             Text('Start Chat'),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'block',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.block, color: Colors.orange),
-                                            SizedBox(width: 8),
-                                            Text('Block User'),
-                                          ],
-                                        ),
-                                      ),
-                                      const PopupMenuItem(
-                                        value: 'report',
-                                        child: Row(
-                                          children: [
-                                            Icon(Icons.report, color: Colors.red),
-                                            SizedBox(width: 8),
-                                            Text('Report User'),
                                           ],
                                         ),
                                       ),
