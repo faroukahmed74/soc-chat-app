@@ -566,6 +566,16 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     ),
                     textAlign: TextAlign.center,
                   ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Version 1.0.0',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.5),
+                      fontWeight: FontWeight.w300,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
                   const SizedBox(height: 8),
                 ],
               ),

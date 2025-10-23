@@ -435,6 +435,36 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
                 _logout();
               },
             ),
+            
+            const Divider(),
+            
+            // Version Info
+            Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  Text(
+                    'Version 1.0.0',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: _themeService.isDarkMode ? Colors.grey[500] : Colors.grey[600],
+                      fontWeight: FontWeight.w300,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Developed by نقيب // احمد فاروق',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: _themeService.isDarkMode ? Colors.grey[600] : Colors.grey[700],
+                      fontWeight: FontWeight.w300,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
           ],
         ),
       ),
