@@ -1679,6 +1679,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                 enableRetry: true,
               ),
             ),
+          ),
           const SizedBox(height: 8),
         ],
         Text(
@@ -3303,9 +3304,15 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
   void _showMediaOptions(BuildContext context) {
     final isWeb = kIsWeb;
-    final isIOS = defaultTargetPlatform == TargetPlatform.iOS;
-    final isAndroid = defaultTargetPlatform == TargetPlatform.android;
-    final isMobile = MediaQuery.of(context).size.width < 600;
+    final isTablet = ResponsiveUtils.isTablet(context);
+    
+    // Responsive modal width
+    final modalWidth = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: double.infinity,
+      tablet: 600.0,
+      desktop: 700.0,
+    );
     
     showModalBottomSheet(
       context: context,
@@ -3316,8 +3323,8 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
       useSafeArea: true,
       builder: (context) => Container(
         constraints: BoxConstraints(
-          maxHeight: MediaQuery.of(context).size.height * 0.8,
-          maxWidth: isWeb ? 500 : double.infinity,
+          maxHeight: MediaQuery.of(context).size.height * 0.85,
+          maxWidth: modalWidth,
         ),
         decoration: BoxDecoration(
           color: _themeService.isDarkMode ? const Color(0xFF1E1E1E) : Colors.white,
@@ -3338,23 +3345,23 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
           children: [
             // Enhanced handle bar
             Container(
-              margin: EdgeInsets.only(top: isWeb ? 8 : 12),
-              width: isWeb ? 40 : 50,
-              height: isWeb ? 4 : 5,
+              margin: EdgeInsets.only(top: ResponsiveUtils.getResponsiveSpacing(context)),
+              width: ResponsiveUtils.getResponsiveValue(context, mobile: 40.0, tablet: 50.0, desktop: 50.0),
+              height: ResponsiveUtils.getResponsiveValue(context, mobile: 4.0, tablet: 5.0, desktop: 5.0),
               decoration: BoxDecoration(
                 color: Colors.grey[400],
-                borderRadius: BorderRadius.circular(isWeb ? 2 : 3),
+                borderRadius: BorderRadius.circular(ResponsiveUtils.getResponsiveValue(context, mobile: 2.0, tablet: 3.0, desktop: 3.0)),
               ),
             ),
-            SizedBox(height: isWeb ? 20 : 25),
+            SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context) * 1.5),
             
             // Enhanced header with platform-specific styling
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: isWeb ? 20 : 24),
+              padding: EdgeInsets.symmetric(horizontal: ResponsiveUtils.getResponsiveSpacing(context)),
               child: Row(
                 children: [
                   Container(
-                    padding: EdgeInsets.all(isWeb ? 6 : 8),
+                    padding: EdgeInsets.all(ResponsiveUtils.getResponsiveValue(context, mobile: 8.0, tablet: 10.0, desktop: 12.0)),
                     decoration: BoxDecoration(
                       gradient: LinearGradient(
                         colors: [
@@ -3364,7 +3371,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                         begin: Alignment.topLeft,
                         end: Alignment.bottomRight,
                       ),
-                      borderRadius: BorderRadius.circular(isWeb ? 10 : 12),
+                      borderRadius: BorderRadius.circular(ResponsiveUtils.getResponsiveValue(context, mobile: 12.0, tablet: 14.0, desktop: 16.0)),
                       border: Border.all(
                         color: Theme.of(context).primaryColor.withValues(alpha: 0.2),
                         width: 1,
@@ -3373,10 +3380,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                     child: Icon(
                       Icons.attach_file_rounded,
                       color: Theme.of(context).primaryColor,
-                      size: isWeb ? 18 : 20,
+                      size: ResponsiveUtils.getResponsiveIconSize(context),
                     ),
                   ),
-                  SizedBox(width: isWeb ? 10 : 12),
+                  SizedBox(width: ResponsiveUtils.getResponsiveSpacing(context)),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -3384,17 +3391,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                         Text(
                           'Send Media',
                           style: TextStyle(
-                            fontSize: isWeb ? 18 : 20,
+                            fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 20.0),
                             fontWeight: FontWeight.bold,
                             color: _themeService.isDarkMode ? Colors.white : Colors.black87,
                           ),
                         ),
-                        if (isWeb) ...[
+                        if (isWeb || isTablet) ...[
                           const SizedBox(height: 2),
                           Text(
                             'Choose what you want to share',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12.0, mobileMultiplier: 0.9),
                               color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
                             ),
                           ),
@@ -3409,64 +3416,64 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                       icon: Icon(
                         Icons.close_rounded,
                         color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
-                        size: 20,
+                        size: ResponsiveUtils.getResponsiveIconSize(context) * 0.8,
                       ),
                       tooltip: 'Close',
                     ),
                 ],
               ),
             ),
-            if (!isWeb) ...[
+            if (!isWeb && !isTablet) ...[
               const SizedBox(height: 8),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: EdgeInsets.symmetric(horizontal: ResponsiveUtils.getResponsiveSpacing(context)),
                 child: Text(
                   'Choose what you want to share',
                   style: TextStyle(
-                    fontSize: 14,
+                    fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14.0),
                     color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
                   ),
                 ),
               ),
             ],
-            SizedBox(height: isWeb ? 20 : 30),
+            SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context) * 1.5),
             
             // Enhanced media options grid with platform-specific layouts
             Padding(
-              padding: EdgeInsets.symmetric(horizontal: isWeb ? 20 : 24),
+              padding: EdgeInsets.symmetric(horizontal: ResponsiveUtils.getResponsiveSpacing(context)),
               child: isWeb 
-                  ? _buildWebMediaGrid(context, isMobile)
-                  : _buildMobileMediaGrid(context, isMobile),
+                  ? _buildWebMediaGrid(context, ResponsiveUtils.isMobile(context))
+                  : _buildMobileMediaGrid(context, ResponsiveUtils.isMobile(context)),
             ),
             
-            SizedBox(height: isWeb ? 20 : 30),
+            SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context) * 1.5),
             
             // Enhanced cancel button with platform-specific styling
             Padding(
               padding: EdgeInsets.fromLTRB(
-                isWeb ? 20 : 24, 
-                0, 
-                isWeb ? 20 : 24, 
-                isWeb ? 20 : 30,
+                ResponsiveUtils.getResponsiveSpacing(context),
+                0,
+                ResponsiveUtils.getResponsiveSpacing(context),
+                ResponsiveUtils.getResponsiveSpacing(context) * 1.5,
               ),
               child: SizedBox(
                 width: double.infinity,
                 child: OutlinedButton(
                   onPressed: () => Navigator.pop(context),
                   style: OutlinedButton.styleFrom(
-                    padding: EdgeInsets.symmetric(vertical: isWeb ? 12 : 16),
+                    padding: EdgeInsets.symmetric(vertical: ResponsiveUtils.getResponsiveValue(context, mobile: 14.0, tablet: 16.0, desktop: 18.0)),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(isWeb ? 12 : 16),
+                      borderRadius: BorderRadius.circular(ResponsiveUtils.getResponsiveValue(context, mobile: 16.0, tablet: 18.0, desktop: 20.0)),
                     ),
                     side: BorderSide(
                       color: _themeService.isDarkMode ? Colors.grey[600]! : Colors.grey[300]!,
-                      width: isWeb ? 1.5 : 1,
+                      width: ResponsiveUtils.getResponsiveValue(context, mobile: 1.0, tablet: 1.5, desktop: 2.0),
                     ),
                   ),
                   child: Text(
                     'Cancel',
                     style: TextStyle(
-                      fontSize: isWeb ? 14 : 16,
+                      fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 16.0),
                       fontWeight: FontWeight.w600,
                       color: _themeService.isDarkMode ? Colors.grey[300] : Colors.grey[700],
                     ),
