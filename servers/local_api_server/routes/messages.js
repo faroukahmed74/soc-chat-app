@@ -36,6 +36,7 @@ router.post('/', authenticateToken, async (req, res) => {
   try {
     const { chatId, content } = req.body;
     const type = (req.body.type || req.body.messageType || 'text');
+    const mediaUrl = req.body.mediaUrl || req.body.media_url || null;
     
     // Validate input
     if (!chatId || !content) {
@@ -72,6 +73,11 @@ router.post('/', authenticateToken, async (req, res) => {
       edited: false
     };
     
+    // Add mediaUrl if provided
+    if (mediaUrl) {
+      newMessage.mediaUrl = mediaUrl;
+    }
+    
     const result = await messagesCollection.insertOne(newMessage);
     
     // Update chat's last message
@@ -101,6 +107,7 @@ router.post('/', authenticateToken, async (req, res) => {
         senderId: createdMessage.senderId.toString(),
         content: createdMessage.content,
         type: createdMessage.type,
+        mediaUrl: createdMessage.mediaUrl || null,
         createdAt: createdMessage.createdAt,
         updatedAt: createdMessage.updatedAt,
         edited: createdMessage.edited
@@ -169,6 +176,7 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
       senderId: msg.senderId.toString(),
       content: msg.content,
       type: msg.type,
+      mediaUrl: msg.mediaUrl || null,
       createdAt: msg.createdAt,
       updatedAt: msg.updatedAt,
       edited: msg.edited
@@ -295,6 +303,7 @@ router.put('/:messageId', authenticateToken, async (req, res) => {
         senderId: updatedMessage.senderId.toString(),
         content: updatedMessage.content,
         type: updatedMessage.type,
+        mediaUrl: updatedMessage.mediaUrl || null,
         createdAt: updatedMessage.createdAt,
         updatedAt: updatedMessage.updatedAt,
         edited: updatedMessage.edited
