@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 
-import '../screens/login_screen.dart';
 import '../screens/modern_login_screen.dart';
 import '../screens/modern_register_screen.dart';
-import '../screens/register_screen_mongodb.dart';
 import '../screens/enhanced_admin_panel.dart';
 import '../screens/chat_list_screen_mongodb.dart';
 import '../screens/user_search_screen.dart';
@@ -19,17 +17,10 @@ import '../screens/update_test_screen.dart';
 import '../screens/app_health_check_screen.dart';
 import '../screens/startup_diagnostics_screen.dart';
 import '../screens/fcm_sound_test_screen.dart';
-import '../screens/profile_view.dart';
+import '../screens/profile_screen.dart';
 import '../screens/notification_test_screen.dart';
 
 import '../services/theme_service.dart';
-import '../services/physical_auth_service.dart';
-
-Future<String?> _getCurrentUserId() async {
-  final authService = PhysicalAuthService();
-  final user = await authService.getCurrentUser();
-  return user?['id'];
-}
 
 Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
   '/login': (_) => const ModernLoginScreen(),
@@ -46,22 +37,9 @@ Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
   '/startup-diagnostics': (_) => const StartupDiagnosticsScreen(),
   '/fcm_sound_test': (_) => const FCMSoundTestScreen(),
   '/help': (_) => const HelpSupportScreen(),
+  '/settings': (_) => const SettingsScreen(),
   '/comprehensive-test': (_) => const ComprehensiveFunctionalityTestScreen(),
   '/update-test': (_) => const UpdateTestScreen(),
   '/notification-test': (_) => const NotificationTestScreen(),
-  '/profile': (_) => FutureBuilder<String?>(
-    future: _getCurrentUserId(),
-    builder: (context, snapshot) {
-      if (snapshot.hasData && snapshot.data != null) {
-        return ProfileView(userId: snapshot.data!);
-      }
-      return const Scaffold(
-        body: Center(child: CircularProgressIndicator()),
-      );
-    },
-  ),
-  '/settings': (_) => SettingsScreen(
-    onThemeChanged: (bool dark) =>
-        themeService.setTheme(dark ? ThemeMode.dark : ThemeMode.light),
-  ),
+  '/profile': (_) => const ProfileScreen(),
 };

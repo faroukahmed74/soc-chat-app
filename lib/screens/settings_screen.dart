@@ -38,6 +38,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/theme_service.dart';
+import '../theme/app_design_system.dart';
 
 // Firebase-dependent services removed - using MongoDB/ngrok API only
 
@@ -304,9 +305,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
     
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Settings'),
-        backgroundColor: Theme.of(context).colorScheme.inversePrimary,
-        elevation: 2,
+        title: Text(
+          'Settings',
+          style: AppDesignSystem.headlineSmall.copyWith(
+            color: Theme.of(context).colorScheme.onPrimary,
+          ),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        elevation: 0,
+        centerTitle: false,
       ),
       body: SingleChildScrollView(
         padding: EdgeInsets.all(isSmallScreen ? 16.0 : 24.0),
@@ -398,57 +406,99 @@ class _SettingsScreenState extends State<SettingsScreen> {
               
               const SizedBox(height: 16),
 
-              // Server Configuration
-              _buildSettingsCard(
-                title: 'Server Configuration',
-                icon: Icons.cloud,
-                iconColor: Colors.blueGrey,
-                children: [
-                  ListTile(
-                    leading: const Icon(Icons.settings_ethernet),
-                    title: const Text('Mode'),
-                    subtitle: const Text('MongoDB/ngrok API'),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.link),
-                    title: const Text('Server URL (override)'),
-                    subtitle: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        TextField(
-                          controller: _serverUrlController,
-                          decoration: const InputDecoration(
-                            hintText: 'e.g. http://localhost:3003 or https://your-ngrok-url',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Row(
-                          children: [
-                            ElevatedButton.icon(
-                              onPressed: _testingServerUrl ? null : _saveServerUrlOverride,
-                              icon: const Icon(Icons.save),
-                              label: Text(_testingServerUrl ? 'Saving...' : 'Save & Test'),
-                            ),
-                            const SizedBox(width: 12),
-                            OutlinedButton.icon(
-                              onPressed: _testingServerUrl ? null : _clearServerUrlOverride,
-                              icon: const Icon(Icons.clear),
-                              label: const Text('Clear Override'),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          'Current base: ${DatabaseConfig.physicalServerUrl}',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey),
-                        ),
-                      ],
+              // Server Configuration (Admin Only)
+              if (_isAdmin)
+                _buildSettingsCard(
+                  title: 'Server Configuration',
+                  icon: Icons.cloud,
+                  iconColor: Colors.blueGrey,
+                  children: [
+                    ListTile(
+                      leading: const Icon(Icons.settings_ethernet),
+                      title: const Text('Mode'),
+                      subtitle: const Text('MongoDB/ngrok API'),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
+                    ListTile(
+                      leading: const Icon(Icons.link),
+                      title: const Text('Server URL (override)'),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          TextField(
+                            controller: _serverUrlController,
+                            decoration: InputDecoration(
+                              hintText: 'e.g. http://localhost:3003 or https://your-ngrok-url',
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                              ),
+                              filled: true,
+                              fillColor: Theme.of(context).colorScheme.surfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 12,
+                            runSpacing: 8,
+                            children: [
+                              ElevatedButton.icon(
+                                onPressed: _testingServerUrl ? null : _saveServerUrlOverride,
+                                icon: const Icon(Icons.save, size: 18),
+                                label: Text(_testingServerUrl ? 'Saving...' : 'Save & Test'),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppDesignSystem.successColor,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                                  ),
+                                ),
+                              ),
+                              OutlinedButton.icon(
+                                onPressed: _testingServerUrl ? null : _clearServerUrlOverride,
+                                icon: const Icon(Icons.clear, size: 18),
+                                label: const Text('Clear Override'),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 8),
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                              borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                            ),
+                            child: Row(
+                              children: [
+                                Icon(
+                                  Icons.info_outline,
+                                  size: 16,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    'Current base: ${DatabaseConfig.physicalServerUrl}',
+                                    style: AppDesignSystem.bodySmall.copyWith(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              if (_isAdmin)
+                const SizedBox(height: 16),
               
               // Language Settings
               _buildSettingsCard(
@@ -737,6 +787,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     return Card(
       elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
+      ),
       child: Padding(
         padding: const EdgeInsets.all(16.0),
         child: Column(
@@ -749,9 +802,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 Expanded(
                   child: Text(
                     title,
-                    style: const TextStyle(
+                    style: AppDesignSystem.titleLarge.copyWith(
                       fontWeight: FontWeight.bold,
-                      fontSize: 18,
                     ),
                   ),
                 ),

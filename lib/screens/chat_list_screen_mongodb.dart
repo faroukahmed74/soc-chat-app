@@ -18,6 +18,7 @@ import '../services/version_check_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/version_config.dart';
+import '../theme/app_design_system.dart';
 
 class ChatListScreenMongoDB extends StatefulWidget {
   const ChatListScreenMongoDB({Key? key}) : super(key: key);
@@ -238,86 +239,98 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     }
     final unreadCount = chat['unreadCount'] ?? 0;
 
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: _themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500],
-        child: Text(
-          name.isNotEmpty ? name[0].toUpperCase() : 'C',
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
+    return Card(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      elevation: 2,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
+      ),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(16),
+        leading: CircleAvatar(
+          radius: 24,
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          child: Text(
+            name.isNotEmpty ? name[0].toUpperCase() : 'C',
+            style: AppDesignSystem.titleMedium.copyWith(
+              color: Theme.of(context).colorScheme.onPrimary,
+              fontWeight: FontWeight.bold,
+            ),
           ),
         ),
-      ),
-      title: Row(
-        children: [
-          Expanded(
-            child: Text(
-              name,
-              style: const TextStyle(fontWeight: FontWeight.w500),
-              overflow: TextOverflow.ellipsis,
-            ),
-          ),
-          if (isGroup)
-            Icon(
-              Icons.group,
-              size: 16,
-              color: _themeService.isDarkMode ? Colors.white54 : Colors.black54,
-            ),
-        ],
-      ),
-      subtitle: Text(
-        lastMessage,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          color: _themeService.isDarkMode ? Colors.white70 : Colors.black87,
-        ),
-      ),
-      trailing: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          Text(
-            _formatTimestamp(lastMessageTime),
-            style: TextStyle(
-              fontSize: 12,
-              color: _themeService.isDarkMode ? Colors.white54 : Colors.black54,
-            ),
-          ),
-          if (unreadCount > 0)
-            Container(
-              margin: const EdgeInsets.only(top: 4),
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: Colors.red,
-                borderRadius: BorderRadius.circular(10),
-              ),
+        title: Row(
+          children: [
+            Expanded(
               child: Text(
-                unreadCount.toString(),
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+                name,
+                style: AppDesignSystem.titleMedium.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            if (isGroup)
+              Icon(
+                Icons.group,
+                size: 16,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+          ],
+        ),
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+            lastMessage,
+            overflow: TextOverflow.ellipsis,
+            style: AppDesignSystem.bodyMedium.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            Text(
+              _formatTimestamp(lastMessageTime),
+              style: AppDesignSystem.bodySmall.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+            if (unreadCount > 0)
+              Container(
+                margin: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: AppDesignSystem.errorColor,
+                  borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                ),
+                child: Text(
+                  unreadCount.toString(),
+                  style: AppDesignSystem.labelSmall.copyWith(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
+          ],
+        ),
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ChatScreenMongoDB(
+                chatId: chatId,
+                chatName: name,
+                isGroupChat: isGroup,
+                userIds: chat['members'] != null 
+                    ? List<String>.from(chat['members'])
+                    : null,
+              ),
             ),
-        ],
+          );
+        },
       ),
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => ChatScreenMongoDB(
-              chatId: chatId,
-              chatName: name,
-              isGroupChat: isGroup,
-              userIds: chat['members'] != null 
-                  ? List<String>.from(chat['members'])
-                  : null,
-            ),
-          ),
-        );
-      },
     );
   }
 
@@ -336,9 +349,16 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Chats'),
-        backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
-        foregroundColor: Colors.white,
+        title: Text(
+          'Chats',
+          style: AppDesignSystem.headlineSmall.copyWith(
+            color: Theme.of(context).colorScheme.onPrimary,
+          ),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        elevation: 0,
+        centerTitle: false,
         actions: [
           if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
             IconButton(
@@ -368,33 +388,33 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
               }
             },
             itemBuilder: (context) => [
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'search',
                 child: Row(
                   children: [
-                    Icon(Icons.person_add, color: Colors.blue),
-                    SizedBox(width: 8),
-                    Text('Search Users'),
+                    Icon(Icons.person_add, color: Theme.of(context).colorScheme.primary),
+                    const SizedBox(width: 8),
+                    const Text('Search Users'),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'create_group',
                 child: Row(
                   children: [
-                    Icon(Icons.group_add, color: Colors.green),
-                    SizedBox(width: 8),
-                    Text('Create Group'),
+                    Icon(Icons.group_add, color: AppDesignSystem.successColor),
+                    const SizedBox(width: 8),
+                    const Text('Create Group'),
                   ],
                 ),
               ),
-              const PopupMenuItem(
+              PopupMenuItem(
                 value: 'logout',
                 child: Row(
                   children: [
-                    Icon(Icons.logout, color: Colors.red),
-                    SizedBox(width: 8),
-                    Text('Logout'),
+                    Icon(Icons.logout, color: AppDesignSystem.errorColor),
+                    const SizedBox(width: 8),
+                    const Text('Logout'),
                   ],
                 ),
               ),
@@ -408,31 +428,36 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
           children: [
             DrawerHeader(
               decoration: BoxDecoration(
-                color: _themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500],
+                gradient: LinearGradient(
+                  colors: [
+                    Theme.of(context).colorScheme.primary,
+                    Theme.of(context).colorScheme.primary.withOpacity(0.8),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   CircleAvatar(
                     radius: 30,
-                    backgroundColor: Colors.white,
+                    backgroundColor: Theme.of(context).colorScheme.onPrimary,
                     child: Text(
                       _currentUserName?.isNotEmpty == true 
                           ? _currentUserName![0].toUpperCase() 
                           : 'U',
-                      style: TextStyle(
-                        fontSize: 24,
+                      style: AppDesignSystem.headlineMedium.copyWith(
+                        color: Theme.of(context).colorScheme.primary,
                         fontWeight: FontWeight.bold,
-                        color: _themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500],
                       ),
                     ),
                   ),
                   const SizedBox(height: 8),
                   Text(
                     _currentUserName ?? 'User',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
+                    style: AppDesignSystem.titleLarge.copyWith(
+                      color: Theme.of(context).colorScheme.onPrimary,
                       fontWeight: FontWeight.bold,
                     ),
                   ),
@@ -440,7 +465,10 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
               ),
             ),
             ListTile(
-              leading: const Icon(Icons.person_add),
+              leading: Icon(
+                Icons.person_add,
+                color: Theme.of(context).colorScheme.primary,
+              ),
               title: const Text('Search Users'),
               onTap: () {
                 Navigator.pop(context);
@@ -448,7 +476,10 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.group_add),
+              leading: Icon(
+                Icons.group_add,
+                color: AppDesignSystem.successColor,
+              ),
               title: const Text('Create Group'),
               onTap: () {
                 Navigator.pop(context);
@@ -457,15 +488,43 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
             ),
             if (_userRole == 'admin')
               ListTile(
-                leading: const Icon(Icons.admin_panel_settings),
+                leading: Icon(
+                  Icons.admin_panel_settings,
+                  color: AppDesignSystem.warningColor,
+                ),
                 title: const Text('Admin Panel'),
                 onTap: () {
                   Navigator.pop(context);
                   Navigator.pushNamed(context, '/admin');
                 },
               ),
+        ListTile(
+          leading: Icon(
+            Icons.person,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          title: const Text('Profile'),
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.pushNamed(context, '/profile');
+          },
+        ),
+        ListTile(
+          leading: Icon(
+            Icons.settings,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          title: const Text('Settings'),
+          onTap: () {
+            Navigator.pop(context);
+            Navigator.pushNamed(context, '/settings');
+          },
+        ),
             ListTile(
-              leading: const Icon(Icons.logout),
+              leading: Icon(
+                Icons.logout,
+                color: AppDesignSystem.errorColor,
+              ),
               title: const Text('Logout'),
               onTap: () {
                 Navigator.pop(context);
@@ -485,10 +544,8 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                     builder: (context, snapshot) {
                       return Text(
                         'Version ${snapshot.data ?? '1.0.3'}',
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: _themeService.isDarkMode ? Colors.grey[500] : Colors.grey[600],
-                          fontWeight: FontWeight.w300,
+                        style: AppDesignSystem.bodySmall.copyWith(
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         textAlign: TextAlign.center,
                       );
@@ -497,10 +554,8 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                   const SizedBox(height: 4),
                   Text(
                     'Developed by نقيب // احمد فاروق',
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: _themeService.isDarkMode ? Colors.grey[600] : Colors.grey[700],
-                      fontWeight: FontWeight.w300,
+                    style: AppDesignSystem.labelSmall.copyWith(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                     textAlign: TextAlign.center,
                   ),
@@ -520,7 +575,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                 hintText: 'Search chats...',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
                 ),
               ),
             ),
@@ -536,16 +591,17 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                             Icon(
                               Icons.chat_bubble_outline,
                               size: 64,
-                              color: _themeService.isDarkMode ? Colors.white54 : Colors.black54,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                             const SizedBox(height: 16),
                             Text(
                               _searchQuery.isNotEmpty 
                                   ? 'No chats found matching "$_searchQuery"'
                                   : 'No chats yet. Start a conversation!',
-                              style: TextStyle(
-                                color: _themeService.isDarkMode ? Colors.white54 : Colors.black54,
+                              style: AppDesignSystem.bodyLarge.copyWith(
+                                color: Theme.of(context).colorScheme.onSurfaceVariant,
                               ),
+                              textAlign: TextAlign.center,
                             ),
                             const SizedBox(height: 16),
                             ElevatedButton.icon(
@@ -571,8 +627,8 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
         onPressed: () {
           Navigator.pushNamed(context, '/search');
         },
-        backgroundColor: _themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500],
-        foregroundColor: Colors.white,
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
         child: const Icon(Icons.person_add),
         tooltip: 'Search Users',
       ),

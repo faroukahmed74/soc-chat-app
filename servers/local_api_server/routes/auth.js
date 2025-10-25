@@ -207,4 +207,99 @@ router.get('/verify', async (req, res) => {
   }
 });
 
+// Get user profile
+router.get('/profile', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const database = await connectDB();
+    const usersCollection = database.collection('users');
+    
+    const user = await usersCollection.findOne({ _id: new ObjectId(decoded.userId) });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Return user data without password
+    const { password, ...userData } = user;
+    res.json(userData);
+  } catch (error) {
+    console.error('Profile fetch error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update user profile
+router.put('/profile', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const database = await connectDB();
+    const usersCollection = database.collection('users');
+    
+    const { displayName, email, phone, bio, password } = req.body;
+    
+    // Validate required fields
+    if (!displayName || !email) {
+      return res.status(400).json({ message: 'Display name and email are required' });
+    }
+
+    // Check if email is already taken by another user
+    const existingUser = await usersCollection.findOne({ 
+      email: email,
+      _id: { $ne: new ObjectId(decoded.userId) }
+    });
+    
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email is already taken' });
+    }
+
+    const updateData = {
+      displayName: displayName.trim(),
+      email: email.trim(),
+      phone: phone?.trim() || '',
+      bio: bio?.trim() || '',
+      updatedAt: new Date()
+    };
+
+    // Hash password if provided
+    if (password && password.trim() !== '') {
+      const saltRounds = 10;
+      updateData.password = await bcrypt.hash(password, saltRounds);
+    }
+
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(decoded.userId) },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Return updated user data
+    const updatedUser = await usersCollection.findOne({ _id: new ObjectId(decoded.userId) });
+    const { password: _, ...userData } = updatedUser;
+    
+    res.json({
+      message: 'Profile updated successfully',
+      user: userData
+    });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 module.exports = router;

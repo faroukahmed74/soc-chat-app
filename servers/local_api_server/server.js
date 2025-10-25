@@ -528,6 +528,31 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 
+// Temporary profile endpoint for testing
+app.get('/api/auth/profile', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const user = await db.collection('users').findOne({ _id: new ObjectId(decoded.userId) });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Return user data without password
+    const { password, ...userData } = user;
+    res.json(userData);
+  } catch (error) {
+    console.error('Profile fetch error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
 // Legacy User Authentication - keeping for backward compatibility
 app.post('/api/auth/register', async (req, res) => {
   try {

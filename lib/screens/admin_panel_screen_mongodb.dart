@@ -12,6 +12,7 @@ import '../services/theme_service.dart';
 import '../services/mongodb_admin_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
+import '../theme/app_design_system.dart';
 import '../config/database_config.dart';
 
 class AdminPanelScreenMongoDB extends StatefulWidget {
@@ -96,25 +97,46 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   Widget _buildAccessDenied() {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Admin Panel'),
-        backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
-        foregroundColor: Colors.white,
+        title: Text(
+          'Admin Panel',
+          style: AppDesignSystem.headlineSmall.copyWith(
+            color: Theme.of(context).colorScheme.onPrimary,
+          ),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        elevation: 0,
+        centerTitle: false,
       ),
       body: Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.lock_outline, size: 64, color: Colors.redAccent),
+            Icon(
+              Icons.lock_outline,
+              size: 64,
+              color: AppDesignSystem.errorColor,
+            ),
             const SizedBox(height: 16),
-            const Text(
+            Text(
               'Access denied. Admins only.',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+              style: AppDesignSystem.headlineMedium.copyWith(
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
             ),
             const SizedBox(height: 24),
             ElevatedButton.icon(
               onPressed: () => Navigator.of(context).maybePop(),
               icon: const Icon(Icons.arrow_back),
               label: const Text('Back'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                ),
+              ),
             ),
           ],
         ),
@@ -806,22 +828,58 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
 
                         return Card(
                           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          elevation: 2,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
+                          ),
                           child: ListTile(
+                            contentPadding: const EdgeInsets.all(16),
                             leading: CircleAvatar(
-                              backgroundColor: disabled ? Colors.red : Colors.blue,
+                              backgroundColor: disabled 
+                                  ? AppDesignSystem.errorColor 
+                                  : Theme.of(context).colorScheme.primary,
                               child: Text(
                                 name.isNotEmpty ? name[0].toUpperCase() : 'U',
-                                style: const TextStyle(color: Colors.white),
+                                style: AppDesignSystem.bodySmall.copyWith(
+                                  color: Colors.white,
+                                  fontWeight: FontWeight.bold,
+                                ),
                               ),
                             ),
-                            title: Text(name),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(email),
-                                Text('Role: $role'),
-                                if (disabled) const Text('Status: Disabled', style: TextStyle(color: Colors.red)),
-                              ],
+                            title: Text(
+                              name,
+                              style: AppDesignSystem.titleMedium.copyWith(
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 4),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    email,
+                                    style: AppDesignSystem.bodyMedium.copyWith(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    'Role: $role',
+                                    style: AppDesignSystem.bodySmall.copyWith(
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                  if (disabled) 
+                                    Text(
+                                      'Status: Disabled',
+                                      style: AppDesignSystem.bodySmall.copyWith(
+                                        color: AppDesignSystem.errorColor,
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                ],
+                              ),
                             ),
                             trailing: PopupMenuButton<String>(
                               onSelected: (value) async {
@@ -842,24 +900,24 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                               },
                               itemBuilder: (context) => [
                                 if (role != 'admin')
-                                  const PopupMenuItem(
+                                  PopupMenuItem(
                                     value: 'make_admin',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.upgrade, color: Colors.green),
-                                        SizedBox(width: 8),
-                                        Text('Make Admin'),
+                                        Icon(Icons.upgrade, color: AppDesignSystem.successColor),
+                                        const SizedBox(width: 8),
+                                        const Text('Make Admin'),
                                       ],
                                     ),
                                   ),
                                 if (role != 'user')
-                                  const PopupMenuItem(
+                                  PopupMenuItem(
                                     value: 'make_user',
                                     child: Row(
                                       children: [
-                                        Icon(Icons.person, color: Colors.blue),
-                                        SizedBox(width: 8),
-                                        Text('Make User'),
+                                        Icon(Icons.person, color: Theme.of(context).colorScheme.primary),
+                                        const SizedBox(width: 8),
+                                        const Text('Make User'),
                                       ],
                                     ),
                                   ),
@@ -867,19 +925,22 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                   value: 'toggle_status',
                                   child: Row(
                                     children: [
-                                      Icon(disabled ? Icons.play_circle : Icons.pause_circle, color: Colors.orange),
+                                      Icon(
+                                        disabled ? Icons.play_circle : Icons.pause_circle, 
+                                        color: AppDesignSystem.warningColor,
+                                      ),
                                       const SizedBox(width: 8),
                                       Text(disabled ? 'Enable User' : 'Disable User'),
                                     ],
                                   ),
                                 ),
-                                const PopupMenuItem(
+                                PopupMenuItem(
                                   value: 'delete',
                                   child: Row(
                                     children: [
-                                      Icon(Icons.delete, color: Colors.red),
-                                      SizedBox(width: 8),
-                                      Text('Delete User'),
+                                      Icon(Icons.delete, color: AppDesignSystem.errorColor),
+                                      const SizedBox(width: 8),
+                                      const Text('Delete User'),
                                     ],
                                   ),
                                 ),
@@ -909,14 +970,20 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'System Statistics',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: AppDesignSystem.headlineSmall.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _buildStatRow('Total Users', _systemStats!['totalUsers']?.toString() ?? '0'),
@@ -931,18 +998,29 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           const SizedBox(height: 16),
           Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'System Health',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: AppDesignSystem.headlineSmall.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   if (_systemHealth == null)
-                    const Text('Health info not available')
+                    Text(
+                      'Health info not available',
+                      style: AppDesignSystem.bodyMedium.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    )
                   else ...[
                     _buildStatRow('Status', _systemHealth!['status']?.toString() ?? 'unknown'),
                     ..._systemHealth!.entries
@@ -956,14 +1034,20 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           const SizedBox(height: 16),
           Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Connectivity',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: AppDesignSystem.headlineSmall.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   _buildStatRow('Web Base URL', DatabaseConfig.physicalServerUrl),
@@ -977,14 +1061,20 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           const SizedBox(height: 16),
           Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
+            ),
             child: Padding(
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
+                  Text(
                     'Quick Actions',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                    style: AppDesignSystem.headlineSmall.copyWith(
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                   const SizedBox(height: 16),
                   Wrap(
@@ -994,37 +1084,37 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                       _buildActionButton(
                         'Refresh Data',
                         Icons.refresh,
-                        Colors.blue,
+                        Theme.of(context).colorScheme.primary,
                         () => _loadInitialData(),
                       ),
                       _buildActionButton(
                         'Export Data',
                         Icons.download,
-                        Colors.green,
+                        AppDesignSystem.successColor,
                         () => _exportData(),
                       ),
                       _buildActionButton(
                         'System Health',
                         Icons.health_and_safety,
-                        Colors.orange,
+                        AppDesignSystem.warningColor,
                         () => _loadSystemHealth(),
                       ),
                       _buildActionButton(
                         'View Logs',
                         Icons.list_alt,
-                        Colors.purple,
+                        AppDesignSystem.infoColor,
                         () => _viewLogs(),
                       ),
                       _buildActionButton(
                         'Backup Database',
                         Icons.backup,
-                        Colors.teal,
+                        AppDesignSystem.successColor,
                         () => _backupDatabase(),
                       ),
                       _buildActionButton(
                         'Cleanup System',
                         Icons.cleaning_services,
-                        Colors.red,
+                        AppDesignSystem.errorColor,
                         () => _cleanupSystem(),
                       ),
                     ],
@@ -1034,6 +1124,14 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                     onPressed: _sendBroadcastMessage,
                     icon: const Icon(Icons.broadcast_on_personal),
                     label: const Text('Send Broadcast Message'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
+                      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                      ),
+                    ),
                   ),
                 ],
               ),
@@ -1050,10 +1148,18 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          Text(label),
+          Text(
+            label,
+            style: AppDesignSystem.bodyMedium.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
           Text(
             value,
-            style: const TextStyle(fontWeight: FontWeight.bold),
+            style: AppDesignSystem.bodyMedium.copyWith(
+              fontWeight: FontWeight.bold,
+              color: Theme.of(context).colorScheme.onSurface,
+            ),
           ),
         ],
       ),
@@ -1070,7 +1176,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
         foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
         ),
       ),
     );
@@ -1090,11 +1196,21 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Admin Panel'),
-        backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
-        foregroundColor: Colors.white,
+        title: Text(
+          'Admin Panel',
+          style: AppDesignSystem.headlineSmall.copyWith(
+            color: Theme.of(context).colorScheme.onPrimary,
+          ),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        elevation: 0,
+        centerTitle: false,
         bottom: TabBar(
           controller: _tabController,
+          indicatorColor: Theme.of(context).colorScheme.onPrimary,
+          labelColor: Theme.of(context).colorScheme.onPrimary,
+          unselectedLabelColor: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
           tabs: const [
             Tab(icon: Icon(Icons.people), text: 'Users'),
             Tab(icon: Icon(Icons.chat), text: 'Chats'),

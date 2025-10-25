@@ -18,6 +18,7 @@ import '../widgets/enhanced_chat_input.dart';
 import '../widgets/full_screen_media_preview.dart';
 import '../services/realtime_service.dart';
 import '../services/active_chat_service.dart';
+import '../theme/app_design_system.dart';
 
 class ChatScreenMongoDB extends StatefulWidget {
   final String chatId;
@@ -395,10 +396,13 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           if (!isCurrentUser) ...[
             CircleAvatar(
               radius: 16,
-              backgroundColor: _themeService.isDarkMode ? Colors.grey[700] : Colors.grey[300],
+              backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
               child: Text(
                 senderName.isNotEmpty ? senderName[0].toUpperCase() : 'U',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                style: AppDesignSystem.bodySmall.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -408,9 +412,9 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
               decoration: BoxDecoration(
                 color: isCurrentUser
-                    ? (_themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500])
-                    : (_themeService.isDarkMode ? Colors.grey[800] : Colors.grey[200]),
-                borderRadius: BorderRadius.circular(18),
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -420,22 +424,21 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                       padding: const EdgeInsets.only(bottom: 4),
                       child: Text(
                         senderName,
-                        style: TextStyle(
-                          fontSize: 12,
+                        style: AppDesignSystem.bodySmall.copyWith(
                           fontWeight: FontWeight.bold,
                           color: isCurrentUser
-                              ? Colors.white70
-                              : (_themeService.isDarkMode ? Colors.white70 : Colors.black54),
+                              ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                     ),
                   if (messageType == 'text')
                     Text(
                       content,
-                      style: TextStyle(
+                      style: AppDesignSystem.bodyMedium.copyWith(
                         color: isCurrentUser
-                            ? Colors.white
-                            : (_themeService.isDarkMode ? Colors.white : Colors.black87),
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurface,
                       ),
                     )
                   else if (messageType == 'image')
@@ -454,10 +457,10 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               content,
-                              style: TextStyle(
+                              style: AppDesignSystem.bodyMedium.copyWith(
                                 color: isCurrentUser
-                                    ? Colors.white
-                                    : (_themeService.isDarkMode ? Colors.white : Colors.black87),
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                           ),
@@ -473,8 +476,8 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             width: 200,
                             height: 150,
                             decoration: BoxDecoration(
-                              color: Colors.black,
-                              borderRadius: BorderRadius.circular(8),
+                              color: Theme.of(context).colorScheme.surfaceVariant,
+                              borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
                             ),
                             child: Stack(
                               children: [
@@ -483,20 +486,20 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                                   width: 200,
                                   height: 150,
                                   decoration: BoxDecoration(
-                                    color: Colors.grey[800],
-                                    borderRadius: BorderRadius.circular(8),
+                                    color: Theme.of(context).colorScheme.surfaceVariant,
+                                    borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
                                   ),
-                                  child: const Icon(
+                                  child: Icon(
                                     Icons.videocam,
-                                    color: Colors.white54,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     size: 40,
                                   ),
                                 ),
                                 // Play button overlay
-                                const Center(
+                                Center(
                                   child: Icon(
                                     Icons.play_circle_filled,
-                                    color: Colors.white,
+                                    color: Theme.of(context).colorScheme.primary,
                                     size: 50,
                                   ),
                                 ),
@@ -509,10 +512,10 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               content,
-                              style: TextStyle(
+                              style: AppDesignSystem.bodyMedium.copyWith(
                                 color: isCurrentUser
-                                    ? Colors.white
-                                    : (_themeService.isDarkMode ? Colors.white : Colors.black87),
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                           ),
@@ -529,16 +532,18 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             height: 80,
                             decoration: BoxDecoration(
                               color: isCurrentUser
-                                  ? Colors.blue[600]
-                                  : (_themeService.isDarkMode ? Colors.grey[700] : Colors.grey[300]),
-                              borderRadius: BorderRadius.circular(8),
+                                  ? Theme.of(context).colorScheme.primary
+                                  : Theme.of(context).colorScheme.surfaceVariant,
+                              borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
                             ),
                             child: Row(
                               children: [
                                 const SizedBox(width: 12),
                                 Icon(
                                   messageType == 'voice' ? Icons.mic : Icons.music_note,
-                                  color: isCurrentUser ? Colors.white : Colors.grey[600],
+                                  color: isCurrentUser 
+                                      ? Theme.of(context).colorScheme.onPrimary 
+                                      : Theme.of(context).colorScheme.onSurfaceVariant,
                                   size: 24,
                                 ),
                                 const SizedBox(width: 12),
@@ -549,17 +554,20 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                                     children: [
                                       Text(
                                         messageType == 'voice' ? 'Voice Message' : 'Audio Message',
-                                        style: TextStyle(
-                                          color: isCurrentUser ? Colors.white : Colors.black87,
+                                        style: AppDesignSystem.bodyMedium.copyWith(
+                                          color: isCurrentUser 
+                                              ? Theme.of(context).colorScheme.onPrimary 
+                                              : Theme.of(context).colorScheme.onSurface,
                                           fontWeight: FontWeight.w500,
                                         ),
                                       ),
                                       const SizedBox(height: 4),
                                       Text(
                                         'Tap to play',
-                                        style: TextStyle(
-                                          color: isCurrentUser ? Colors.white70 : Colors.grey[600],
-                                          fontSize: 12,
+                                        style: AppDesignSystem.bodySmall.copyWith(
+                                          color: isCurrentUser 
+                                              ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
+                                              : Theme.of(context).colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                     ],
@@ -568,7 +576,9 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                                 const SizedBox(width: 12),
                                 Icon(
                                   Icons.play_circle_filled,
-                                  color: isCurrentUser ? Colors.white : Colors.grey[600],
+                                  color: isCurrentUser 
+                                      ? Theme.of(context).colorScheme.onPrimary 
+                                      : Theme.of(context).colorScheme.onSurfaceVariant,
                                   size: 32,
                                 ),
                                 const SizedBox(width: 12),
@@ -581,10 +591,10 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             padding: const EdgeInsets.only(top: 8),
                             child: Text(
                               content,
-                              style: TextStyle(
+                              style: AppDesignSystem.bodyMedium.copyWith(
                                 color: isCurrentUser
-                                    ? Colors.white
-                                    : (_themeService.isDarkMode ? Colors.white : Colors.black87),
+                                    ? Theme.of(context).colorScheme.onPrimary
+                                    : Theme.of(context).colorScheme.onSurface,
                               ),
                             ),
                           ),
@@ -601,16 +611,18 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             height: 80,
                             decoration: BoxDecoration(
                               color: isCurrentUser
-                                  ? Colors.orange[600]
-                                  : (_themeService.isDarkMode ? Colors.grey[700] : Colors.grey[300]),
-                              borderRadius: BorderRadius.circular(8),
+                                  ? AppDesignSystem.warningColor
+                                  : Theme.of(context).colorScheme.surfaceVariant,
+                              borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
                             ),
                             child: Row(
                               children: [
                                 const SizedBox(width: 12),
-                                const Icon(
+                                Icon(
                                   Icons.description,
-                                  color: Colors.white,
+                                  color: isCurrentUser 
+                                      ? Colors.white 
+                                      : Theme.of(context).colorScheme.onSurfaceVariant,
                                   size: 24,
                                 ),
                                 const SizedBox(width: 12),
@@ -621,28 +633,33 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                                     children: [
                                       Text(
                                         content.isNotEmpty ? content : 'Document',
-                                        style: const TextStyle(
-                                          color: Colors.white,
+                                        style: AppDesignSystem.bodyMedium.copyWith(
+                                          color: isCurrentUser 
+                                              ? Colors.white 
+                                              : Theme.of(context).colorScheme.onSurface,
                                           fontWeight: FontWeight.w500,
                                         ),
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                       ),
                                       const SizedBox(height: 4),
-                                      const Text(
+                                      Text(
                                         'Tap to open',
-                                        style: TextStyle(
-                                          color: Colors.white70,
-                                          fontSize: 12,
+                                        style: AppDesignSystem.bodySmall.copyWith(
+                                          color: isCurrentUser 
+                                              ? Colors.white70 
+                                              : Theme.of(context).colorScheme.onSurfaceVariant,
                                         ),
                                       ),
                                     ],
                                   ),
                                 ),
                                 const SizedBox(width: 12),
-                                const Icon(
+                                Icon(
                                   Icons.download,
-                                  color: Colors.white70,
+                                  color: isCurrentUser 
+                                      ? Colors.white70 
+                                      : Theme.of(context).colorScheme.onSurfaceVariant,
                                   size: 20,
                                 ),
                                 const SizedBox(width: 12),
@@ -655,20 +672,19 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                   else
                     Text(
                       'Unsupported message type: $messageType',
-                      style: TextStyle(
+                      style: AppDesignSystem.bodyMedium.copyWith(
                         color: isCurrentUser
-                            ? Colors.white
-                            : (_themeService.isDarkMode ? Colors.white : Colors.black87),
+                            ? Theme.of(context).colorScheme.onPrimary
+                            : Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
                   const SizedBox(height: 4),
                   Text(
                     _formatTimestamp(timestamp),
-                    style: TextStyle(
-                      fontSize: 10,
+                    style: AppDesignSystem.bodySmall.copyWith(
                       color: isCurrentUser
-                          ? Colors.white70
-                          : (_themeService.isDarkMode ? Colors.white54 : Colors.black54),
+                          ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
                   ),
                 ],
@@ -679,10 +695,13 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
             const SizedBox(width: 8),
             CircleAvatar(
               radius: 16,
-              backgroundColor: _themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500],
+              backgroundColor: Theme.of(context).colorScheme.primary,
               child: Text(
                 _currentUserName?.isNotEmpty == true ? _currentUserName![0].toUpperCase() : 'U',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                style: AppDesignSystem.bodySmall.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                ),
               ),
             ),
           ],
@@ -707,9 +726,16 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.chatName),
-        backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
-        foregroundColor: Colors.white,
+        title: Text(
+          widget.chatName,
+          style: AppDesignSystem.headlineSmall.copyWith(
+            color: Theme.of(context).colorScheme.onPrimary,
+          ),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
+        foregroundColor: Theme.of(context).colorScheme.onPrimary,
+        elevation: 0,
+        centerTitle: false,
         actions: [
           if (widget.isGroupChat)
             IconButton(
@@ -729,8 +755,8 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                     ? Center(
                         child: Text(
                           'No messages yet. Start the conversation!',
-                          style: TextStyle(
-                            color: _themeService.isDarkMode ? Colors.white54 : Colors.black54,
+                          style: AppDesignSystem.bodyLarge.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                       )
@@ -809,8 +835,11 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         return Container(
           width: 200,
           height: 200,
-          color: Colors.grey[300],
-          child: const Icon(Icons.broken_image),
+          color: Theme.of(context).colorScheme.surfaceVariant,
+          child: Icon(
+            Icons.broken_image,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
         );
       },
     );

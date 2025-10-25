@@ -14,8 +14,6 @@ import '../services/logger_service.dart';
 import '../services/version_check_service.dart';
 import '../utils/group_chat_naming_utility.dart';
 import 'chat_screen_web_mongodb.dart';
-import 'user_search_screen.dart';
-import 'create_group_screen.dart';
 
 class ChatListScreenWebMongoDB extends StatefulWidget {
   const ChatListScreenWebMongoDB({Key? key}) : super(key: key);
@@ -426,6 +424,22 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
               onTap: () {
                 Navigator.pop(context);
                 Navigator.pushNamed(context, '/create_group');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.person),
+              title: const Text('Profile'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/profile');
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.settings),
+              title: const Text('Settings'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.pushNamed(context, '/settings');
               },
             ),
             ListTile(
