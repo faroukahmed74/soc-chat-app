@@ -528,7 +528,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/admin', adminRoutes);
 
-// Temporary profile endpoint for testing
+// Profile endpoints
 app.get('/api/auth/profile', async (req, res) => {
   try {
     const token = req.headers.authorization?.replace('Bearer ', '');
@@ -549,6 +549,66 @@ app.get('/api/auth/profile', async (req, res) => {
     res.json(userData);
   } catch (error) {
     console.error('Profile fetch error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+app.put('/api/auth/profile', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const { displayName, email, phone, password } = req.body;
+    
+    if (!displayName || !email) {
+      return res.status(400).json({ message: 'Display name and email are required' });
+    }
+
+    // Check if email is already taken by another user
+    const existingUser = await db.collection('users').findOne({ 
+      email: email,
+      _id: { $ne: new ObjectId(decoded.userId) }
+    });
+    
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email is already taken' });
+    }
+
+    const updateData = {
+      displayName: displayName.trim(),
+      email: email.trim(),
+      phone: phone?.trim() || '',
+      updatedAt: new Date()
+    };
+
+    // If password is provided, hash it
+    if (password && password.trim() !== '') {
+      const saltRounds = 10;
+      updateData.password = await bcrypt.hash(password, saltRounds);
+    }
+
+    const result = await db.collection('users').updateOne(
+      { _id: new ObjectId(decoded.userId) },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    const updatedUser = await db.collection('users').findOne({ _id: new ObjectId(decoded.userId) });
+    const { password: _, ...userData } = updatedUser;
+    
+    res.json({
+      message: 'Profile updated successfully',
+      user: userData
+    });
+  } catch (error) {
+    console.error('Profile update error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

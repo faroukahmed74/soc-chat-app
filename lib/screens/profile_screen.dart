@@ -20,7 +20,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final _displayNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
-  final _bioController = TextEditingController();
 
   bool _isEditing = false;
   bool _isLoading = false;
@@ -43,7 +42,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _displayNameController.dispose();
     _emailController.dispose();
     _phoneController.dispose();
-    _bioController.dispose();
     super.dispose();
   }
 
@@ -85,7 +83,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _displayNameController.text = data['displayName'] ?? '';
           _emailController.text = data['email'] ?? '';
           _phoneController.text = data['phone'] ?? '';
-          _bioController.text = data['bio'] ?? '';
         });
       } else if (response.statusCode == 404) {
         // Server needs to be restarted - show helpful message
@@ -139,7 +136,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
         'displayName': _displayNameController.text.trim(),
         'email': _emailController.text.trim(),
         'phone': _phoneController.text.trim(),
-        'bio': _bioController.text.trim(),
       };
 
       if (_passwordController.text.isNotEmpty) {
@@ -410,23 +406,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
                   if (!RegExp(r'^\+?[\d\s\-\(\)]+$').hasMatch(value)) {
                     return 'Please enter a valid phone number';
                   }
-                }
-                return null;
-              },
-            ),
-
-            SizedBox(height: AppDesignSystem.spacingLG),
-
-            // Bio Field
-            _buildFormField(
-              label: 'Bio',
-              controller: _bioController,
-              icon: Icons.info_outline,
-              enabled: _isEditing,
-              maxLines: 3,
-              validator: (value) {
-                if (value != null && value.length > 500) {
-                  return 'Bio must be less than 500 characters';
                 }
                 return null;
               },
@@ -722,12 +701,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           SizedBox(height: AppDesignSystem.spacingMD),
           
+          _buildInfoRow('Display Name', _userData?['displayName'] ?? 'Loading...'),
+          _buildInfoRow('Email', _userData?['email'] ?? 'Loading...'),
           _buildInfoRow('User ID', _userData?['_id'] ?? 'Loading...'),
-          _buildInfoRow('Role', _userData?['role'] ?? 'Loading...'),
+          _buildInfoRow('Status', _userData?['isActive'] == true ? 'Active' : 'Inactive'),
           _buildInfoRow('Created', _formatDate(_userData?['createdAt'])),
+          _buildInfoRow('Role', _userData?['role'] ?? 'Loading...'),
           _buildInfoRow('Last Updated', _formatDate(_userData?['updatedAt'])),
           _buildInfoRow('Last Login', _formatDate(_userData?['lastLogin'])),
-          _buildInfoRow('Status', _userData?['isActive'] == true ? 'Active' : 'Inactive'),
         ],
       ),
     );
