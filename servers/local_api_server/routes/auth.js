@@ -220,7 +220,7 @@ router.get('/profile', async (req, res) => {
     const database = await connectDB();
     const usersCollection = database.collection('users');
     
-    const user = await usersCollection.findOne({ _id: new ObjectId(decoded.userId) });
+    const user = await usersCollection.findOne({ _id: new ObjectId(decoded.id) });
     
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -258,7 +258,7 @@ router.put('/profile', async (req, res) => {
     // Check if email is already taken by another user
     const existingUser = await usersCollection.findOne({ 
       email: email,
-      _id: { $ne: new ObjectId(decoded.userId) }
+      _id: { $ne: new ObjectId(decoded.id) }
     });
     
     if (existingUser) {
@@ -280,7 +280,7 @@ router.put('/profile', async (req, res) => {
     }
 
     const result = await usersCollection.updateOne(
-      { _id: new ObjectId(decoded.userId) },
+      { _id: new ObjectId(decoded.id) },
       { $set: updateData }
     );
 
@@ -289,7 +289,7 @@ router.put('/profile', async (req, res) => {
     }
 
     // Return updated user data
-    const updatedUser = await usersCollection.findOne({ _id: new ObjectId(decoded.userId) });
+    const updatedUser = await usersCollection.findOne({ _id: new ObjectId(decoded.id) });
     const { password: _, ...userData } = updatedUser;
     
     res.json({

@@ -277,28 +277,32 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
               ),
           ],
         ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 4),
-          child: Text(
-            lastMessage,
-            overflow: TextOverflow.ellipsis,
-            style: AppDesignSystem.bodyMedium.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              _formatTimestamp(lastMessageTime),
-              style: AppDesignSystem.bodySmall.copyWith(
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+            if (lastMessage.isNotEmpty) ...[
+              Text(
+                lastMessage,
+                overflow: TextOverflow.ellipsis,
+                style: AppDesignSystem.bodyMedium.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+                maxLines: 1,
               ),
-            ),
-            if (unreadCount > 0)
-              Container(
+              SizedBox(height: 2),
+            ],
+            if (lastMessageTime != null)
+              Text(
+                _formatTimestamp(lastMessageTime),
+                style: AppDesignSystem.bodySmall.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                  fontSize: 11,
+                ),
+              ),
+          ],
+        ),
+        trailing: unreadCount > 0
+            ? Container(
                 margin: const EdgeInsets.only(top: 4),
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                 decoration: BoxDecoration(
@@ -312,9 +316,8 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                     fontWeight: FontWeight.bold,
                   ),
                 ),
-              ),
-          ],
-        ),
+              )
+            : null,
         onTap: () {
           Navigator.push(
             context,

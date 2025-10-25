@@ -538,7 +538,7 @@ app.get('/api/auth/profile', async (req, res) => {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET);
-    const user = await db.collection('users').findOne({ _id: new ObjectId(decoded.userId) });
+    const user = await db.collection('users').findOne({ _id: new ObjectId(decoded.id) });
     
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
@@ -571,7 +571,7 @@ app.put('/api/auth/profile', async (req, res) => {
     // Check if email is already taken by another user
     const existingUser = await db.collection('users').findOne({ 
       email: email,
-      _id: { $ne: new ObjectId(decoded.userId) }
+      _id: { $ne: new ObjectId(decoded.id) }
     });
     
     if (existingUser) {
@@ -592,7 +592,7 @@ app.put('/api/auth/profile', async (req, res) => {
     }
 
     const result = await db.collection('users').updateOne(
-      { _id: new ObjectId(decoded.userId) },
+      { _id: new ObjectId(decoded.id) },
       { $set: updateData }
     );
 
@@ -600,7 +600,7 @@ app.put('/api/auth/profile', async (req, res) => {
       return res.status(404).json({ message: 'User not found' });
     }
 
-    const updatedUser = await db.collection('users').findOne({ _id: new ObjectId(decoded.userId) });
+    const updatedUser = await db.collection('users').findOne({ _id: new ObjectId(decoded.id) });
     const { password: _, ...userData } = updatedUser;
     
     res.json({
