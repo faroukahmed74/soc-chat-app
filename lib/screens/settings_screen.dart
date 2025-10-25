@@ -47,6 +47,7 @@ import '../theme/app_design_system.dart';
 import '../services/fixed_version_check_service.dart';
 import '../services/logger_service.dart';
 import '../services/media_cache_service.dart';
+import '../services/connection_status_service.dart';
 import '../widgets/media_cache_manager.dart';
 import '../widgets/update_dialog.dart';
 
@@ -72,6 +73,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   // AdminGroupService removed - Firebase dependent
   final TextEditingController _serverUrlController = TextEditingController();
   bool _testingServerUrl = false;
+  bool _useLocalNetwork = false;
+  late ConnectionStatusService _connectionService;
 
   @override
   void initState() {
@@ -80,6 +83,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     
     // Initialize services
     _themeService = ThemeService.instance;
+    _connectionService = ConnectionStatusService();
     // AdminGroupService initialization removed - Firebase dependent
     _themeService.addListener(_onThemeChanged);
     _darkModeEnabled = _themeService.isDarkMode;
@@ -88,6 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadSettings();
     _checkAdminStatus();
     _initServerUrlController();
+    _loadNetworkMode();
   }
 
   Future<void> _loadSettings() async {
@@ -117,6 +122,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _serverUrlController.text = current;
     } catch (_) {
       _serverUrlController.text = DatabaseConfig.physicalServerUrl;
+    }
+  }
+
+  Future<void> _loadNetworkMode() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      setState(() {
+        _useLocalNetwork = prefs.getBool('use_local_network') ?? false;
+      });
+    } catch (e) {
+      Log.e('Error loading network mode', 'SETTINGS_SCREEN', e);
+    }
+  }
+
+  Future<void> _toggleNetworkMode(bool value) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('use_local_network', value);
+      
+      setState(() {
+        _useLocalNetwork = value;
+      });
+
+      // Update server URL based on network mode
+      if (value) {
+        // Use local network
+        await DatabaseConfig.setServerUrlOverride('http://10.120.4.230:8082');
+      } else {
+        // Use ngrok
+        await DatabaseConfig.setServerUrlOverride('');
+      }
+
+      // Check connection
+      await _connectionService.checkConnection();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(value 
+              ? 'Switched to local network mode' 
+              : 'Switched to ngrok mode'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      Log.e('Error toggling network mode', 'SETTINGS_SCREEN', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error switching network mode: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
   }
 
@@ -406,6 +466,52 @@ class _SettingsScreenState extends State<SettingsScreen> {
               
               const SizedBox(height: 16),
 
+              // Connection Status
+              _buildSettingsCard(
+                title: 'Connection Status',
+                icon: Icons.wifi,
+                iconColor: Colors.blue,
+                children: [
+                  AnimatedBuilder(
+                    animation: _connectionService,
+                    builder: (context, child) {
+                      return ListTile(
+                        leading: Icon(
+                          _connectionService.getStatusIcon(),
+                          color: _connectionService.getStatusColor(),
+                        ),
+                        title: Text(_connectionService.getStatusText()),
+                        subtitle: Text(
+                          _connectionService.currentServerUrl.isNotEmpty
+                              ? _connectionService.currentServerUrl
+                              : 'Checking...',
+                        ),
+                        trailing: IconButton(
+                          icon: const Icon(Icons.refresh),
+                          onPressed: () => _connectionService.checkConnection(),
+                          tooltip: 'Refresh connection',
+                        ),
+                      );
+                    },
+                  ),
+                  if (!kIsWeb) ...[
+                    const Divider(),
+                    SwitchListTile(
+                      title: const Text('Use Local Network'),
+                      subtitle: const Text('Connect via local network instead of ngrok'),
+                      value: _useLocalNetwork,
+                      onChanged: _toggleNetworkMode,
+                      secondary: Icon(
+                        _useLocalNetwork ? Icons.home : Icons.cloud,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              
+              const SizedBox(height: 16),
+              
               // Server Configuration (Admin Only)
               if (_isAdmin)
                 _buildSettingsCard(
