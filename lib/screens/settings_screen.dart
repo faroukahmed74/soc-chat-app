@@ -155,15 +155,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
 
       // Check connection
-      await _connectionService.checkConnection();
+      final isConnected = await _connectionService.checkConnection();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(value 
-              ? 'Switched to local network mode' 
+              ? (isConnected 
+                  ? 'Switched to local network mode - Connected!' 
+                  : 'Switched to local network mode - Connection failed! Check server.')
               : 'Switched to ngrok mode'),
-            backgroundColor: Colors.green,
+            backgroundColor: isConnected ? Colors.green : Colors.orange,
           ),
         );
       }
@@ -504,6 +506,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       secondary: Icon(
                         _useLocalNetwork ? Icons.home : Icons.cloud,
                         color: Theme.of(context).colorScheme.primary,
+                      ),
+                    ),
+                    Container(
+                      margin: const EdgeInsets.all(8),
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.orange.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: Colors.orange.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.warning, color: Colors.orange, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Local network requires server running on 10.120.4.230:8082',
+                              style: TextStyle(
+                                color: Colors.orange.shade700,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ),
                   ],

@@ -1402,7 +1402,7 @@ app.put('/api/notifications/:id/read', async (req, res) => {
 });
 
 // Start server
-const PORT = process.env.PORT || 3003;
+const PORT = process.env.PORT || 8082;
 const HOST = process.env.HOST || '0.0.0.0';
 
 // Cloudflare Access protection for admin routes
