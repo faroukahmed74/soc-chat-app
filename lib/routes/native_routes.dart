@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../screens/login_screen.dart';
+import '../screens/modern_login_screen.dart';
+import '../screens/modern_register_screen.dart';
 import '../screens/register_screen_mongodb.dart';
 import '../screens/enhanced_admin_panel.dart';
 import '../screens/chat_list_screen_mongodb.dart';
@@ -30,8 +32,8 @@ Future<String?> _getCurrentUserId() async {
 }
 
 Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
-  '/login': (_) => const LoginScreen(),
-  '/register': (_) => const RegisterScreenMongoDB(),
+  '/login': (_) => const ModernLoginScreen(),
+  '/register': (_) => const ModernRegisterScreen(),
   '/admin': (_) => const EnhancedAdminPanel(),
     '/chats': (_) => const ChatListScreenMongoDB(),
   '/search': (_) => const UserSearchScreen(),

@@ -7,6 +7,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../theme/app_design_system.dart';
 
 // =============================================================================
 // THEME SERVICE CLASS
@@ -65,8 +66,11 @@ class ThemeService extends ChangeNotifier {
   // =============================================================================
   // Complete theme configuration for light mode with Material 3 design
   
-  /// Light theme configuration with blue accent colors
-  static final ThemeData lightTheme = ThemeData(
+  /// Light theme configuration with modern design system
+  static final ThemeData lightTheme = AppDesignSystem.lightTheme;
+  
+  /// Legacy light theme (kept for backward compatibility)
+  static final ThemeData _legacyLightTheme = ThemeData(
     // Enable Material 3 design system
     useMaterial3: true,
     
@@ -146,8 +150,11 @@ class ThemeService extends ChangeNotifier {
   // =============================================================================
   // Complete theme configuration for dark mode with Material 3 design
   
-  /// Dark theme configuration with blue accent colors
-  static final ThemeData darkTheme = ThemeData(
+  /// Dark theme configuration with modern design system
+  static final ThemeData darkTheme = AppDesignSystem.darkTheme;
+  
+  /// Legacy dark theme (kept for backward compatibility)
+  static final ThemeData _legacyDarkTheme = ThemeData(
     // Enable Material 3 design system
     useMaterial3: true,
     

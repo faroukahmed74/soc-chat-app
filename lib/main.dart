@@ -15,6 +15,9 @@ import 'package:http/http.dart' as http;
 import 'config/database_config.dart';
 
 import 'screens/login_screen.dart';
+import 'screens/modern_login_screen.dart';
+import 'screens/modern_register_screen.dart';
+import 'theme/app_design_system.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -336,7 +339,7 @@ class _AuthGateState extends State<AuthGate> {
       return const MainApp();
     } else {
       print('AuthGate: Showing LoginScreen');
-      return const LoginScreen();
+      return const ModernLoginScreen();
     }
   }
 
