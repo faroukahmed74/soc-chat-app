@@ -148,7 +148,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       // Update server URL based on network mode
       if (value) {
         // Use local network
-        await DatabaseConfig.setServerUrlOverride('http://10.120.4.230:8082');
+        await DatabaseConfig.setServerUrlOverride('http://10.120.4.230:3003');
       } else {
         // Use ngrok
         await DatabaseConfig.setServerUrlOverride('');
@@ -522,7 +522,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           const SizedBox(width: 8),
                           Expanded(
                             child: Text(
-                              'Local network requires server running on 10.120.4.230:8082',
+                              'Local network requires server running on 10.120.4.230:3003',
                               style: TextStyle(
                                 color: Colors.orange.shade700,
                                 fontSize: 12,
