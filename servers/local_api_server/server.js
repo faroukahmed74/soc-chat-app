@@ -195,29 +195,10 @@ try {
 // Serve uploaded media statically
 app.use('/uploads', express.static(UPLOADS_DIR));
 
-// Serve Flutter web app statically
+// Store web directory for later use
 const WEB_BUILD_DIR = path.join(__dirname, '../../build/web');
 const WEB_SOURCE_DIR = path.join(__dirname, '../../web');
-
-// Check if web build exists, otherwise serve source files
 const webDir = fs.existsSync(WEB_BUILD_DIR) ? WEB_BUILD_DIR : WEB_SOURCE_DIR;
-app.use(express.static(webDir));
-
-// Serve index.html for all non-API routes (SPA routing)
-app.get('*', (req, res) => {
-  // Skip API routes
-  if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) {
-    return res.status(404).json({ message: 'Not found' });
-  }
-  
-  // Serve index.html for all other routes
-  const indexPath = path.join(webDir, 'index.html');
-  if (fs.existsSync(indexPath)) {
-    res.sendFile(indexPath);
-  } else {
-    res.status(404).send('Web app not built. Please run: flutter build web');
-  }
-});
 
 // Test endpoint to verify static file serving
 app.get('/test-uploads', (req, res) => {
@@ -1467,6 +1448,26 @@ async function requireCloudflareAccess(req, res, next) {
 
 async function startServer() {
   await connectToMongo();
+  
+  // Serve Flutter web app statically (must be after all API routes)
+  app.use(express.static(webDir));
+  
+  // Serve index.html for all non-API routes (SPA routing)
+  app.get('*', (req, res) => {
+    // Skip API routes and uploads
+    if (req.path.startsWith('/api/') || req.path.startsWith('/uploads/')) {
+      return res.status(404).json({ message: 'Not found' });
+    }
+    
+    // Serve index.html for all other routes
+    const indexPath = path.join(webDir, 'index.html');
+    if (fs.existsSync(indexPath)) {
+      res.sendFile(indexPath);
+    } else {
+      res.status(404).send('Web app not built. Please run: flutter build web');
+    }
+  });
+  
   server.listen(PORT, HOST, () => {
     console.log(`Server running on http://${HOST}:${PORT}`);
     console.log(`Allowed origins: ${allOrigins.join(', ')}`);
