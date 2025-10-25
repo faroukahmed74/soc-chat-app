@@ -1052,9 +1052,56 @@ app.patch('/api/chats/:chatId/messages/read', authenticateToken, async (req, res
   }
 });
 
+// Socket.IO authentication middleware
+io.use(async (socket, next) => {
+  const token = socket.handshake.auth.token;
+  
+  if (!token) {
+    return next(new Error('Authentication error: Token required'));
+  }
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    socket.userId = decoded.uid;
+    socket.user = decoded;
+    
+    // Update user's online status
+    if (db) {
+      await db.collection('users').updateOne(
+        { _id: new ObjectId(decoded.uid) },
+        { $set: { isOnline: true, lastSeen: new Date() } }
+      );
+    }
+    
+    next();
+  } catch (error) {
+    return next(new Error('Authentication error: Invalid token'));
+  }
+});
+
 // Socket.IO
-io.on('connection', (socket) => {
-  console.log('New client connected');
+io.on('connection', async (socket) => {
+  console.log(`User connected: ${socket.userId}`);
+  
+  // Join user to their personal room
+  socket.join(socket.userId);
+  
+  // Join user to all their chat rooms
+  if (db) {
+    try {
+      const chats = await db.collection('chats').find({
+        members: socket.userId
+      }).toArray();
+      
+      chats.forEach(chat => {
+        socket.join(`chat:${chat._id}`);
+      });
+      
+      console.log(`User ${socket.userId} joined ${chats.length} chat rooms`);
+    } catch (error) {
+      console.error('Error joining chat rooms:', error);
+    }
+  }
   
   socket.on('join_chat', (chatId) => {
     socket.join(chatId);
@@ -1066,14 +1113,51 @@ io.on('connection', (socket) => {
     console.log(`Client left chat: ${chatId}`);
   });
   
-  socket.on('disconnect', () => {
-    console.log('Client disconnected');
+  socket.on('disconnect', async () => {
+    console.log(`User disconnected: ${socket.userId}`);
+    
+    // Update user's online status
+    if (db) {
+      await db.collection('users').updateOne(
+        { _id: new ObjectId(socket.userId) },
+        { $set: { isOnline: false, lastSeen: new Date() } }
+      );
+    }
   });
 });
 
 // =========================================
 // NOTIFICATION ENDPOINTS (Integrated into main server)
 // =========================================
+
+// Test notification endpoint
+app.post('/api/notifications/test', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authorization token required' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    
+    // Send test notification to the user
+    io.to(decoded.uid).emit('notification', {
+      title: 'Test Notification',
+      body: 'This is a test notification from the server',
+      data: { type: 'test', timestamp: new Date() },
+      timestamp: new Date(),
+      senderId: decoded.uid
+    });
+    
+    return res.status(200).json({ success: true, message: 'Test notification sent' });
+  } catch (error) {
+    console.error('Test notification error:', error);
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
 
 // Send notification to specific user
 app.post('/api/notifications/send', async (req, res) => {
