@@ -1,10 +1,10 @@
 {
-  "version": "1.0.2",
-  "build_number": "3",
+  "version": "1.0.3",
+  "build_number": "4",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.2 - ngrok Integration Release:\n- Built with ngrok tunnel integration for global access\n- API endpoint configured for https://soc-chat-app.ngrok-free.app\n- Enhanced network connectivity and server communication\n- Improved cross-platform compatibility\n- Optimized build process with physical server configuration\n- Updated UI/UX improvements\n- Enhanced notification system",
+  "release_notes": "SOC Chat App v1.0.3 - Enhanced Release:\n- Updated to version 1.0.3 with improved stability\n- Built with ngrok tunnel integration for global access\n- API endpoint configured for https://soc-chat-app.ngrok-free.app\n- Enhanced network connectivity and server communication\n- Improved cross-platform compatibility\n- Optimized build process with physical server configuration\n- Updated UI/UX improvements\n- Enhanced notification system",
   "force_update": false,
-  "minimum_version": "1.0.2",
+  "minimum_version": "1.0.3",
   "update_available": false,
-  "last_updated": "2025-01-23T16:24:35Z"
+  "last_updated": "2025-01-23T16:30:00Z"
 }

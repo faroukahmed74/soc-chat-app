@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 // import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -14,12 +15,10 @@ class VersionCheckService {
   
   static Future<Map<String, dynamic>?> checkForUpdates() async {
     try {
-      // Get current app version
-      // final PackageInfo packageInfo = await PackageInfo.fromPlatform();
-      // final String currentVersion = packageInfo.version;
-      // final String currentBuildNumber = packageInfo.buildNumber;
-      final String currentVersion = "1.0.0"; // Fallback version
-      final String currentBuildNumber = "1"; // Fallback build number
+      // Get current app version from version_info.json
+      final Map<String, dynamic> localVersionInfo = await _getLocalVersionInfo();
+      final String currentVersion = localVersionInfo['version'] ?? '1.0.0';
+      final String currentBuildNumber = localVersionInfo['build_number']?.toString() ?? '1';
       
       // Fetch version info from Dropbox
       final response = await http.get(Uri.parse(_dropboxJsonUrl));
@@ -177,9 +176,10 @@ class VersionCheckService {
   
   static Future<String> getCurrentVersion() async {
     try {
-      // final PackageInfo packageInfo = await PackageInfo.fromPlatform();
-      // return '${packageInfo.version} (${packageInfo.buildNumber})';
-      return '1.0.0 (1)'; // Fallback version
+      final Map<String, dynamic> localVersionInfo = await _getLocalVersionInfo();
+      final String version = localVersionInfo['version'] ?? '1.0.0';
+      final String buildNumber = localVersionInfo['build_number']?.toString() ?? '1';
+      return '$version ($buildNumber)';
     } catch (e) {
       return 'Unknown';
     }
@@ -187,11 +187,25 @@ class VersionCheckService {
   
   static Future<String> getAppName() async {
     try {
-      // final PackageInfo packageInfo = await PackageInfo.fromPlatform();
-      // return packageInfo.appName;
-      return 'SOC Chat App'; // Fallback app name
+      final Map<String, dynamic> localVersionInfo = await _getLocalVersionInfo();
+      return localVersionInfo['app_name'] ?? 'SOC Chat App';
     } catch (e) {
       return 'SOC Chat App';
+    }
+  }
+
+  /// Get local version info from version_info.json
+  static Future<Map<String, dynamic>> _getLocalVersionInfo() async {
+    try {
+      final String jsonString = await rootBundle.loadString('version_info.json');
+      return json.decode(jsonString);
+    } catch (e) {
+      Log.e('Error loading local version info: $e');
+      return {
+        'version': '1.0.0',
+        'build_number': '1',
+        'app_name': 'SOC Chat App'
+      };
     }
   }
 }

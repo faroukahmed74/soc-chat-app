@@ -23,6 +23,7 @@ import 'services/localization_service.dart';
 // Firebase services removed - using MongoDB/ngrok API only
 import 'services/local_message_storage.dart';
 import 'services/local_auth_service.dart';
+import 'services/media_cache_service.dart';
 
 import 'services/enhanced_notification_service.dart';
 import 'services/logger_service.dart';
@@ -73,6 +74,15 @@ Future<void> main() async {
     await LocalAuthService.initialize();
     // SecureMessageService removed - using MongoDB/ngrok API only
     await LocalMessageStorage.initialize();
+    
+    // Initialize media cache service with error handling
+    try {
+      await MediaCacheService.initialize();
+      Log.i('MediaCacheService initialized successfully', 'MAIN');
+    } catch (cacheError) {
+      Log.e('MediaCacheService initialization failed, continuing without cache', 'MAIN', cacheError);
+      // Continue without media caching if it fails
+    }
   } catch (e, st) {
     Log.e('Failed to initialize app services', 'MAIN', e, st);
     // Don't report errors to avoid crashes - just continue

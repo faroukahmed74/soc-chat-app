@@ -1071,6 +1071,162 @@ io.on('connection', (socket) => {
   });
 });
 
+// =========================================
+// NOTIFICATION ENDPOINTS (Integrated into main server)
+// =========================================
+
+// Send notification to specific user
+app.post('/api/notifications/send', async (req, res) => {
+  const { userId, title, body, data } = req.body;
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authorization token required' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  
+  try {
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    
+    if (!userId || !title || !body) {
+      return res.status(400).json({ error: 'userId, title, and body are required' });
+    }
+    
+    // Send notification to user via socket
+    io.to(userId).emit('notification', {
+      title,
+      body,
+      data: data || {},
+      timestamp: new Date(),
+      senderId: decoded.uid
+    });
+    
+    // Store notification in database
+    if (db) {
+      await db.collection('notifications').insertOne({
+        userId,
+        title,
+        body,
+        data: data || {},
+        timestamp: new Date(),
+        senderId: decoded.uid,
+        read: false
+      });
+    }
+    
+    return res.status(200).json({ success: true, message: 'Notification sent' });
+  } catch (error) {
+    console.error('Send notification error:', error);
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
+
+// Send notification to chat room
+app.post('/api/notifications/chat', async (req, res) => {
+  const { chatId, title, body, data } = req.body;
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authorization token required' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  
+  try {
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    
+    if (!chatId || !title || !body) {
+      return res.status(400).json({ error: 'chatId, title, and body are required' });
+    }
+    
+    // Send notification to chat room via socket
+    io.to(`chat:${chatId}`).emit('chat_notification', {
+      chatId,
+      title,
+      body,
+      data: data || {},
+      timestamp: new Date(),
+      senderId: decoded.uid
+    });
+    
+    return res.status(200).json({ success: true, message: 'Chat notification sent' });
+  } catch (error) {
+    console.error('Send chat notification error:', error);
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
+
+// Get user's notifications
+app.get('/api/notifications', async (req, res) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authorization token required' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  
+  try {
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    
+    if (!db) {
+      return res.status(500).json({ error: 'Database connection not available' });
+    }
+    
+    // Get user's notifications
+    const notifications = await db.collection('notifications')
+      .find({ userId: decoded.uid })
+      .sort({ timestamp: -1 })
+      .limit(50)
+      .toArray();
+    
+    return res.status(200).json({ notifications });
+  } catch (error) {
+    console.error('Get notifications error:', error);
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
+
+// Mark notification as read
+app.put('/api/notifications/:id/read', async (req, res) => {
+  const { id } = req.params;
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Authorization token required' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  
+  try {
+    // Verify token
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    
+    if (!db) {
+      return res.status(500).json({ error: 'Database connection not available' });
+    }
+    
+    // Mark notification as read
+    const result = await db.collection('notifications').updateOne(
+      { _id: new ObjectId(id), userId: decoded.uid },
+      { $set: { read: true } }
+    );
+    
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
+    
+    return res.status(200).json({ success: true, message: 'Notification marked as read' });
+  } catch (error) {
+    console.error('Mark notification as read error:', error);
+    return res.status(401).json({ error: 'Invalid or expired token' });
+  }
+});
+
 // Start server
 const PORT = process.env.PORT || 3003;
 const HOST = process.env.HOST || '0.0.0.0';

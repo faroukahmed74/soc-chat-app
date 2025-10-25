@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../services/version_check_service.dart';
 
 /// Help and Support Screen
 /// Provides comprehensive help, FAQ, and support options for users
@@ -340,7 +341,12 @@ class _HelpSupportScreenState extends State<HelpSupportScreen> {
               ),
             ),
             const SizedBox(height: 12),
-            _buildInfoRow('Version', '1.0.1'),
+            FutureBuilder<String>(
+              future: VersionCheckService.getCurrentVersion(),
+              builder: (context, snapshot) {
+                return _buildInfoRow('Version', snapshot.data ?? '1.0.3');
+              },
+            ),
             _buildInfoRow('Build', '4'),
             _buildInfoRow('Platform', 'Cross-platform'),
             _buildInfoRow('Last Updated', 'August 26, 2025'),

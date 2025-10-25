@@ -13,6 +13,9 @@ const PORT = process.env.NOTIFICATION_PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production';
 const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app';
 
+// Allow graceful MongoDB connection failure (for development)
+const ALLOW_MONGO_FAILURE = process.env.ALLOW_MONGO_FAILURE === 'true';
+
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
@@ -37,7 +40,13 @@ async function connectToMongo() {
     console.log('Connected to MongoDB');
   } catch (error) {
     console.error('MongoDB connection error:', error);
-    process.exit(1);
+    if (ALLOW_MONGO_FAILURE) {
+      console.warn('Continuing without MongoDB connection (ALLOW_MONGO_FAILURE=true)');
+      db = null;
+    } else {
+      console.error('MongoDB connection failed. Set ALLOW_MONGO_FAILURE=true to continue without DB.');
+      process.exit(1);
+    }
   }
 }
 
@@ -269,8 +278,10 @@ app.put('/api/notifications/:id/read', async (req, res) => {
 async function startServer() {
   await connectToMongo();
   
-  server.listen(PORT, () => {
+  server.listen(PORT, '0.0.0.0', () => {
     console.log(`Notification server running on port ${PORT}`);
+    console.log(`Server accessible at http://localhost:${PORT}`);
+    console.log(`Health check: http://localhost:${PORT}/health`);
   });
 }
 

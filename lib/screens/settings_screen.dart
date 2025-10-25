@@ -45,6 +45,8 @@ import '../services/theme_service.dart';
 
 import '../services/fixed_version_check_service.dart';
 import '../services/logger_service.dart';
+import '../services/media_cache_service.dart';
+import '../widgets/media_cache_manager.dart';
 import '../widgets/update_dialog.dart';
 
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
@@ -227,6 +229,67 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await prefs.setBool('notifications_enabled', _notificationsEnabled);
   }
 
+  String _getCacheStatsText() {
+    final stats = MediaCacheService.getCacheStats();
+    return '${stats['fileCount']} files, ${stats['totalSizeMB']} MB';
+  }
+
+  void _refreshCacheStats() {
+    setState(() {
+      // Trigger rebuild to refresh cache stats
+    });
+  }
+
+  Future<void> _showClearCacheDialog() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Clear Media Cache'),
+        content: const Text(
+          'This will delete all cached media files from your device. '
+          'You will need to download them again when viewing chats.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Clear Cache'),
+          ),
+        ],
+      ),
+    ) ?? false;
+
+    if (confirmed) {
+      try {
+        await MediaCacheService.clearCache();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Media cache cleared successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          setState(() {
+            // Refresh the UI
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to clear cache: ${e.toString()}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    }
+  }
+
   @override
   void dispose() {
     _themeService.removeListener(_onThemeChanged);
@@ -290,6 +353,45 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Icons.notifications_active,
                       color: _notificationsEnabled ? Colors.green : Colors.grey,
                     ),
+                  ),
+                ],
+              ),
+              
+              const SizedBox(height: 16),
+
+              // Media Cache Settings
+              _buildSettingsCard(
+                title: 'Media Cache',
+                icon: Icons.storage,
+                iconColor: Colors.purple,
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.info_outline),
+                    title: const Text('Cache Statistics'),
+                    subtitle: Text(_getCacheStatsText()),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.refresh),
+                      onPressed: _refreshCacheStats,
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.delete_sweep),
+                    title: const Text('Clear Media Cache'),
+                    subtitle: const Text('Remove all cached media files'),
+                    onTap: _showClearCacheDialog,
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.settings),
+                    title: const Text('Cache Management'),
+                    subtitle: const Text('View detailed cache information'),
+                    onTap: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const MediaCacheManager(),
+                        ),
+                      );
+                    },
                   ),
                 ],
               ),

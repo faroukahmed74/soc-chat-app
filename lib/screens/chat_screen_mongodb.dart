@@ -7,12 +7,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'dart:typed_data';
+import 'dart:io';
 import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
 import '../services/physical_auth_service.dart';
-import '../widgets/enhanced_media_sender.dart';
+import '../services/media_cache_service.dart';
+import '../utils/group_chat_naming_utility.dart';
 import '../widgets/enhanced_chat_input.dart';
 import '../widgets/full_screen_media_preview.dart';
 import '../services/realtime_service.dart';
@@ -78,7 +79,21 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         n = s['name'] ?? s['username'] ?? s['email'];
       }
     }
-    return (n ?? 'Unknown').toString();
+    
+    // If no name found in message, try to get from cache
+    if (n == null) {
+      final senderId = _extractSenderId(m);
+      if (senderId != null) {
+        final cachedName = GroupChatNamingUtility.getCachedUserName(senderId);
+        if (cachedName != null) {
+          return cachedName;
+        }
+        // Fetch asynchronously for next time
+        GroupChatNamingUtility.fetchUserNameAsync(senderId);
+      }
+    }
+    
+    return (n ?? 'Loading...').toString();
   }
 
   String _extractContent(Map<String, dynamic> m) {
@@ -192,6 +207,23 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         setState(() {
           _messages = messages;
         });
+        
+        // Preload user names for group chats
+        if (widget.isGroupChat && _currentUserId != null) {
+          final userIds = messages
+              .map((m) => _extractSenderId(m))
+              .whereType<String>()
+              .where((id) => id != _currentUserId)
+              .toSet()
+              .toList();
+          if (userIds.isNotEmpty) {
+            await GroupChatNamingUtility.preloadUserNames(userIds);
+            setState(() {
+              // Trigger rebuild to show updated names
+            });
+          }
+        }
+        
         // Mark messages as read for those not sent by current user
         await _markMessagesAsRead(_messages);
         _scrollToBottom();
@@ -414,20 +446,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                           onTap: () => _showFullScreenMedia(mediaUrl, 'image', content),
                           child: ClipRRect(
                             borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              mediaUrl,
-                              width: 200,
-                              height: 200,
-                              fit: BoxFit.cover,
-                              errorBuilder: (context, error, stackTrace) {
-                                return Container(
-                                  width: 200,
-                                  height: 200,
-                                  color: Colors.grey[300],
-                                  child: const Icon(Icons.broken_image),
-                                );
-                              },
-                            ),
+                            child: _buildCachedImage(mediaUrl),
                           ),
                         ),
                         if (content.isNotEmpty)
@@ -734,5 +753,77 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         ],
       ),
     );
+  }
+
+  /// Build cached image widget with fallback to network
+  Widget _buildCachedImage(String mediaUrl) {
+    return FutureBuilder<String?>(
+      future: _getCachedMediaPath(mediaUrl),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data != null) {
+          // Use cached image
+          return Image.file(
+            File(snapshot.data!),
+            width: 200,
+            height: 200,
+            fit: BoxFit.cover,
+            errorBuilder: (context, error, stackTrace) {
+              // Fallback to network if cached file is corrupted
+              return _buildNetworkImage(mediaUrl);
+            },
+          );
+        } else {
+          // Use network image and cache it
+          return _buildNetworkImage(mediaUrl);
+        }
+      },
+    );
+  }
+
+  /// Build network image with caching
+  Widget _buildNetworkImage(String mediaUrl) {
+    return Image.network(
+      mediaUrl,
+      width: 200,
+      height: 200,
+      fit: BoxFit.cover,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) {
+          // Image loaded, cache it
+          MediaCacheService.cacheMedia(mediaUrl, mediaType: 'image');
+          return child;
+        }
+        return Container(
+          width: 200,
+          height: 200,
+          child: Center(
+            child: CircularProgressIndicator(
+              value: loadingProgress.expectedTotalBytes != null
+                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
+                  : null,
+            ),
+          ),
+        );
+      },
+      errorBuilder: (context, error, stackTrace) {
+        return Container(
+          width: 200,
+          height: 200,
+          color: Colors.grey[300],
+          child: const Icon(Icons.broken_image),
+        );
+      },
+    );
+  }
+
+  /// Get cached media path or cache the media
+  Future<String?> _getCachedMediaPath(String mediaUrl) async {
+    if (MediaCacheService.isCached(mediaUrl)) {
+      return MediaCacheService.getCachedPath(mediaUrl);
+    } else {
+      // Cache the media in background
+      MediaCacheService.cacheMedia(mediaUrl, mediaType: 'image');
+      return null;
+    }
   }
 }

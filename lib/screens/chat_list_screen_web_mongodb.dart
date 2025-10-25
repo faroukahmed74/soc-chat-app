@@ -11,6 +11,7 @@ import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
+import '../services/version_check_service.dart';
 import '../utils/group_chat_naming_utility.dart';
 import 'chat_screen_web_mongodb.dart';
 import 'user_search_screen.dart';
@@ -443,14 +444,19 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
               padding: const EdgeInsets.all(16.0),
               child: Column(
                 children: [
-                  Text(
-                    'Version 1.0.1',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: _themeService.isDarkMode ? Colors.grey[500] : Colors.grey[600],
-                      fontWeight: FontWeight.w300,
-                    ),
-                    textAlign: TextAlign.center,
+                  FutureBuilder<String>(
+                    future: VersionCheckService.getCurrentVersion(),
+                    builder: (context, snapshot) {
+                      return Text(
+                        'Version ${snapshot.data ?? '1.0.3'}',
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: _themeService.isDarkMode ? Colors.grey[500] : Colors.grey[600],
+                          fontWeight: FontWeight.w300,
+                        ),
+                        textAlign: TextAlign.center,
+                      );
+                    },
                   ),
                   const SizedBox(height: 4),
                   Text(

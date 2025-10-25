@@ -6,8 +6,10 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:io';
 import '../services/theme_service.dart';
 import '../services/logger_service.dart';
+import '../services/media_cache_service.dart';
 import '../utils/responsive_utils.dart';
 
 /// Enhanced media preview widget for chat screens
@@ -141,21 +143,7 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   Widget _buildImageWidget() {
     return Stack(
       children: [
-        Image.network(
-          widget.mediaUrl,
-          fit: BoxFit.cover,
-          width: double.infinity,
-          height: double.infinity,
-          loadingBuilder: (context, child, loadingProgress) {
-            if (loadingProgress == null) return child;
-            return _buildLoadingWidget();
-          },
-          errorBuilder: (context, error, stackTrace) {
-            Log.e('Image loading error', 'ENHANCED_MEDIA_PREVIEW', error);
-            Log.e('Failed URL: ${widget.mediaUrl}', 'ENHANCED_MEDIA_PREVIEW');
-            return _buildErrorWidget('Failed to load image');
-          },
-        ),
+        _buildCachedImage(),
         if (widget.showFullScreenButton)
           Positioned(
             top: 8,
@@ -541,5 +529,64 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
         ),
       ),
     );
+  }
+
+  /// Build cached image widget with fallback to network
+  Widget _buildCachedImage() {
+    return FutureBuilder<String?>(
+      future: _getCachedMediaPath(),
+      builder: (context, snapshot) {
+        if (snapshot.hasData && snapshot.data != null) {
+          // Use cached image
+          return Image.file(
+            File(snapshot.data!),
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: double.infinity,
+            errorBuilder: (context, error, stackTrace) {
+              // Fallback to network if cached file is corrupted
+              return _buildNetworkImage();
+            },
+          );
+        } else {
+          // Use network image and cache it
+          return _buildNetworkImage();
+        }
+      },
+    );
+  }
+
+  /// Build network image with caching
+  Widget _buildNetworkImage() {
+    return Image.network(
+      widget.mediaUrl,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      loadingBuilder: (context, child, loadingProgress) {
+        if (loadingProgress == null) {
+          // Image loaded, cache it
+          MediaCacheService.cacheMedia(widget.mediaUrl, mediaType: 'image');
+          return child;
+        }
+        return _buildLoadingWidget();
+      },
+      errorBuilder: (context, error, stackTrace) {
+        Log.e('Image loading error', 'ENHANCED_MEDIA_PREVIEW', error);
+        Log.e('Failed URL: ${widget.mediaUrl}', 'ENHANCED_MEDIA_PREVIEW');
+        return _buildErrorWidget('Failed to load image');
+      },
+    );
+  }
+
+  /// Get cached media path or cache the media
+  Future<String?> _getCachedMediaPath() async {
+    if (MediaCacheService.isCached(widget.mediaUrl)) {
+      return MediaCacheService.getCachedPath(widget.mediaUrl);
+    } else {
+      // Cache the media in background
+      MediaCacheService.cacheMedia(widget.mediaUrl, mediaType: widget.mediaType);
+      return null;
+    }
   }
 }

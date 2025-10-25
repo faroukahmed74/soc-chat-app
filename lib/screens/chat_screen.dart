@@ -23,6 +23,7 @@ import '../services/logger_service.dart';
 import '../services/chat_management_service.dart';
 import '../services/fcm_notification_service.dart';
 import '../services/secure_media_service.dart';
+import '../services/media_cache_service.dart';
 import '../utils/responsive_utils.dart';
 import '../utils/group_chat_naming_utility.dart';
 import '../widgets/enhanced_media_preview.dart';

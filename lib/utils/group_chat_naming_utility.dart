@@ -133,7 +133,12 @@ class GroupChatNamingUtility {
     return getChatDisplayName(chat);
   }
 
-  /// Fetch user name asynchronously and cache it
+  /// Fetch user name asynchronously and cache it (public method)
+  static Future<void> fetchUserNameAsync(String userId) async {
+    await _fetchUserNameAsync(userId);
+  }
+  
+  /// Internal method to fetch user name
   static Future<void> _fetchUserNameAsync(String userId) async {
     if (_userNameCache.containsKey(userId) || _userNameFetching.contains(userId)) {
       return;

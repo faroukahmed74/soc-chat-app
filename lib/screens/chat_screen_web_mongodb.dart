@@ -14,6 +14,7 @@ import '../services/logger_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/enhanced_unified_media_service.dart';
 import '../services/document_service.dart';
+import '../services/media_cache_service.dart';
 import '../widgets/enhanced_chat_input.dart';
 import '../widgets/enhanced_media_preview.dart';
 import '../widgets/enhanced_responsive_media_preview.dart';
