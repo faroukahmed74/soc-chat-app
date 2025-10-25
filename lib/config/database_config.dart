@@ -19,7 +19,7 @@ class DatabaseConfig {
   );
   static const String webServerUrl = String.fromEnvironment(
     'API_BASE_URL_WEB',
-    defaultValue: 'http://10.120.4.230:3003',
+    defaultValue: 'http://10.120.4.230:8082',
   );
   // Backwards compatibility: single define still supported
   static const String serverUrl = String.fromEnvironment(
@@ -204,8 +204,8 @@ String _resolveServerUrl() {
       return DatabaseConfig.serverUrl;
     }
     // Final fallback: use local network IP for web
-    print('Using final fallback: http://10.120.4.230:3003');
-    return 'http://10.120.4.230:3003';
+    print('Using final fallback: http://10.120.4.230:8082');
+    return 'http://10.120.4.230:8082';
   } else {
     print('Platform: Mobile/Desktop detected');
     // Mobile/desktop builds use platform-specific URL first
