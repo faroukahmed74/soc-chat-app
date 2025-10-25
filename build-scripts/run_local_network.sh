@@ -16,11 +16,11 @@ echo "Local IP: $LOCAL_IP"
 echo
 
 echo "Starting Flutter app on local network..."
-echo "App will be available at: http://$LOCAL_IP:8080"
+echo "App will be available at: http://$LOCAL_IP:8082"
 echo
 
 echo "Press Ctrl+C to stop the server"
 echo
 
 # Make the script executable and run Flutter
-flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080
+flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8082

@@ -1,29 +1,111 @@
-/* eslint-disable no-undef */
-// Firebase Messaging SW (Compat for simplicity)
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js');
-importScripts('https://www.gstatic.com/firebasejs/9.23.0/firebase-messaging-compat.js');
+// =============================================================================
+// SERVICE WORKER FOR SOC CHAT APP
+// =============================================================================
+// This service worker handles offline functionality and caching
+// Firebase messaging removed - using MongoDB with local notifications
 
-// Firebase configuration for SOC Chat App
-firebase.initializeApp({
-  apiKey: "AIzaSyCRCvKNo5n7KT9jPd5gRDJYMlElYQUgYCg",
-  authDomain: "soc-chat-app-ca57e.firebaseapp.com",
-  projectId: "soc-chat-app-ca57e",
-  messagingSenderId: "889400273440",
-  appId: "1:889400273440:web:319b144169e0312713aa45",
-  databaseURL: "https://soc-chat-app-ca57e-default-rtdb.firebaseio.com",
-  storageBucket: "soc-chat-app-ca57e.firebasestorage.app",
-  measurementId: "G-4RPEDKQMS7",
+// Service worker version
+const CACHE_NAME = 'soc-chat-app-v1.0.4';
+const urlsToCache = [
+  '/',
+  '/index.html',
+  '/responsive_config.js',
+  '/responsive.css',
+  '/icons/Icon-192.png',
+  '/icons/Icon-512.png',
+  '/manifest.json'
+];
+
+// Install event - cache resources
+self.addEventListener('install', (event) => {
+  event.waitUntil(
+    caches.open(CACHE_NAME)
+      .then((cache) => {
+        console.log('Service worker: caching files');
+        return cache.addAll(urlsToCache);
+      })
+      .catch((error) => {
+        console.error('Service worker: cache failed', error);
+      })
+  );
 });
 
-const messaging = firebase.messaging();
+// Fetch event - serve from cache when offline
+self.addEventListener('fetch', (event) => {
+  event.respondWith(
+    caches.match(event.request)
+      .then((response) => {
+        // Return cached version or fetch from network
+        return response || fetch(event.request);
+      })
+      .catch((error) => {
+        console.error('Service worker: fetch failed', error);
+        // Return offline page if available
+        return caches.match('/index.html');
+      })
+  );
+});
 
-// Optional: background message handler to show notifications
-messaging.onBackgroundMessage((payload) => {
-  const title = payload.notification?.title || payload.data?.title || 'New message';
+// Activate event - clean up old caches
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.keys().then((cacheNames) => {
+      return Promise.all(
+        cacheNames.map((cacheName) => {
+          if (cacheName !== CACHE_NAME) {
+            console.log('Service worker: deleting old cache', cacheName);
+            return caches.delete(cacheName);
+          }
+        })
+      );
+    })
+  );
+});
+
+// Handle push notifications (if needed in future)
+self.addEventListener('push', (event) => {
+  console.log('Service worker: push event received');
+  
   const options = {
-    body: payload.notification?.body || payload.data?.body || '',
-    data: payload.data || {},
-    // icon: '/icons/Icon-192.png', // optional
+    body: event.data ? event.data.text() : 'New message received',
+    icon: '/icons/Icon-192.png',
+    badge: '/icons/Icon-192.png',
+    vibrate: [100, 50, 100],
+    data: {
+      dateOfArrival: Date.now(),
+      primaryKey: 1
+    },
+    actions: [
+      {
+        action: 'explore',
+        title: 'Open App',
+        icon: '/icons/Icon-192.png'
+      },
+      {
+        action: 'close',
+        title: 'Close',
+        icon: '/icons/Icon-192.png'
+      }
+    ]
   };
-  self.registration.showNotification(title, options);
+
+  event.waitUntil(
+    self.registration.showNotification('SOC Chat App', options)
+  );
 });
+
+// Handle notification clicks
+self.addEventListener('notificationclick', (event) => {
+  console.log('Service worker: notification click received');
+  
+  event.notification.close();
+  
+  if (event.action === 'explore') {
+    // Open the app
+    event.waitUntil(
+      clients.openWindow('/')
+    );
+  }
+});
+
+console.log('SOC Chat App service worker loaded');

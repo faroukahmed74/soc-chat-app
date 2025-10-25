@@ -38,13 +38,29 @@ router.get('/stats', verifyAdminToken, async (req, res) => {
   try {
     const db = req.app.locals.db;
     
-    // Get database stats
-    const dbStats = await db.stats();
-    
     // Get collection stats
     const usersCount = await db.collection('users').countDocuments();
     const chatsCount = await db.collection('chats').countDocuments();
     const messagesCount = await db.collection('messages').countDocuments();
+    
+    // Get active users (users who logged in within last 7 days)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const activeUsersCount = await db.collection('users').countDocuments({
+      lastLoginAt: { $gte: sevenDaysAgo }
+    });
+    
+    // Get active chats (chats with messages in last 24 hours)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const activeChatsCount = await db.collection('chats').countDocuments({
+      updatedAt: { $gte: oneDayAgo }
+    });
+    
+    // Get messages today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const messagesTodayCount = await db.collection('messages').countDocuments({
+      createdAt: { $gte: today }
+    });
     
     // Get recent activity
     const recentUsers = await db.collection('users')
@@ -60,14 +76,12 @@ router.get('/stats', verifyAdminToken, async (req, res) => {
       .toArray();
     
     res.json({
-      database: {
-        name: dbStats.db,
-        collections: dbStats.collections,
-        documents: dbStats.objects,
-        dataSize: dbStats.dataSize,
-        storageSize: dbStats.storageSize,
-        indexSize: dbStats.indexSize
-      },
+      totalUsers: usersCount,
+      totalChats: chatsCount,
+      totalMessages: messagesCount,
+      activeUsers: activeUsersCount,
+      activeChats: activeChatsCount,
+      messagesToday: messagesTodayCount,
       collections: {
         users: usersCount,
         chats: chatsCount,
@@ -1096,6 +1110,140 @@ router.post('/messages/bulk-delete', verifyAdminToken, async (req, res) => {
   } catch (error) {
     console.error('Error bulk deleting messages:', error);
     res.status(500).json({ error: 'Failed to delete messages' });
+  }
+});
+
+// ===== USER MANAGEMENT =====
+
+// Lock user
+router.post('/users/:id/lock', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    const { reason } = req.body;
+    
+    const result = await db.collection('users').updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          isLocked: true,
+          lockedReason: reason || 'No reason provided',
+          lockedAt: new Date(),
+          updatedAt: new Date()
+        } 
+      }
+    );
+    
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({ message: 'User locked successfully' });
+  } catch (error) {
+    console.error('Error locking user:', error);
+    res.status(500).json({ error: 'Failed to lock user' });
+  }
+});
+
+// Unlock user
+router.post('/users/:id/unlock', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    
+    const result = await db.collection('users').updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          isLocked: false,
+          lockedReason: null,
+          lockedAt: null,
+          updatedAt: new Date()
+        } 
+      }
+    );
+    
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({ message: 'User unlocked successfully' });
+  } catch (error) {
+    console.error('Error unlocking user:', error);
+    res.status(500).json({ error: 'Failed to unlock user' });
+  }
+});
+
+// Add new user
+router.post('/users', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { email, password, displayName, role = 'user' } = req.body;
+    
+    if (!email || !password || !displayName) {
+      return res.status(400).json({ error: 'Email, password, and display name are required' });
+    }
+    
+    // Check if user already exists
+    const existingUser = await db.collection('users').findOne({ email });
+    if (existingUser) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+    
+    // Hash password
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash(password, 10);
+    
+    // Create user
+    const newUser = {
+      email,
+      password: hashedPassword,
+      displayName,
+      role,
+      status: 'active',
+      isLocked: false,
+      createdAt: new Date(),
+      lastLoginAt: null
+    };
+    
+    const result = await db.collection('users').insertOne(newUser);
+    
+    res.json({
+      message: 'User created successfully',
+      user: {
+        id: result.insertedId,
+        email,
+        displayName,
+        role
+      }
+    });
+  } catch (error) {
+    console.error('Error creating user:', error);
+    res.status(500).json({ error: 'Failed to create user' });
+  }
+});
+
+// Remove all data from database
+router.post('/database/clear', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    
+    // Delete all data from collections
+    const messagesResult = await db.collection('messages').deleteMany({});
+    const chatsResult = await db.collection('chats').deleteMany({});
+    const reportsResult = await db.collection('reports').deleteMany({});
+    
+    res.json({
+      message: 'All data cleared successfully',
+      deleted: {
+        messages: messagesResult?.deletedCount || 0,
+        chats: chatsResult?.deletedCount || 0,
+        reports: reportsResult?.deletedCount || 0
+      }
+    });
+  } catch (error) {
+    console.error('Error clearing database:', error);
+    res.status(500).json({ error: 'Failed to clear database' });
   }
 });
 

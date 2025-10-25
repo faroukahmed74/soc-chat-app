@@ -15,13 +15,13 @@ Write-Host "Local IP: $LocalIP" -ForegroundColor Green
 Write-Host ""
 
 Write-Host "Starting Flutter app on local network..." -ForegroundColor Yellow
-Write-Host "App will be available at: http://$LocalIP`:8080" -ForegroundColor Green
+Write-Host "App will be available at: http://$LocalIP`:8082" -ForegroundColor Green
 Write-Host ""
 
 Write-Host "Press Ctrl+C to stop the server" -ForegroundColor Red
 Write-Host ""
 
 # Run Flutter app
-flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080
+flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8082
 
 Read-Host "Press Enter to exit"

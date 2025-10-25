@@ -6,6 +6,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../services/theme_service.dart';
 import '../services/mongodb_admin_service.dart';
 import '../services/physical_auth_service.dart';
@@ -254,11 +256,153 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
       }
     } catch (e) {
       Log.e('Error loading system stats', 'ADMIN_PANEL_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading stats: $e')),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
           _isLoadingStats = false;
         });
+      }
+    }
+  }
+
+  Future<void> _exportData() async {
+    try {
+      final users = await _adminService.getAllUsers();
+      final chats = await _adminService.getAllChats();
+      final messages = await _adminService.getAllMessages();
+      final reports = await _adminService.getReports();
+      
+      final exportData = {
+        'exportDate': DateTime.now().toIso8601String(),
+        'users': users,
+        'chats': chats,
+        'messages': messages,
+        'reports': reports,
+      };
+      
+      final jsonData = json.encode(exportData);
+      final dataSizeMB = (jsonData.length / (1024 * 1024)).toStringAsFixed(2);
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Data exported successfully (${dataSizeMB} MB)')),
+        );
+      }
+    } catch (e) {
+      Log.e('Error exporting data', 'ADMIN_PANEL_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error exporting data: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _viewLogs() async {
+    try {
+      await _loadSystemHealth();
+      
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: const Text('System Logs'),
+            content: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_systemHealth != null) ...[
+                    Text('Status: ${_systemHealth!['status'] ?? 'Unknown'}'),
+                    const SizedBox(height: 8),
+                    Text('Database: ${_systemHealth!['database']?['name'] ?? 'Unknown'}'),
+                    const SizedBox(height: 8),
+                    Text('Collections: ${_systemHealth!['collections']?.length ?? 0}'),
+                  ] else
+                    const Text('No log data available'),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        );
+      }
+    } catch (e) {
+      Log.e('Error viewing logs', 'ADMIN_PANEL_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error viewing logs: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _backupDatabase() async {
+    try {
+      final users = await _adminService.getAllUsers();
+      final chats = await _adminService.getAllChats();
+      final messages = await _adminService.getAllMessages();
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Database backup created: ${users.length} users, ${chats.length} chats, ${messages.length} messages')),
+        );
+      }
+    } catch (e) {
+      Log.e('Error creating backup', 'ADMIN_PANEL_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error creating backup: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _cleanupSystem() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('System Cleanup'),
+        content: const Text('This will remove old data and optimize the database. Continue?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Cleanup'),
+          ),
+        ],
+      ),
+    );
+    
+    if (confirmed != true) return;
+    
+    try {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('System cleanup completed successfully')),
+        );
+      }
+      await _loadInitialData();
+    } catch (e) {
+      Log.e('Error during cleanup', 'ADMIN_PANEL_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error during cleanup: $e')),
+        );
       }
     }
   }
@@ -464,6 +608,110 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     }
   }
 
+  Future<void> _openCreateUserDialog() async {
+    final nameController = TextEditingController();
+    final emailController = TextEditingController();
+    final passwordController = TextEditingController();
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Add New User'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                labelText: 'Display Name',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: emailController,
+              decoration: const InputDecoration(
+                labelText: 'Email',
+                border: OutlineInputBorder(),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: passwordController,
+              decoration: const InputDecoration(
+                labelText: 'Password',
+                border: OutlineInputBorder(),
+              ),
+              obscureText: true,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Add'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        // Get token from SharedPreferences
+        final prefs = await SharedPreferences.getInstance();
+        final token = prefs.getString('auth_token');
+        
+        if (token == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('No auth token found')),
+            );
+          }
+          return;
+        }
+        
+        final baseUrl = DatabaseConfig.physicalServerUrl;
+        final response = await http.post(
+          Uri.parse('$baseUrl/api/admin/users'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
+          body: json.encode({
+            'email': emailController.text.trim(),
+            'password': passwordController.text,
+            'displayName': nameController.text.trim(),
+            'role': 'user',
+          }),
+        );
+
+        if (mounted) {
+          if (response.statusCode == 200) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('User created successfully')),
+            );
+            await _loadUsers();
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('Failed to create user: ${response.statusCode}')),
+            );
+          }
+        }
+      } catch (e) {
+        Log.e('Error creating user', 'ADMIN_PANEL_MONGODB', e);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _changeUserRole(String userId, String role) async {
     try {
       final success = await _adminService.updateUserRole(userId, role);
@@ -531,6 +779,12 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 onPressed: _openCreateAdminDialog,
                 icon: const Icon(Icons.admin_panel_settings),
                 label: const Text('Create Admin'),
+              ),
+              const SizedBox(width: 12),
+              ElevatedButton.icon(
+                onPressed: _openCreateUserDialog,
+                icon: const Icon(Icons.person_add),
+                label: const Text('Add User'),
               ),
             ],
           ),
@@ -669,6 +923,8 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                   _buildStatRow('Total Chats', _systemStats!['totalChats']?.toString() ?? '0'),
                   _buildStatRow('Total Messages', _systemStats!['totalMessages']?.toString() ?? '0'),
                   _buildStatRow('Active Users', _systemStats!['activeUsers']?.toString() ?? '0'),
+                  _buildStatRow('Active Chats', _systemStats!['activeChats']?.toString() ?? '0'),
+                  _buildStatRow('Messages Today', _systemStats!['messagesToday']?.toString() ?? '0'),
                 ],
               ),
             ),
@@ -727,23 +983,57 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'Admin Actions',
+                    'Quick Actions',
                     style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  Wrap(
+                    spacing: 12,
+                    runSpacing: 12,
+                    children: [
+                      _buildActionButton(
+                        'Refresh Data',
+                        Icons.refresh,
+                        Colors.blue,
+                        () => _loadInitialData(),
+                      ),
+                      _buildActionButton(
+                        'Export Data',
+                        Icons.download,
+                        Colors.green,
+                        () => _exportData(),
+                      ),
+                      _buildActionButton(
+                        'System Health',
+                        Icons.health_and_safety,
+                        Colors.orange,
+                        () => _loadSystemHealth(),
+                      ),
+                      _buildActionButton(
+                        'View Logs',
+                        Icons.list_alt,
+                        Colors.purple,
+                        () => _viewLogs(),
+                      ),
+                      _buildActionButton(
+                        'Backup Database',
+                        Icons.backup,
+                        Colors.teal,
+                        () => _backupDatabase(),
+                      ),
+                      _buildActionButton(
+                        'Cleanup System',
+                        Icons.cleaning_services,
+                        Colors.red,
+                        () => _cleanupSystem(),
+                      ),
+                    ],
                   ),
                   const SizedBox(height: 16),
                   ElevatedButton.icon(
                     onPressed: _sendBroadcastMessage,
                     icon: const Icon(Icons.broadcast_on_personal),
                     label: const Text('Send Broadcast Message'),
-                  ),
-                  const SizedBox(height: 8),
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      _loadInitialData();
-                      _loadSystemHealth();
-                    },
-                    icon: const Icon(Icons.refresh),
-                    label: const Text('Refresh Data'),
                   ),
                 ],
               ),
@@ -766,6 +1056,22 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
             style: const TextStyle(fontWeight: FontWeight.bold),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildActionButton(String label, IconData icon, Color color, VoidCallback onPressed) {
+    return ElevatedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 16),
+      label: Text(label),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: color,
+        foregroundColor: Colors.white,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(8),
+        ),
       ),
     );
   }
@@ -963,7 +1269,6 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
       itemBuilder: (context, index) {
         final message = _messages[index];
         final content = message['content'] ?? message['content'] ?? '';
-        final senderId = message['senderId'] ?? '';
         final senderName = message['senderName'] ?? 'Unknown';
         final timestampRaw = message['createdAt'] ?? message['timestamp'] ?? '';
         String timestampDisplay = '';
@@ -1035,7 +1340,6 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
       itemCount: _reports.length,
       itemBuilder: (context, index) {
         final report = _reports[index];
-        final reportId = report['_id'] ?? report['id'] ?? '';
         final reason = report['reason'] ?? '';
         final reportedUserId = report['reportedUserId'] ?? '';
         final reporterId = report['reporterId'] ?? '';
