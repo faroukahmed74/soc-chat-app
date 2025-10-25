@@ -1,10 +1,10 @@
 {
-  "version": "1.0.3",
-  "build_number": "4",
+  "version": "1.0.4",
+  "build_number": "5",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.3 - Enhanced Release:\n- Updated to version 1.0.3 with improved stability\n- Built with ngrok tunnel integration for global access\n- API endpoint configured for https://soc-chat-app.ngrok-free.app\n- Enhanced network connectivity and server communication\n- Improved cross-platform compatibility\n- Optimized build process with physical server configuration\n- Updated UI/UX improvements\n- Enhanced notification system",
+  "release_notes": "SOC Chat App v1.0.4 - Admin Panel Enhancement:\n- Fixed group chat display names showing as 'Unknown'\n- Enhanced admin panel with comprehensive CRUD operations\n- Implemented Quick Actions in admin dashboard\n- Added Export Data, View Logs, Backup Database, and System Cleanup features\n- Fixed messages showing 'No Text' in admin panel\n- Added sender name resolution for all messages\n- Enhanced notification system with Socket.IO authentication\n- Improved admin panel with complete database control capabilities",
   "force_update": false,
-  "minimum_version": "1.0.3",
+  "minimum_version": "1.0.4",
   "update_available": false,
-  "last_updated": "2025-01-23T16:30:00Z"
+  "last_updated": "2025-01-23T18:00:00Z"
 }

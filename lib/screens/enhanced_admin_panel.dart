@@ -1714,7 +1714,7 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       'This will remove old data and optimize the database. Continue?',
     );
     
-    if (!confirmed) return;
+    if (confirmed != true) return;
     
     try {
       setState(() => _isLoadingStats = true);
@@ -1734,4 +1734,5 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
     } finally {
       if (mounted) setState(() => _isLoadingStats = false);
     }
+  }
 }
