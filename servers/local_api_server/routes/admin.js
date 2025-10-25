@@ -668,4 +668,494 @@ router.get('/analytics', verifyAdminToken, async (req, res) => {
   }
 });
 
+// =============================================================================
+// COMPREHENSIVE CRUD OPERATIONS FOR ALL COLLECTIONS
+// =============================================================================
+
+// ===== USERS CRUD =====
+
+// Update user
+router.put('/users/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    const { email, displayName, role, status, profilePicture } = req.body;
+    
+    const updateData = {};
+    if (email) updateData.email = email;
+    if (displayName) updateData.displayName = displayName;
+    if (role) updateData.role = role;
+    if (status) updateData.status = status;
+    if (profilePicture) updateData.profilePicture = profilePicture;
+    updateData.updatedAt = new Date();
+    
+    const result = await db.collection('users').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateData }
+    );
+    
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({ message: 'User updated successfully' });
+  } catch (error) {
+    console.error('Error updating user:', error);
+    res.status(500).json({ error: 'Failed to update user' });
+  }
+});
+
+// Get single user
+router.get('/users/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    
+    const user = await db.collection('users').findOne({ _id: new ObjectId(id) });
+    
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({
+      id: user._id,
+      email: user.email,
+      displayName: user.displayName,
+      role: user.role,
+      status: user.status,
+      createdAt: user.createdAt,
+      lastLoginAt: user.lastLoginAt,
+      profilePicture: user.profilePicture
+    });
+  } catch (error) {
+    console.error('Error getting user:', error);
+    res.status(500).json({ error: 'Failed to get user' });
+  }
+});
+
+// ===== CHATS CRUD =====
+
+// Get single chat
+router.get('/chats/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    
+    const chat = await db.collection('chats').findOne({ _id: new ObjectId(id) });
+    
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+    
+    // Get member details
+    const memberObjectIds = (chat.members || chat.memberIds || [])
+      .filter(m => m)
+      .map(m => typeof m === 'string' && ObjectId.isValid(m) ? new ObjectId(m) : m)
+      .filter(m => m);
+    
+    const members = memberObjectIds.length > 0
+      ? await db.collection('users')
+          .find({ _id: { $in: memberObjectIds } })
+          .toArray()
+      : [];
+    
+    res.json({
+      id: chat._id,
+      name: chat.name,
+      type: chat.type || 'group',
+      members: members.map(member => ({
+        id: member._id,
+        name: member.displayName,
+        email: member.email
+      })),
+      createdAt: chat.createdAt,
+      updatedAt: chat.updatedAt
+    });
+  } catch (error) {
+    console.error('Error getting chat:', error);
+    res.status(500).json({ error: 'Failed to get chat' });
+  }
+});
+
+// Update chat
+router.put('/chats/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    const { name, type, members } = req.body;
+    
+    const updateData = {};
+    if (name) updateData.name = name;
+    if (type) updateData.type = type;
+    if (members) updateData.members = members;
+    updateData.updatedAt = new Date();
+    
+    const result = await db.collection('chats').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateData }
+    );
+    
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+    
+    res.json({ message: 'Chat updated successfully' });
+  } catch (error) {
+    console.error('Error updating chat:', error);
+    res.status(500).json({ error: 'Failed to update chat' });
+  }
+});
+
+// Create chat
+router.post('/chats', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { name, type = 'group', members = [] } = req.body;
+    
+    if (!name) {
+      return res.status(400).json({ error: 'Chat name is required' });
+    }
+    
+    const chat = {
+      name,
+      type,
+      members: members.map(m => typeof m === 'string' && ObjectId.isValid(m) ? new ObjectId(m) : m),
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    const result = await db.collection('chats').insertOne(chat);
+    
+    res.json({
+      message: 'Chat created successfully',
+      chat: {
+        id: result.insertedId,
+        name,
+        type,
+        members: chat.members
+      }
+    });
+  } catch (error) {
+    console.error('Error creating chat:', error);
+    res.status(500).json({ error: 'Failed to create chat' });
+  }
+});
+
+// ===== MESSAGES CRUD =====
+
+// Get single message
+router.get('/messages/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    
+    const message = await db.collection('messages').findOne({ _id: new ObjectId(id) });
+    
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    
+    // Get sender name
+    let senderName = 'Unknown';
+    if (message.senderId) {
+      try {
+        const sender = await db.collection('users').findOne({ _id: message.senderId });
+        if (sender) {
+          senderName = sender.displayName || sender.email || 'Unknown';
+        }
+      } catch (e) {
+        console.error('Error getting sender name:', e);
+      }
+    }
+    
+    res.json({
+      id: message._id,
+      chatId: message.chatId,
+      senderId: message.senderId,
+      senderName: senderName,
+      type: message.type,
+      content: message.content,
+      mediaUrl: message.mediaUrl,
+      createdAt: message.createdAt,
+      updatedAt: message.updatedAt
+    });
+  } catch (error) {
+    console.error('Error getting message:', error);
+    res.status(500).json({ error: 'Failed to get message' });
+  }
+});
+
+// Update message
+router.put('/messages/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    const { content, type, mediaUrl } = req.body;
+    
+    const updateData = {};
+    if (content !== undefined) updateData.content = content;
+    if (type !== undefined) updateData.type = type;
+    if (mediaUrl !== undefined) updateData.mediaUrl = mediaUrl;
+    updateData.updatedAt = new Date();
+    
+    const result = await db.collection('messages').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateData }
+    );
+    
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    
+    res.json({ message: 'Message updated successfully' });
+  } catch (error) {
+    console.error('Error updating message:', error);
+    res.status(500).json({ error: 'Failed to update message' });
+  }
+});
+
+// Delete message
+router.delete('/messages/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    
+    const result = await db.collection('messages').deleteOne({ _id: new ObjectId(id) });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    
+    res.json({ message: 'Message deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting message:', error);
+    res.status(500).json({ error: 'Failed to delete message' });
+  }
+});
+
+// Create message
+router.post('/messages', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { chatId, senderId, content, type = 'text', mediaUrl } = req.body;
+    
+    if (!chatId || !senderId || !content) {
+      return res.status(400).json({ error: 'chatId, senderId, and content are required' });
+    }
+    
+    const message = {
+      chatId: new ObjectId(chatId),
+      senderId: new ObjectId(senderId),
+      content,
+      type,
+      mediaUrl: mediaUrl || null,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+    
+    const result = await db.collection('messages').insertOne(message);
+    
+    res.json({
+      message: 'Message created successfully',
+      messageId: result.insertedId
+    });
+  } catch (error) {
+    console.error('Error creating message:', error);
+    res.status(500).json({ error: 'Failed to create message' });
+  }
+});
+
+// ===== REPORTS CRUD =====
+
+// Get single report
+router.get('/reports/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    
+    const report = await db.collection('reports').findOne({ _id: new ObjectId(id) });
+    
+    if (!report) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    
+    res.json({
+      id: report._id,
+      type: report.type || 'general',
+      description: report.description || '',
+      reporterId: report.reporterId,
+      reporterName: report.reporterName || 'Unknown',
+      reportedUserId: report.reportedUserId,
+      reportedUserName: report.reportedUserName || 'Unknown',
+      chatId: report.chatId,
+      messageId: report.messageId,
+      status: report.status || 'pending',
+      createdAt: report.createdAt,
+      resolvedAt: report.resolvedAt,
+      resolvedBy: report.resolvedBy
+    });
+  } catch (error) {
+    console.error('Error getting report:', error);
+    res.status(500).json({ error: 'Failed to get report' });
+  }
+});
+
+// Update report
+router.put('/reports/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    const { status, resolvedBy, description } = req.body;
+    
+    const updateData = {};
+    if (status) updateData.status = status;
+    if (resolvedBy) updateData.resolvedBy = resolvedBy;
+    if (description) updateData.description = description;
+    
+    if (status === 'resolved') {
+      updateData.resolvedAt = new Date();
+    }
+    
+    const result = await db.collection('reports').updateOne(
+      { _id: new ObjectId(id) },
+      { $set: updateData }
+    );
+    
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    
+    res.json({ message: 'Report updated successfully' });
+  } catch (error) {
+    console.error('Error updating report:', error);
+    res.status(500).json({ error: 'Failed to update report' });
+  }
+});
+
+// Delete report
+router.delete('/reports/:id', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    
+    const result = await db.collection('reports').deleteOne({ _id: new ObjectId(id) });
+    
+    if (result.deletedCount === 0) {
+      return res.status(404).json({ error: 'Report not found' });
+    }
+    
+    res.json({ message: 'Report deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting report:', error);
+    res.status(500).json({ error: 'Failed to delete report' });
+  }
+});
+
+// ===== BULK OPERATIONS =====
+
+// Bulk delete users
+router.post('/users/bulk-delete', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { userIds } = req.body;
+    
+    if (!userIds || !Array.isArray(userIds)) {
+      return res.status(400).json({ error: 'userIds array is required' });
+    }
+    
+    const objectIds = userIds.map(id => new ObjectId(id));
+    const result = await db.collection('users').deleteMany({ _id: { $in: objectIds } });
+    
+    res.json({
+      message: 'Users deleted successfully',
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Error bulk deleting users:', error);
+    res.status(500).json({ error: 'Failed to delete users' });
+  }
+});
+
+// Bulk delete messages
+router.post('/messages/bulk-delete', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { messageIds } = req.body;
+    
+    if (!messageIds || !Array.isArray(messageIds)) {
+      return res.status(400).json({ error: 'messageIds array is required' });
+    }
+    
+    const objectIds = messageIds.map(id => new ObjectId(id));
+    const result = await db.collection('messages').deleteMany({ _id: { $in: objectIds } });
+    
+    res.json({
+      message: 'Messages deleted successfully',
+      deletedCount: result.deletedCount
+    });
+  } catch (error) {
+    console.error('Error bulk deleting messages:', error);
+    res.status(500).json({ error: 'Failed to delete messages' });
+  }
+});
+
+// ===== DATABASE OPERATIONS =====
+
+// Get all collections
+router.get('/collections', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const collections = await db.listCollections().toArray();
+    
+    const collectionsWithCounts = await Promise.all(
+      collections.map(async (collection) => {
+        const count = await db.collection(collection.name).countDocuments();
+        return {
+          name: collection.name,
+          count: count,
+          type: collection.type
+        };
+      })
+    );
+    
+    res.json({ collections: collectionsWithCounts });
+  } catch (error) {
+    console.error('Error getting collections:', error);
+    res.status(500).json({ error: 'Failed to get collections' });
+  }
+});
+
+// Get collection documents
+router.get('/collections/:name', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { name } = req.params;
+    const { page = 1, limit = 50 } = req.query;
+    
+    const skip = (page - 1) * limit;
+    
+    const documents = await db.collection(name)
+      .find({})
+      .sort({ _id: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .toArray();
+    
+    const total = await db.collection(name).countDocuments();
+    
+    res.json({
+      documents,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / limit)
+      }
+    });
+  } catch (error) {
+    console.error('Error getting collection documents:', error);
+    res.status(500).json({ error: 'Failed to get collection documents' });
+  }
+});
+
 module.exports = router;
