@@ -245,17 +245,45 @@ router.get('/messages', verifyAdminToken, async (req, res) => {
     
     const totalMessages = await db.collection('messages').countDocuments(query);
     
+    // Get sender names for messages
+    const messagesWithSenders = await Promise.all(
+      messages.map(async (message) => {
+        let senderName = 'Unknown';
+        let content = message.content || '';
+        
+        // Try to get sender name
+        if (message.senderId) {
+          try {
+            const sender = await db.collection('users').findOne({ _id: message.senderId });
+            if (sender) {
+              senderName = sender.displayName || sender.email || 'Unknown';
+            }
+          } catch (e) {
+            console.error('Error getting sender name:', e);
+          }
+        }
+        
+        // Handle media messages
+        if (message.mediaUrl && !content) {
+          content = `[${message.type || 'media'}]`;
+        }
+        
+        return {
+          id: message._id,
+          chatId: message.chatId,
+          senderId: message.senderId,
+          senderName: senderName,
+          type: message.type,
+          content: content,
+          mediaUrl: message.mediaUrl,
+          createdAt: message.createdAt,
+          updatedAt: message.updatedAt
+        };
+      })
+    );
+    
     res.json({
-      messages: messages.map(message => ({
-        id: message._id,
-        chatId: message.chatId,
-        senderId: message.senderId,
-        type: message.type,
-        content: message.content,
-        mediaUrl: message.mediaUrl,
-        createdAt: message.createdAt,
-        updatedAt: message.updatedAt
-      })),
+      messages: messagesWithSenders,
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),

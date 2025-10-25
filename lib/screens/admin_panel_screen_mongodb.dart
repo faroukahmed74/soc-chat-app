@@ -924,33 +924,48 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   }
 
   Widget _buildMessagesTab() {
-    if (_isLoadingMessages) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_messages.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('No messages found'),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadMessages,
-              child: const Text('Load Messages'),
-            ),
-          ],
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: _loadMessages,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh Messages'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Total: ${_messages.length} messages',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
         ),
-      );
-    }
+        Expanded(
+          child: _isLoadingMessages
+              ? const Center(child: CircularProgressIndicator())
+              : _messages.isEmpty
+                  ? const Center(child: Text('No messages found'))
+                  : _buildMessagesList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMessagesList() {
 
     return ListView.builder(
       itemCount: _messages.length,
       itemBuilder: (context, index) {
         final message = _messages[index];
-        final content = message['content'] ?? '';
+        final content = message['content'] ?? message['content'] ?? '';
         final senderId = message['senderId'] ?? '';
-        final timestampRaw = message['timestamp'] ?? '';
+        final senderName = message['senderName'] ?? 'Unknown';
+        final timestampRaw = message['createdAt'] ?? message['timestamp'] ?? '';
         String timestampDisplay = '';
         if (timestampRaw is String && timestampRaw.isNotEmpty) {
           try {
@@ -961,20 +976,20 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
             timestampDisplay = timestampRaw.toString();
           }
         }
-        final messageType = message['messageType'] ?? 'text';
+        final messageType = message['type'] ?? message['messageType'] ?? 'text';
 
         return Card(
           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: ListTile(
             leading: CircleAvatar(
-              backgroundColor: Colors.orange,
+              backgroundColor: messageType == 'media' ? Colors.purple : Colors.orange,
               child: Text(
                 messageType[0].toUpperCase(),
                 style: const TextStyle(color: Colors.white),
               ),
             ),
-            title: Text(content.length > 50 ? '${content.substring(0, 50)}...' : content),
-            subtitle: Text('From: $senderId, Time: ${timestampDisplay.isEmpty ? 'Unknown' : timestampDisplay}'),
+            title: Text(content.isEmpty ? '[No content]' : (content.length > 50 ? '${content.substring(0, 50)}...' : content)),
+            subtitle: Text('From: $senderName, Time: ${timestampDisplay.isEmpty ? 'Unknown' : timestampDisplay}'),
           ),
         );
       },
@@ -982,25 +997,39 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   }
 
   Widget _buildReportsTab() {
-    if (_isLoadingReports) {
-      return const Center(child: CircularProgressIndicator());
-    }
-
-    if (_reports.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Text('No reports found'),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _loadReports,
-              child: const Text('Load Reports'),
-            ),
-          ],
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Row(
+            children: [
+              ElevatedButton.icon(
+                onPressed: _loadReports,
+                icon: const Icon(Icons.refresh),
+                label: const Text('Refresh Reports'),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  'Total: ${_reports.length} reports',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+            ],
+          ),
         ),
-      );
-    }
+        Expanded(
+          child: _isLoadingReports
+              ? const Center(child: CircularProgressIndicator())
+              : _reports.isEmpty
+                  ? const Center(child: Text('No reports found'))
+                  : _buildReportsList(),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildReportsList() {
 
     return ListView.builder(
       itemCount: _reports.length,
