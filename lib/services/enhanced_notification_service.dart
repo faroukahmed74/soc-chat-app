@@ -161,7 +161,7 @@ class EnhancedNotificationService {
 
       _socket!.on('connect', (_) {
         _socketConnected = true;
-        Log.i('Socket connected to notification server', 'ENHANCED_NOTIF');
+        Log.i('✅ Socket connected to notification server', 'ENHANCED_NOTIF');
       });
 
       _socket!.on('disconnect', (_) {
@@ -181,7 +181,8 @@ class EnhancedNotificationService {
       });
 
       _socket!.on('chat_notification', (data) {
-        Log.i('Received chat notification via socket: $data', 'ENHANCED_NOTIF');
+        Log.i('🔔 Received chat notification via socket: $data', 'ENHANCED_NOTIF');
+        Log.i('📱 Processing notification - will show local notification', 'ENHANCED_NOTIF');
         _handleChatNotification(data);
       });
       
@@ -239,7 +240,7 @@ class EnhancedNotificationService {
           channelId: chatChannelId,
         );
         
-        Log.i('Displayed local notification: $title - $body', 'ENHANCED_NOTIF');
+        Log.i('🎵 DISPLAYED local notification with SOUND: $title - $body', 'ENHANCED_NOTIF');
       }
     } catch (e) {
       Log.e('Error handling chat notification', 'ENHANCED_NOTIF', e);
