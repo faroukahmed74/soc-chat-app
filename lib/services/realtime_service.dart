@@ -1,5 +1,6 @@
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import '../config/database_config.dart';
 import 'logger_service.dart';
 
@@ -18,6 +19,16 @@ class RealtimeService {
     if (_connecting || isConnected) return;
     _connecting = true;
     try {
+      // Get auth token from SharedPreferences
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString('auth_token');
+      
+      if (token == null) {
+        Log.w('No auth token available for Socket.IO - cannot connect', 'REALTIME');
+        _connecting = false;
+        return;
+      }
+      
       final base = DatabaseConfig.physicalServerUrl;
       // Derive ws base from http(s) base
       final uri = Uri.parse(base);
@@ -34,6 +45,7 @@ class RealtimeService {
           .enableForceNew()
           .enableReconnection()
           .setReconnectionDelay(1000)
+          .setAuth({'token': token})  // Add authentication token
           .build());
 
       _socket!.on('connect', (_) {

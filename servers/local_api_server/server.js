@@ -1068,6 +1068,10 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Chat not found or access denied' });
     }
     
+    // Get sender's display name
+    const sender = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    const senderName = sender?.displayName || sender?.username || 'Someone';
+    
     const message = {
       chatId,
       senderId: userId,
@@ -1094,11 +1098,34 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       }
     );
     
-    // Emit to socket
+    // Get other chat members (not the sender)
+    const otherMembers = chat.members
+      .filter(m => m.toString() !== userId.toString())
+      .map(m => m.toString());
+    
+    // Emit to socket for all chat members
     io.to(chatId).emit('new_message', {
       id: result.insertedId,
+      senderName: senderName,
       ...message
     });
+    
+    // Send notifications to other chat members
+    for (const memberId of otherMembers) {
+      const title = chat.isGroupChat ? chat.name : senderName;
+      const body = messageType === 'text' ? content : messageType === 'image' ? '📷 Image' : '📎 ' + messageType;
+      
+      // Send socket notification
+      io.to(memberId).emit('chat_notification', {
+        title: title,
+        body: body,
+        chatId: chatId,
+        senderId: userId,
+        senderName: senderName,
+        messageType: messageType || 'text',
+        timestamp: new Date(),
+      });
+    }
     
     res.status(201).json({
       id: result.insertedId,
@@ -1165,8 +1192,11 @@ io.use(async (socket, next) => {
   
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
-    socket.userId = decoded.uid;
+    // Handle both uid and id for compatibility
+    socket.userId = decoded.uid || decoded.id;
     socket.user = decoded;
+    
+    console.log(`Socket authenticated for user: ${socket.userId}`);
     
     // Update user's online status
     if (db) {
@@ -1193,7 +1223,7 @@ io.on('connection', async (socket) => {
   if (db) {
     try {
       const chats = await db.collection('chats').find({
-        members: socket.userId
+        members: new ObjectId(socket.userId)
       }).toArray();
       
       chats.forEach(chat => {
@@ -1214,6 +1244,12 @@ io.on('connection', async (socket) => {
   socket.on('leave_chat', (chatId) => {
     socket.leave(chatId);
     console.log(`Client left chat: ${chatId}`);
+  });
+  
+  // Handle join_user event for notification room
+  socket.on('join_user', (userId) => {
+    socket.join(userId);
+    console.log(`User ${socket.userId} joined notification room: ${userId}`);
   });
   
   socket.on('disconnect', async () => {

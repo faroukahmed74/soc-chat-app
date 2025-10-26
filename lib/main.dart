@@ -470,8 +470,18 @@ class _MainAppState extends State<MainApp> {
       // Initialize enhanced notification services for physical server
       try {
         final enhanced = EnhancedNotificationService();
-        await enhanced.initialize();
-        Log.i('Enhanced notification service initialized', 'MAIN_APP');
+        
+        // Check if already initialized to avoid re-initialization
+        if (!enhanced.isInitialized) {
+          await enhanced.initialize();
+          Log.i('Enhanced notification service initialized successfully', 'MAIN_APP');
+          
+          // Verify initialization
+          final status = await enhanced.getNotificationStatus();
+          Log.i('Notification status: ${status.toString()}', 'MAIN_APP');
+        } else {
+          Log.i('Enhanced notification service already initialized', 'MAIN_APP');
+        }
       } catch (e) {
         Log.e('Enhanced notification service failed', 'MAIN_APP', e);
       }

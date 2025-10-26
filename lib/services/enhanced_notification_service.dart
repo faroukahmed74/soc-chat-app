@@ -184,6 +184,12 @@ class EnhancedNotificationService {
         Log.i('Received chat notification via socket: $data', 'ENHANCED_NOTIF');
         _handleChatNotification(data);
       });
+      
+      // Join user to their personal notification room
+      if (_currentUserId != null) {
+        _socket!.emit('join_user', _currentUserId);
+        Log.i('Joined notification room for user: $_currentUserId', 'ENHANCED_NOTIF');
+      }
 
     } catch (e) {
       Log.e('Failed to initialize socket connection', 'ENHANCED_NOTIF', e);
@@ -216,6 +222,8 @@ class EnhancedNotificationService {
         final body = data['body'] ?? '';
         final chatId = data['chatId'] ?? '';
         final senderId = data['senderId'] ?? '';
+        final senderName = data['senderName'] ?? 'Someone';
+        final messageType = data['messageType'] ?? 'text';
         
         await sendLocalNotification(
           title: title,
@@ -224,10 +232,14 @@ class EnhancedNotificationService {
             'type': 'chat_message',
             'chatId': chatId,
             'senderId': senderId,
+            'senderName': senderName,
+            'messageType': messageType,
             'timestamp': DateTime.now().toIso8601String(),
           }),
           channelId: chatChannelId,
         );
+        
+        Log.i('Displayed local notification: $title - $body', 'ENHANCED_NOTIF');
       }
     } catch (e) {
       Log.e('Error handling chat notification', 'ENHANCED_NOTIF', e);
