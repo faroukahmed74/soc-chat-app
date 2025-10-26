@@ -1,10 +1,10 @@
 {
-  "version": "1.0.4",
-  "build_number": "5",
+  "version": "1.0.5",
+  "build_number": "6",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.4 - Admin Panel Enhancement:\n- Fixed group chat display names showing as 'Unknown'\n- Enhanced admin panel with comprehensive CRUD operations\n- Implemented Quick Actions in admin dashboard\n- Added Export Data, View Logs, Backup Database, and System Cleanup features\n- Fixed messages showing 'No Text' in admin panel\n- Added sender name resolution for all messages\n- Enhanced notification system with Socket.IO authentication\n- Improved admin panel with complete database control capabilities",
+  "release_notes": "SOC Chat App v1.0.5 - Multi-Network Support & UI Enhancements:\n- Implemented multi-network support for web app\n- Fixed profile endpoint JWT token decoding issue\n- Enhanced chat list with improved last message display\n- Added timestamp below last message in chat tiles\n- Auto-detection of API server based on access network IP\n- Works seamlessly on multiple network interfaces (10.120.4.230 and 160.2.1.18)\n- Fixed profile screen loading issue after server restart\n- Improved chat tile layout and message preview visibility\n- Enhanced error handling and connection management",
   "force_update": false,
-  "minimum_version": "1.0.4",
+  "minimum_version": "1.0.5",
   "update_available": false,
-  "last_updated": "2025-01-23T18:00:00Z"
+  "last_updated": "2025-01-24T12:00:00Z"
 }
