@@ -282,12 +282,10 @@ class _AuthGateState extends State<AuthGate> {
             // On web, go through the same origin proxy (no CORS issues)
             final origin = Uri.base.origin;
             verifyUrl = '$origin/api/auth/verify';
-            print('AuthGate: Using web proxy URL: $verifyUrl');
           } else {
             // On mobile, use the configured server URL
             final base = DatabaseConfig.physicalServerUrl;
             verifyUrl = base.endsWith('/') ? '${base}api/auth/verify' : '$base/api/auth/verify';
-            print('AuthGate: Using mobile direct URL: $verifyUrl');
           }
           
           print('AuthGate: Verifying token at: $verifyUrl');
@@ -296,7 +294,7 @@ class _AuthGateState extends State<AuthGate> {
                 'Authorization': 'Bearer ' + token,
                 'ngrok-skip-browser-warning': 'true',
               })
-              .timeout(const Duration(seconds: 5));
+              .timeout(const Duration(seconds: 3));
           isValid = resp.statusCode == 200;
           print('AuthGate: Token verify status: ' + resp.statusCode.toString());
         } catch (e) {
@@ -305,14 +303,11 @@ class _AuthGateState extends State<AuthGate> {
         }
       }
       
-      print('AuthGate: Authentication result - hasToken: ${token.isNotEmpty}, isValid: $isValid');
-      
       if (mounted) {
         setState(() {
           _isAuthenticated = token.isNotEmpty && isValid;
           _isLoading = false;
         });
-        print('AuthGate: State updated - authenticated: $_isAuthenticated, loading: $_isLoading');
       }
       
       if (token.isNotEmpty && isValid) {
@@ -322,15 +317,13 @@ class _AuthGateState extends State<AuthGate> {
       } else {
         print('AuthGate: No token - showing LoginScreen');
       }
-    } catch (e, stackTrace) {
+    } catch (e) {
       print('AuthGate: Auth check error: $e');
-      print('AuthGate: Stack trace: $stackTrace');
       if (mounted) {
         setState(() {
           _isAuthenticated = false;
           _isLoading = false;
         });
-        print('AuthGate: Error state set - authenticated: false, loading: false');
       }
     }
   }
