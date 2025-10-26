@@ -19,7 +19,7 @@ class DatabaseConfig {
   );
   static const String webServerUrl = String.fromEnvironment(
     'API_BASE_URL_WEB',
-    defaultValue: '', // Will be resolved dynamically
+    defaultValue: 'http://10.120.4.230:3003', // Use specific server IP
   );
   // Backwards compatibility: single define still supported
   static const String serverUrl = String.fromEnvironment(
@@ -193,28 +193,17 @@ String _resolveServerUrl() {
   
   if (kIsWeb) {
     print('Platform: Web detected');
-    // For web builds, use configured web server URL first
+    // For web builds, use configured web server URL (regardless of which IP accessed from)
     if (DatabaseConfig.webServerUrl.isNotEmpty) {
       print('Using web server URL: ${DatabaseConfig.webServerUrl}');
       return DatabaseConfig.webServerUrl;
-    }
-    // For web, derive API URL from current page origin
-    // If accessing via port 8082, API should be on port 3003 of same host
-    try {
-      // This will be resolved at runtime based on the current page URL
-      final currentOrigin = Uri.base.origin; // e.g., http://192.168.1.100:8082
-      final apiUrl = currentOrigin.replaceAll(':8082', ':3003'); // e.g., http://192.168.1.100:3003
-      print('Using dynamic web API URL: $apiUrl');
-      return apiUrl;
-    } catch (e) {
-      print('Error resolving dynamic API URL: $e');
     }
     // Fallback to unified API_BASE_URL
     if (DatabaseConfig.serverUrl.isNotEmpty) {
       print('Using fallback server URL: ${DatabaseConfig.serverUrl}');
       return DatabaseConfig.serverUrl;
     }
-    // Final fallback: use local network IP for web
+    // Final fallback: use specific local network IP for web
     print('Using final fallback: http://10.120.4.230:3003');
     return 'http://10.120.4.230:3003';
   } else {
