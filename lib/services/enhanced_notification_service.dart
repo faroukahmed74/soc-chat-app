@@ -91,7 +91,8 @@ class EnhancedNotificationService {
       description: 'Notifications for chat messages',
       importance: Importance.high,
       playSound: true,
-      sound: RawResourceAndroidNotificationSound('chat_notification'),
+      enableVibration: true,
+      enableLights: true,
     );
 
     const AndroidNotificationChannel groupChannel = AndroidNotificationChannel(
@@ -100,7 +101,8 @@ class EnhancedNotificationService {
       description: 'Notifications for group messages',
       importance: Importance.high,
       playSound: true,
-      sound: RawResourceAndroidNotificationSound('group_notification'),
+      enableVibration: true,
+      enableLights: true,
     );
 
     const AndroidNotificationChannel broadcastChannel = AndroidNotificationChannel(
@@ -109,7 +111,8 @@ class EnhancedNotificationService {
       description: 'Notifications for broadcast messages',
       importance: Importance.high,
       playSound: true,
-      sound: RawResourceAndroidNotificationSound('notification_sound'),
+      enableVibration: true,
+      enableLights: true,
     );
 
     final android = _fln.resolvePlatformSpecificImplementation<
@@ -314,11 +317,9 @@ class EnhancedNotificationService {
           importance: Importance.high,
           priority: Priority.high,
           playSound: true,
-          sound: channelId == groupChannelId
-              ? const RawResourceAndroidNotificationSound('group_notification')
-              : channelId == broadcastChannelId
-                  ? const RawResourceAndroidNotificationSound('notification_sound')
-                  : const RawResourceAndroidNotificationSound('chat_notification'),
+          enableVibration: true,
+          enableLights: true,
+          // Use default notification sound instead of custom files
           styleInformation: const BigTextStyleInformation(''),
         ),
         iOS: const DarwinNotificationDetails(
