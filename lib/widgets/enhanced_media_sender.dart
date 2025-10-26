@@ -156,7 +156,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
     return Column(
       children: [
         Text(
-          'Choose media type:',
+          kIsWeb ? 'Attach a file:' : 'Choose media type:',
           style: TextStyle(
             fontSize: 16,
             fontWeight: FontWeight.w600,
@@ -185,36 +185,52 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
               buttonsPerRow = 2; // Mobile: 2x2 grid
             }
             
-            final buttons = [
-              _buildMediaButton(
-                icon: Icons.photo_library,
-                label: 'Gallery',
-                color: Colors.blue,
-                onTap: () => _pickImageFromGallery(),
-                size: buttonSize,
-              ),
-              _buildMediaButton(
-                icon: Icons.camera_alt,
-                label: 'Camera',
-                color: Colors.green,
-                onTap: () => _pickImageFromCamera(),
-                size: buttonSize,
-              ),
-              _buildMediaButton(
-                icon: Icons.video_library,
-                label: 'Video',
-                color: Colors.red,
-                onTap: () => _pickVideoFromGallery(),
-                size: buttonSize,
-              ),
-              _buildMediaButton(
-                icon: Icons.attach_file,
-                label: 'Document',
-                color: Colors.orange,
-                onTap: () => _pickDocument(),
-                size: buttonSize,
-              ),
-            ];
+            final buttons;
+            
+            if (isWeb) {
+              // For web: only show document/file attachment (any file type)
+              buttons = [
+                _buildMediaButton(
+                  icon: Icons.attach_file,
+                  label: 'Attach File',
+                  color: Colors.orange,
+                  onTap: () => _pickAnyFile(),
+                  size: buttonSize,
+                ),
+              ];
+            } else {
+              // For mobile: show all media options
+              buttons = [
+                _buildMediaButton(
+                  icon: Icons.photo_library,
+                  label: 'Gallery',
+                  color: Colors.blue,
+                  onTap: () => _pickImageFromGallery(),
+                  size: buttonSize,
+                ),
+                _buildMediaButton(
+                  icon: Icons.camera_alt,
+                  label: 'Camera',
+                  color: Colors.green,
+                  onTap: () => _pickImageFromCamera(),
+                  size: buttonSize,
+                ),
+                _buildMediaButton(
+                  icon: Icons.video_library,
+                  label: 'Video',
+                  color: Colors.red,
+                  onTap: () => _pickVideoFromGallery(),
+                  size: buttonSize,
+                ),
+                _buildMediaButton(
+                  icon: Icons.attach_file,
+                  label: 'Document',
+                  color: Colors.orange,
+                  onTap: () => _pickDocument(),
+                  size: buttonSize,
+                ),
+              ];
+            }
             
             if (buttonsPerRow == 2) {
               // Mobile: 2x2 grid
@@ -606,6 +622,24 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
     } catch (e) {
       Log.e('Error picking document', 'ENHANCED_MEDIA_SENDER', e);
       _showError('Failed to pick document: $e');
+    }
+  }
+
+  Future<void> _pickAnyFile() async {
+    try {
+      Log.i('Starting pick any file (web)', 'ENHANCED_MEDIA_SENDER');
+      // On web, we'll use the EnhancedUnifiedMediaService to pick any file type
+      final result = await ImprovedMediaService.pickDocument(context); // This already picks any file type
+      if (result != null) {
+        setState(() {
+          _selectedMedia = result;
+          _uploadError = null;
+        });
+        Log.i('File selected successfully: ${result.fileName}', 'ENHANCED_MEDIA_SENDER');
+      }
+    } catch (e) {
+      Log.e('Error picking file', 'ENHANCED_MEDIA_SENDER', e);
+      _showError('Failed to pick file: $e');
     }
   }
 

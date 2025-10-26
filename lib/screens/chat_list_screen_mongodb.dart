@@ -13,6 +13,7 @@ import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
 import '../utils/group_chat_naming_utility.dart';
 import 'chat_screen_mongodb.dart';
+import 'chat_screen_web_mongodb.dart';
 import '../services/version_check_service.dart';
 // import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -323,13 +324,13 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
             context,
             MaterialPageRoute(
               builder: (context) => ChatScreenMongoDB(
-                chatId: chatId,
-                chatName: name,
-                isGroupChat: isGroup,
-                userIds: chat['members'] != null 
-                    ? List<String>.from(chat['members'])
-                    : null,
-              ),
+                    chatId: chatId,
+                    chatName: name,
+                    isGroupChat: isGroup,
+                    userIds: chat['members'] != null 
+                        ? List<String>.from(chat['members'])
+                        : null,
+                  ),
             ),
           );
         },

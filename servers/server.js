@@ -5,19 +5,30 @@ const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8082;
 
 // Proxy API requests to local API server to keep same-origin for the web app
-const API_TARGET = process.env.API_TARGET || 'http://localhost:3003';
+// Use 127.0.0.1 instead of localhost to ensure it always targets the local server
+const API_TARGET = process.env.API_TARGET || 'http://127.0.0.1:3003';
+console.log('API Proxy configured to target:', API_TARGET);
+
 app.use(
   '/api',
   createProxyMiddleware({
     // Target the API server directly (it already has /api routes)
     target: API_TARGET,
     changeOrigin: true,
-    logLevel: 'warn',
+    logLevel: 'debug',
     onProxyReq: (proxyReq, req, res) => {
+      console.log('Proxying API request:', req.method, req.url, '->', API_TARGET);
       // Remove Origin header so API treats request as non-browser (allowed by CORS)
       try {
         proxyReq.setHeader('origin', '');
       } catch (e) {}
+    },
+    onProxyRes: (proxyRes, req, res) => {
+      console.log('API Proxy response:', proxyRes.statusCode, req.url);
+    },
+    onError: (err, req, res) => {
+      console.error('API Proxy error:', err.message);
+      res.status(500).json({ error: 'Proxy error', message: err.message });
     },
   })
 );

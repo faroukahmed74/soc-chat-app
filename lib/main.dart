@@ -276,14 +276,27 @@ class _AuthGateState extends State<AuthGate> {
       bool isValid = false;
       if (token.isNotEmpty) {
         try {
-          final base = DatabaseConfig.physicalServerUrl;
-          final verifyUrl = base.endsWith('/') ? '${base}api/auth/verify' : '$base/api/auth/verify';
+          // For web, use the proxy through the web server. For mobile, use direct API access.
+          String verifyUrl;
+          if (kIsWeb) {
+            // On web, go through the same origin proxy (no CORS issues)
+            final origin = Uri.base.origin;
+            verifyUrl = '$origin/api/auth/verify';
+            print('AuthGate: Using web proxy URL: $verifyUrl');
+          } else {
+            // On mobile, use the configured server URL
+            final base = DatabaseConfig.physicalServerUrl;
+            verifyUrl = base.endsWith('/') ? '${base}api/auth/verify' : '$base/api/auth/verify';
+            print('AuthGate: Using mobile direct URL: $verifyUrl');
+          }
+          
+          print('AuthGate: Verifying token at: $verifyUrl');
           final resp = await http
               .get(Uri.parse(verifyUrl), headers: {
                 'Authorization': 'Bearer ' + token,
                 'ngrok-skip-browser-warning': 'true',
               })
-              .timeout(const Duration(seconds: 3));
+              .timeout(const Duration(seconds: 5));
           isValid = resp.statusCode == 200;
           print('AuthGate: Token verify status: ' + resp.statusCode.toString());
         } catch (e) {
@@ -292,11 +305,14 @@ class _AuthGateState extends State<AuthGate> {
         }
       }
       
+      print('AuthGate: Authentication result - hasToken: ${token.isNotEmpty}, isValid: $isValid');
+      
       if (mounted) {
         setState(() {
           _isAuthenticated = token.isNotEmpty && isValid;
           _isLoading = false;
         });
+        print('AuthGate: State updated - authenticated: $_isAuthenticated, loading: $_isLoading');
       }
       
       if (token.isNotEmpty && isValid) {
@@ -306,13 +322,15 @@ class _AuthGateState extends State<AuthGate> {
       } else {
         print('AuthGate: No token - showing LoginScreen');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       print('AuthGate: Auth check error: $e');
+      print('AuthGate: Stack trace: $stackTrace');
       if (mounted) {
         setState(() {
           _isAuthenticated = false;
           _isLoading = false;
         });
+        print('AuthGate: Error state set - authenticated: false, loading: false');
       }
     }
   }

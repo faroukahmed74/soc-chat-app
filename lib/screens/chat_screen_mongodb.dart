@@ -15,6 +15,7 @@ import '../services/physical_auth_service.dart';
 import '../services/media_cache_service.dart';
 import '../utils/group_chat_naming_utility.dart';
 import '../widgets/enhanced_chat_input.dart';
+import '../widgets/enhanced_media_preview.dart';
 import '../widgets/full_screen_media_preview.dart';
 import '../services/realtime_service.dart';
 import '../services/active_chat_service.dart';
@@ -783,76 +784,23 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
 
   /// Build cached image widget with fallback to network
   Widget _buildCachedImage(String mediaUrl) {
-    return FutureBuilder<String?>(
-      future: _getCachedMediaPath(mediaUrl),
-      builder: (context, snapshot) {
-        if (snapshot.hasData && snapshot.data != null) {
-          // Use cached image
-          return Image.file(
-            File(snapshot.data!),
-            width: 200,
-            height: 200,
-            fit: BoxFit.cover,
-            errorBuilder: (context, error, stackTrace) {
-              // Fallback to network if cached file is corrupted
-              return _buildNetworkImage(mediaUrl);
-            },
-          );
-        } else {
-          // Use network image and cache it
-          return _buildNetworkImage(mediaUrl);
-        }
-      },
+    // Use EnhancedMediaPreview for consistent media handling across platforms
+    return GestureDetector(
+      onTap: () => _showFullScreenMedia(mediaUrl, 'image', 'Image'),
+      child: Container(
+        constraints: const BoxConstraints(
+          maxWidth: 250,
+          maxHeight: 250,
+        ),
+        child: EnhancedMediaPreview(
+          mediaUrl: mediaUrl,
+          mediaType: 'image',
+          onTap: () => _showFullScreenMedia(mediaUrl, 'image', 'Image'),
+          maxWidth: 250,
+          maxHeight: 200,
+          enableRetry: true,
+        ),
+      ),
     );
-  }
-
-  /// Build network image with caching
-  Widget _buildNetworkImage(String mediaUrl) {
-    return Image.network(
-      mediaUrl,
-      width: 200,
-      height: 200,
-      fit: BoxFit.cover,
-      loadingBuilder: (context, child, loadingProgress) {
-        if (loadingProgress == null) {
-          // Image loaded, cache it
-          MediaCacheService.cacheMedia(mediaUrl, mediaType: 'image');
-          return child;
-        }
-        return Container(
-          width: 200,
-          height: 200,
-          child: Center(
-            child: CircularProgressIndicator(
-              value: loadingProgress.expectedTotalBytes != null
-                  ? loadingProgress.cumulativeBytesLoaded / loadingProgress.expectedTotalBytes!
-                  : null,
-            ),
-          ),
-        );
-      },
-      errorBuilder: (context, error, stackTrace) {
-        return Container(
-          width: 200,
-          height: 200,
-          color: Theme.of(context).colorScheme.surfaceVariant,
-          child: Icon(
-            Icons.broken_image,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        );
-      },
-    );
-  }
-
-  /// Get cached media path or cache the media
-  Future<String?> _getCachedMediaPath(String mediaUrl) async {
-    if (MediaCacheService.isCached(mediaUrl)) {
-      return MediaCacheService.getCachedPath(mediaUrl);
-    } else {
-      // Cache the media in background
-      MediaCacheService.cacheMedia(mediaUrl, mediaType: 'image');
-      return null;
-    }
   }
 }

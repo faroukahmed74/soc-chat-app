@@ -22,12 +22,16 @@ const { jwtVerify, createRemoteJWKSet } = require('jose');
 const app = express();
 const server = http.createServer(app);
 // Trust reverse proxies (e.g., ngrok) so Express uses X-Forwarded-For for req.ip
-app.set('trust proxy', 1);
+app.set('trust proxy', true);
 // CORS allowed origins (comma-separated). Example: https://api.example.com,http://localhost:8080
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8080,http://localhost:8082,http://192.168.0.117:8080,http://192.168.0.117:8082,http://10.120.4.230:8080,http://10.120.4.230:8082')
+// Allow any local network IP on common ports
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8080,http://localhost:8082')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
+  
+// Note: Local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x) are 
+// automatically allowed by CORS configuration below
 
 // Add mobile-specific origins for better compatibility
 const mobileOrigins = [
@@ -107,12 +111,24 @@ app.use(cors({
       return callback(null, true);
     }
     
-    // Allow local network IPs on common ports
-    if (origin.match(/^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:(8080|8082|3000|3001|3002|3003|3004)$/)) {
+    // Allow local network IPs on any port (IPv4 ranges)
+    // 192.168.x.x - private network
+    if (origin.match(/^http:\/\/192\.168\.\d{1,3}\.\d{1,3}:\d+$/)) {
       return callback(null, true);
     }
     
-    if (origin.match(/^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:(8080|8082|3000|3001|3002|3003|3004)$/)) {
+    // 10.x.x.x - private network
+    if (origin.match(/^http:\/\/10\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/)) {
+      return callback(null, true);
+    }
+    
+    // 172.16-31.x.x - private network
+    if (origin.match(/^http:\/\/172\.(1[6-9]|2[0-9]|3[0-1])\.\d{1,3}\.\d{1,3}:\d+$/)) {
+      return callback(null, true);
+    }
+    
+    // Allow all IPv4 addresses on localhost/bound network (like 160.2.x.x)
+    if (origin.match(/^http:\/\/\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+$/)) {
       return callback(null, true);
     }
     
@@ -140,47 +156,40 @@ app.use((req, res, next) => {
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('dev'));
 
-// Basic rate limiting - more lenient for development
-const limiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  // Bump global cap to accommodate polling during development
-  max: parseInt(process.env.RATE_LIMIT_MAX || '10000', 10),
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    error: 'Too many requests from this IP',
-    message: 'Please try again later'
-  },
-  // IPv6-safe key generator; honors trust proxy and avoids bypasses
-  keyGenerator: rateLimit.ipKeyGenerator,
-  // Skip rate limiting for health, auth, and high-frequency polling endpoints
-  skip: (req) => {
-    const p = req.path || '';
-    const m = (req.method || 'GET').toUpperCase();
-    // Health/status endpoints
-    if (p === '/health' || p.startsWith('/api/health') || p.startsWith('/api/status/')) return true;
-    // Preflight/HEAD
-    if (m === 'OPTIONS' || m === 'HEAD') return true;
-    // Polling-heavy GET endpoints
-    if (m === 'GET' && (p === '/api/chats' || (p.startsWith('/api/chats/') && p.endsWith('/messages')))) return true;
-    // Allow message send and auth to bypass rate limit
-    if (p.startsWith('/api/messages') || p.startsWith('/api/auth')) return true;
-    return false;
-  }
-});
-app.use(limiter);
+// Rate limiting disabled for development
+// const limiter = rateLimit({
+//   windowMs: 15 * 60 * 1000, // 15 minutes
+//   max: parseInt(process.env.RATE_LIMIT_MAX || '10000', 10),
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   message: {
+//     error: 'Too many requests from this IP',
+//     message: 'Please try again later'
+//   },
+//   keyGenerator: rateLimit.ipKeyGenerator,
+//   skip: (req) => {
+//     const p = req.path || '';
+//     const m = (req.method || 'GET').toUpperCase();
+//     if (p === '/health' || p.startsWith('/api/health') || p.startsWith('/api/status/')) return true;
+//     if (m === 'OPTIONS' || m === 'HEAD') return true;
+//     if (m === 'GET' && (p === '/api/chats' || (p.startsWith('/api/chats/') && p.endsWith('/messages')))) return true;
+//     if (p.startsWith('/api/messages') || p.startsWith('/api/auth')) return true;
+//     return false;
+//   }
+// });
+// app.use(limiter);
 
-// More lenient rate limiting for user search endpoints
-const userSearchLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 50, // 50 requests per minute for user search
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: {
-    error: 'Too many user search requests',
-    message: 'Please wait a moment before searching again'
-  }
-});
+// User search rate limiting disabled for development
+// const userSearchLimiter = rateLimit({
+//   windowMs: 1 * 60 * 1000, // 1 minute
+//   max: 50, // 50 requests per minute for user search
+//   standardHeaders: true,
+//   legacyHeaders: false,
+//   message: {
+//     error: 'Too many user search requests',
+//     message: 'Please wait a moment before searching again'
+//   }
+// });
 
 // =========================================
 // Static uploads directory and multer setup
@@ -706,6 +715,37 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+// Verify token endpoint
+app.get('/api/auth/verify', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return res.status(401).json({ error: 'No token provided' });
+    }
+    
+    const token = authHeader.substring(7);
+    
+    try {
+      const decoded = jwt.verify(token, JWT_SECRET);
+      res.json({ 
+        valid: true, 
+        user: {
+          id: decoded.id,
+          email: decoded.email,
+          displayName: decoded.displayName,
+          role: decoded.role || 'user'
+        }
+      });
+    } catch (err) {
+      res.status(401).json({ error: 'Invalid token' });
+    }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 // =========================================
 // Media Upload Route
 // =========================================
@@ -729,43 +769,21 @@ app.post('/api/media/upload', authenticateToken, (req, res) => {
     // Build public URL to the uploaded file
     const relativePath = path.join('chat_media', chatId, req.file.filename).replace(/\\/g, '/');
     
-    // Detect platform and use appropriate base URL
-    const userAgent = req.get('User-Agent') || '';
-    const referer = req.get('Referer') || '';
-    
-    // More robust platform detection
-    const isWeb = userAgent.includes('Mozilla') && 
-                  !userAgent.includes('Mobile') && 
-                  !userAgent.includes('Android') &&
-                  !userAgent.includes('iPhone') &&
-                  !userAgent.includes('iPad');
-    
-    // Also check if it's coming from a web browser
-    const isWebReferer = referer.includes('localhost') || referer.includes('127.0.0.1');
-    
-    console.log('Platform detection:', {
-      userAgent: userAgent.substring(0, 100),
-      referer: referer.substring(0, 50),
-      isWeb: isWeb,
-      isWebReferer: isWebReferer
-    });
-    
-    let baseUrl;
-    if (isWeb || isWebReferer) {
-      // For web clients, use localhost
-      baseUrl = process.env.WEB_BASE_URL || 'http://localhost:3003';
-    } else {
-      // For mobile clients, use ngrok URL
-      baseUrl = process.env.MOBILE_BASE_URL || 'https://soc-chat-app.ngrok-free.app';
-    }
-    
+    // Always use ngrok URL for media files to ensure cross-platform access
+    // This ensures media sent from web can be viewed on mobile and vice versa
+    const baseUrl = process.env.MOBILE_BASE_URL || 'https://soc-chat-app.ngrok-free.app';
     const mediaUrl = `${baseUrl}/uploads/${relativePath}`;
+    
+    console.log('Media URL generated (always using public URL):', {
+      baseUrl,
+      relativePath,
+      mediaUrl
+    });
     
     console.log('Media upload successful:', {
       fileName: req.file.filename,
       chatId,
       type,
-      platform: isWeb ? 'web' : 'mobile',
       mediaUrl,
       fileSize: req.file.size
     });
@@ -783,7 +801,7 @@ app.post('/api/media/upload', authenticateToken, (req, res) => {
 
 // User Routes
 // Get all users (for user search functionality)
-app.get('/api/users', userSearchLimiter, authenticateToken, async (req, res) => {
+app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     const users = await db.collection('users')
       .find({}, { projection: { password: 0 } })

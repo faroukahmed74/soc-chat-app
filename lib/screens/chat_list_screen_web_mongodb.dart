@@ -13,7 +13,7 @@ import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
 import '../services/version_check_service.dart';
 import '../utils/group_chat_naming_utility.dart';
-import 'chat_screen_web_mongodb.dart';
+import 'chat_screen_mongodb.dart';
 
 class ChatListScreenWebMongoDB extends StatefulWidget {
   const ChatListScreenWebMongoDB({Key? key}) : super(key: key);
@@ -275,7 +275,7 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => ChatScreenWebMongoDB(
+              builder: (context) => ChatScreenMongoDB(
                 chatId: chatId,
                 chatName: name,
                 isGroupChat: isGroup,

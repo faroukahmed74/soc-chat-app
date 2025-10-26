@@ -9,7 +9,14 @@ import 'package:http/http.dart' as http;
 class DocumentService {
   // Supported document types
   static const List<String> supportedExtensions = [
-    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'
+    // Microsoft Office
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx',
+    // Text files
+    'txt', 'rtf', 'odt', 'ods', 'odp',
+    // Images (for document previews)
+    'jpg', 'jpeg', 'png', 'gif',
+    // Other
+    'csv',
   ];
   
   static const Map<String, String> mimeTypes = {
@@ -20,6 +27,12 @@ class DocumentService {
     'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'ppt': 'application/vnd.ms-powerpoint',
     'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+    'txt': 'text/plain',
+    'rtf': 'application/rtf',
+    'odt': 'application/vnd.oasis.opendocument.text',
+    'ods': 'application/vnd.oasis.opendocument.spreadsheet',
+    'odp': 'application/vnd.oasis.opendocument.presentation',
+    'csv': 'text/csv',
   };
 
   /// Pick a document with file type filtering
@@ -70,6 +83,23 @@ class DocumentService {
       case 'ppt':
       case 'pptx':
         return 'PowerPoint Presentation';
+      case 'txt':
+        return 'Text Document';
+      case 'rtf':
+        return 'Rich Text Document';
+      case 'odt':
+        return 'OpenDocument Text';
+      case 'ods':
+        return 'OpenDocument Spreadsheet';
+      case 'odp':
+        return 'OpenDocument Presentation';
+      case 'csv':
+        return 'CSV File';
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+        return 'Image File';
       default:
         return 'Document';
     }
@@ -91,6 +121,20 @@ class DocumentService {
       case 'ppt':
       case 'pptx':
         return '📙';
+      case 'txt':
+        return '📝';
+      case 'csv':
+        return '📊';
+      case 'rtf':
+      case 'odt':
+      case 'ods':
+      case 'odp':
+        return '📋';
+      case 'jpg':
+      case 'jpeg':
+      case 'png':
+      case 'gif':
+        return '🖼️';
       default:
         return '📄';
     }
@@ -123,37 +167,78 @@ class DocumentService {
       print('[DocumentService] Opening document: $fileName from URL: $url');
       
       if (kIsWeb) {
-        // For web, open in new tab
-        print('[DocumentService] Opening document in web browser');
-        return await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+        // For web, use enhanced online viewers
+        final extension = _getExtensionFromFileName(fileName);
+        final viewerUrl = _getWebViewerUrl(url, extension);
+        print('[DocumentService] Opening document with viewer: $viewerUrl');
+        return await launchUrl(Uri.parse(viewerUrl), mode: LaunchMode.externalApplication);
       } else {
-        // For mobile, check if it's a Firebase Storage URL
-        if (url.contains('firebasestorage.googleapis.com')) {
-          print('[DocumentService] Firebase Storage URL detected, opening directly');
-          // For Firebase Storage URLs, try to open directly first
-          try {
-            final uri = Uri.parse(url);
-            return await launchUrl(uri, mode: LaunchMode.externalApplication);
-          } catch (e) {
-            print('[DocumentService] Direct opening failed, trying download: $e');
-            // If direct opening fails, try download and open
-            return await _downloadAndOpenDocument(url, fileName);
+        // For mobile, open with system app (Word, Excel, PowerPoint, PDF viewer, etc.)
+        // This will open with the default app installed on the device
+        print('[DocumentService] Opening document with system app on mobile');
+        
+        // Try to open directly first
+        try {
+          final uri = Uri.parse(url);
+          final launched = await launchUrl(uri, mode: LaunchMode.externalApplication);
+          if (launched) {
+            print('[DocumentService] Successfully opened with external app');
+            return true;
           }
-        } else {
-          // For other URLs, try direct opening first
-          try {
-            final uri = Uri.parse(url);
-            return await launchUrl(uri, mode: LaunchMode.externalApplication);
-          } catch (e) {
-            print('[DocumentService] Direct opening failed, trying download: $e');
-            // If direct opening fails, try download and open
-            return await _downloadAndOpenDocument(url, fileName);
-          }
+        } catch (e) {
+          print('[DocumentService] Direct opening failed: $e');
         }
+        
+        // If direct opening fails, download and open
+        return await _downloadAndOpenDocument(url, fileName);
       }
     } catch (e) {
       print('[DocumentService] Error opening document: $e');
       return false;
+    }
+  }
+
+  /// Get extension from file name
+  static String _getExtensionFromFileName(String fileName) {
+    final parts = fileName.split('.');
+    if (parts.length > 1) {
+      return parts.last.toLowerCase();
+    }
+    return 'pdf'; // Default to PDF
+  }
+
+  /// Get appropriate web viewer URL based on file type
+  static String _getWebViewerUrl(String url, String extension) {
+    try {
+      // For text files, use raw view or browser default
+      if (['txt', 'csv'].contains(extension)) {
+        // Open directly in browser
+        return url;
+      }
+      
+      // For images, open directly in browser
+      if (['jpg', 'jpeg', 'png', 'gif'].contains(extension)) {
+        return url;
+      }
+      
+      // Microsoft Office Online Viewer (supports Word, Excel, PowerPoint)
+      if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx'].contains(extension)) {
+        // Use Microsoft Office Online
+        return 'https://view.officeapps.live.com/op/view.aspx?src=${Uri.encodeComponent(url)}';
+      }
+      
+      // For PDFs, use browser's built-in PDF viewer or Adobe
+      if (extension == 'pdf') {
+        // Let browser handle PDFs natively (modern browsers support this)
+        return url;
+      }
+      
+      // Fallback: Use Google Docs Viewer (supports most formats)
+      return 'https://docs.google.com/viewer?url=${Uri.encodeComponent(url)}&embedded=true';
+    } catch (e) {
+      print('[DocumentService] Error creating viewer URL: $e');
+      // Fallback to original URL
+      return url;
     }
   }
 
