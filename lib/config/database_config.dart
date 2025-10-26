@@ -19,7 +19,7 @@ class DatabaseConfig {
   );
   static const String webServerUrl = String.fromEnvironment(
     'API_BASE_URL_WEB',
-    defaultValue: 'http://10.120.4.230:3003', // Use specific server IP
+    defaultValue: '', // Will auto-detect from current page origin
   );
   // Backwards compatibility: single define still supported
   static const String serverUrl = String.fromEnvironment(
@@ -193,10 +193,19 @@ String _resolveServerUrl() {
   
   if (kIsWeb) {
     print('Platform: Web detected');
-    // For web builds, use configured web server URL (regardless of which IP accessed from)
+    // For web builds, use configured web server URL first
     if (DatabaseConfig.webServerUrl.isNotEmpty) {
       print('Using web server URL: ${DatabaseConfig.webServerUrl}');
       return DatabaseConfig.webServerUrl;
+    }
+    // Try to derive API URL from current page (works when both on same network)
+    try {
+      final currentOrigin = Uri.base.origin; // e.g., http://160.2.1.18:8082
+      final apiUrl = currentOrigin.replaceAll(':8082', ':3003'); // e.g., http://160.2.1.18:3003
+      print('Using dynamic web API URL: $apiUrl');
+      return apiUrl;
+    } catch (e) {
+      print('Error resolving dynamic API URL: $e');
     }
     // Fallback to unified API_BASE_URL
     if (DatabaseConfig.serverUrl.isNotEmpty) {
