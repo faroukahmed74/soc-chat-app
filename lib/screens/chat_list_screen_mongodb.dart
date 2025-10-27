@@ -248,7 +248,17 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
         lastMessageTime = null;
       }
     }
-    final unreadCount = chat['unreadCount'] ?? 0;
+    
+    // Get unread count for current user (supports both old format and new per-user format)
+    int unreadCount = 0;
+    final unreadCountObj = chat['unreadCount'];
+    if (unreadCountObj is Map<String, dynamic>) {
+      // New format: unreadCount.USER_ID
+      unreadCount = (unreadCountObj[_currentUserId] ?? 0) as int;
+    } else if (unreadCountObj is int) {
+      // Old format: just a number
+      unreadCount = unreadCountObj;
+    }
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
