@@ -8,6 +8,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
@@ -20,6 +22,7 @@ import '../widgets/full_screen_media_preview.dart';
 import '../services/realtime_service.dart';
 import '../services/active_chat_service.dart';
 import '../theme/app_design_system.dart';
+import '../config/database_config.dart';
 
 class ChatScreenMongoDB extends StatefulWidget {
   final String chatId;
@@ -228,6 +231,10 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         
         // Mark messages as read for those not sent by current user
         await _markMessagesAsRead(_messages);
+        
+        // Reset unread count for this chat when opened
+        await _resetUnreadCount();
+        
         _scrollToBottom();
       }
     } catch (e) {
@@ -265,6 +272,33 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       await _chatService.markMessagesAsRead(widget.chatId, messageIds);
     } catch (e) {
       Log.e('Error marking messages as read', 'CHAT_SCREEN_MONGODB', e);
+    }
+  }
+
+  Future<void> _resetUnreadCount() async {
+    try {
+      if (_currentUserId == null) return;
+      
+      // Call API to reset unread count for this chat
+      final token = await _authService.getToken();
+      if (token == null) return;
+      
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.patch(
+        Uri.parse('$baseUrl/api/chats/${widget.chatId}/read'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({'userId': _currentUserId}),
+      );
+      
+      if (response.statusCode == 200) {
+        Log.i('Unread count reset for chat ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
+      }
+    } catch (e) {
+      Log.e('Error resetting unread count', 'CHAT_SCREEN_MONGODB', e);
     }
   }
 

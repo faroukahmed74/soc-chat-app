@@ -1103,6 +1103,18 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       .filter(m => m.toString() !== userId.toString())
       .map(m => m.toString());
     
+    // Increment unread count for each recipient
+    for (const memberId of otherMembers) {
+      await db.collection('chats').updateOne(
+        { _id: new ObjectId(chatId) },
+        { 
+          $inc: { 
+            [`unreadCount.${memberId}`]: 1 
+          }
+        }
+      );
+    }
+    
     // Emit to socket for all chat members
     io.to(chatId).emit('new_message', {
       id: result.insertedId,
@@ -1185,6 +1197,40 @@ app.patch('/api/chats/:chatId/messages/read', authenticateToken, async (req, res
     res.status(200).json({
       message: 'Messages marked as read',
       updatedCount: result.modifiedCount,
+    });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Reset unread count for a chat
+app.patch('/api/chats/:chatId/read', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const chatId = req.params.chatId;
+    
+    // Verify user is a member of the chat
+    const chat = await db.collection('chats').findOne({
+      _id: new ObjectId(chatId),
+      members: new ObjectId(userId),
+    });
+    
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found or access denied' });
+    }
+    
+    // Reset unread count for this user
+    await db.collection('chats').updateOne(
+      { _id: new ObjectId(chatId) },
+      { $set: { [`unreadCount.${userId}`]: 0 } }
+    );
+    
+    console.log(`Reset unread count for user ${userId} in chat ${chatId}`);
+    
+    res.status(200).json({
+      message: 'Unread count reset',
+      chatId: chatId,
     });
   } catch (err) {
     console.error(err);
