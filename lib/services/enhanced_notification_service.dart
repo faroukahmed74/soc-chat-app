@@ -284,7 +284,7 @@ class EnhancedNotificationService {
         }
       }
     } catch (e) {
-      Log.w('Notification sound playback failed, will rely on system notification sound', 'ENHANCED_NOTIF', e);
+      Log.w('Notification sound playback failed, will rely on system notification sound: $e', 'ENHANCED_NOTIF');
     }
   }
 
