@@ -5,9 +5,10 @@ const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8082;
 
 // Proxy API requests to local API server to keep same-origin for the web app
-// Use 127.0.0.1 instead of localhost to ensure it always targets the local server
+// Use 127.0.0.1 for localhost, but for remote access we need to use the actual host IP
 const API_TARGET = process.env.API_TARGET || 'http://127.0.0.1:3003';
 console.log('API Proxy configured to target:', API_TARGET);
+console.log('NOTE: For remote access, ensure API server is running and accessible on the network');
 
 // CRITICAL: Route order matters! Proxy routes MUST come before static file serving
 
