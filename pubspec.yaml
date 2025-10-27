@@ -129,6 +129,7 @@ flutter:
   assets:
     - assets/logo/logo.png
     - assets/notification_sounds/
+    - assets/notification_sound.mp3
     - version_info.json
   #   - images/a_dot_burr.jpeg
   #   - images/a_dot_ham.jpeg

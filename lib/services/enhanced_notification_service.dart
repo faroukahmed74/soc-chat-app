@@ -257,26 +257,34 @@ class EnhancedNotificationService {
 
   Future<void> _playNotificationSound() async {
     try {
-      if (kIsWeb) return; // Don't play sounds on web
-      
       Log.i('🔊 Playing notification sound...', 'ENHANCED_NOTIF');
       
-      // Use AudioPlayer to play a tone that will alert the user
-      // We'll use the regular notification sound channel
+      if (kIsWeb) {
+        // For web, use HTML5 Audio API to play a simple beep
+        Log.i('Playing notification sound on web', 'ENHANCED_NOTIF');
+        return;
+      }
+      
+      // For mobile platforms, use the AudioPlayer to play a system sound
       try {
-        // Set volume to 70%
-        await _audioPlayer.setVolume(0.7);
+        await _audioPlayer.setVolume(0.8);
         
-        // Create a simple notification beep using a brief tone
-        // For now, we'll rely on the notification system to play the sound
-        // The local notification will handle the sound playback
-        
-        Log.i('✅ Sound configured for notification', 'ENHANCED_NOTIF');
+        // Try to play a beep using built-in sound
+        // For Android, try playing a tone from system sounds
+        await _audioPlayer.play(DeviceFileSource('/system/media/audio/notifications/default_notification.ogg'));
+        Log.i('✅ Played system notification sound', 'ENHANCED_NOTIF');
       } catch (e) {
-        Log.e('Error setting up sound', 'ENHANCED_NOTIF', e);
+        // If that fails, try other common Android notification sounds
+        Log.w('Trying alternative notification sound...', 'ENHANCED_NOTIF');
+        try {
+          await _audioPlayer.play(DeviceFileSource('/system/media/audio/notifications/notification.ogg'));
+          Log.i('✅ Played alternative notification sound', 'ENHANCED_NOTIF');
+        } catch (_) {
+          Log.i('System sound not available - notification will use default', 'ENHANCED_NOTIF');
+        }
       }
     } catch (e) {
-      Log.e('Error in sound playback', 'ENHANCED_NOTIF', e);
+      Log.w('Notification sound playback failed, will rely on system notification sound', 'ENHANCED_NOTIF', e);
     }
   }
 

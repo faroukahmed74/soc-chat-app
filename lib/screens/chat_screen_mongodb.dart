@@ -280,7 +280,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       if (_currentUserId == null) return;
       
       // Call API to reset unread count for this chat
-      final token = await _authService.getToken();
+      final token = await _authService.getAuthToken();
       if (token == null) return;
       
       final baseUrl = DatabaseConfig.physicalServerUrl;
