@@ -1112,11 +1112,18 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     
     // Send notifications to other chat members
     console.log(`📨 Sending notifications to ${otherMembers.length} members`);
+    console.log(`   Member IDs: ${JSON.stringify(otherMembers)}`);
+    
+    // Get all connected socket IDs for debugging
+    const allRooms = io.sockets.adapter.rooms;
+    console.log(`   Total Socket.IO rooms: ${allRooms.size}`);
+    
     for (const memberId of otherMembers) {
       const title = chat.isGroupChat ? chat.name : senderName;
       const body = messageType === 'text' ? content : messageType === 'image' ? '📷 Image' : '📎 ' + messageType;
       
-      console.log(`📤 Emitting chat_notification to room: "${memberId}" (user: ${userId})`);
+      console.log(`📤 Emitting chat_notification to room: "${memberId}" (sender: ${userId})`);
+      console.log(`   Available rooms include memberId: ${allRooms.has(memberId)}`);
       
       // Send socket notification
       io.to(memberId).emit('chat_notification', {
@@ -1217,11 +1224,20 @@ io.use(async (socket, next) => {
 
 // Socket.IO
 io.on('connection', async (socket) => {
-  console.log(`User connected: ${socket.userId}`);
+  console.log(`🔌 User connected: ${socket.userId}`);
+  console.log(`   Socket ID: ${socket.id}`);
+  console.log(`   User ID type: ${typeof socket.userId}`);
+  console.log(`   User ID value: "${socket.userId}"`);
   
   // Join user to their personal room
   socket.join(socket.userId);
   console.log(`✅ User ${socket.userId} joined personal notification room: "${socket.userId}"`);
+  
+  // Debug: List all rooms after join
+  setTimeout(() => {
+    const rooms = Array.from(socket.rooms);
+    console.log(`   User is in rooms: ${JSON.stringify(rooms)}`);
+  }, 1000);
   
   // Join user to all their chat rooms
   if (db) {
