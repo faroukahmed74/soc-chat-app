@@ -261,35 +261,22 @@ class EnhancedNotificationService {
       
       Log.i('🔊 Playing notification sound...', 'ENHANCED_NOTIF');
       
-      // Use system default notification sound
-      await _audioPlayer.play(DeviceFileSource('/system/media/audio/notifications/notification_sound.mp3'));
-      
-      Log.i('✅ Notification sound played successfully', 'ENHANCED_NOTIF');
+      // Use AudioPlayer to play a tone that will alert the user
+      // We'll use the regular notification sound channel
+      try {
+        // Set volume to 70%
+        await _audioPlayer.setVolume(0.7);
+        
+        // Create a simple notification beep using a brief tone
+        // For now, we'll rely on the notification system to play the sound
+        // The local notification will handle the sound playback
+        
+        Log.i('✅ Sound configured for notification', 'ENHANCED_NOTIF');
+      } catch (e) {
+        Log.e('Error setting up sound', 'ENHANCED_NOTIF', e);
+      }
     } catch (e) {
-      Log.w('Could not play system notification sound, trying alternative...', 'ENHANCED_NOTIF');
-      
-      // Try Android default notification paths
-      final androidPaths = [
-        '/system/media/audio/notifications/default_notification.ogg',
-        '/system/media/audio/notifications/notification.ogg',
-        '/system/media/audio/notifications/notification.mp3',
-      ];
-      
-      bool played = false;
-      for (final path in androidPaths) {
-        try {
-          await _audioPlayer.play(DeviceFileSource(path));
-          Log.i('✅ Played notification sound from: $path', 'ENHANCED_NOTIF');
-          played = true;
-          break;
-        } catch (_) {
-          // Try next path
-        }
-      }
-      
-      if (!played) {
-        Log.w('Could not find system notification sound. User will need to enable sounds manually.', 'ENHANCED_NOTIF');
-      }
+      Log.e('Error in sound playback', 'ENHANCED_NOTIF', e);
     }
   }
 
@@ -362,13 +349,14 @@ class EnhancedNotificationService {
           playSound: true,
           enableVibration: true,
           enableLights: true,
-          // Use default notification sound instead of custom files
+          sound: const RawResourceAndroidNotificationSound('default'), // Use system default
           styleInformation: const BigTextStyleInformation(''),
         ),
         iOS: const DarwinNotificationDetails(
           presentAlert: true, 
           presentBadge: true, 
-          presentSound: true
+          presentSound: true,
+          sound: 'default', // Use iOS default sound
         ),
       );
 
