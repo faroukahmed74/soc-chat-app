@@ -157,6 +157,9 @@
         serviceWorker: {
           serviceWorkerVersion: serviceWorkerVersion,
         },
+        config: {
+          canvasKitBaseUrl: './canvaskit/'  // Use local CanvasKit instead of Google CDN
+        },
         onEntrypointLoaded: function(engineInitializer) {
           engineInitializer.initializeEngine().then(function(appRunner) {
             // Hide loading screen
