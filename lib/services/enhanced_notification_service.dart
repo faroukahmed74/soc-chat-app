@@ -5,6 +5,7 @@ import 'package:permission_handler/permission_handler.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import 'package:audioplayers/audioplayers.dart';
 import '../config/database_config.dart';
 import 'logger_service.dart';
 import 'local_auth_service.dart';
@@ -15,6 +16,7 @@ class EnhancedNotificationService {
   EnhancedNotificationService._();
 
   final FlutterLocalNotificationsPlugin _fln = FlutterLocalNotificationsPlugin();
+  final AudioPlayer _audioPlayer = AudioPlayer();
   IO.Socket? _socket;
   bool _initialized = false;
   bool _channelsCreated = false;
@@ -229,6 +231,9 @@ class EnhancedNotificationService {
         final senderName = data['senderName'] ?? 'Someone';
         final messageType = data['messageType'] ?? 'text';
         
+        // Play notification sound
+        await _playNotificationSound();
+        
         await sendLocalNotification(
           title: title,
           body: body,
@@ -243,10 +248,48 @@ class EnhancedNotificationService {
           channelId: chatChannelId,
         );
         
-        Log.i('🎵 DISPLAYED local notification with SOUND: $title - $body', 'ENHANCED_NOTIF');
+        Log.i('🔊 PLAYED notification sound and displayed notification: $title - $body', 'ENHANCED_NOTIF');
       }
     } catch (e) {
       Log.e('Error handling chat notification', 'ENHANCED_NOTIF', e);
+    }
+  }
+
+  Future<void> _playNotificationSound() async {
+    try {
+      if (kIsWeb) return; // Don't play sounds on web
+      
+      Log.i('🔊 Playing notification sound...', 'ENHANCED_NOTIF');
+      
+      // Use system default notification sound
+      await _audioPlayer.play(DeviceFileSource('/system/media/audio/notifications/notification_sound.mp3'));
+      
+      Log.i('✅ Notification sound played successfully', 'ENHANCED_NOTIF');
+    } catch (e) {
+      Log.w('Could not play system notification sound, trying alternative...', 'ENHANCED_NOTIF');
+      
+      // Try Android default notification paths
+      final androidPaths = [
+        '/system/media/audio/notifications/default_notification.ogg',
+        '/system/media/audio/notifications/notification.ogg',
+        '/system/media/audio/notifications/notification.mp3',
+      ];
+      
+      bool played = false;
+      for (final path in androidPaths) {
+        try {
+          await _audioPlayer.play(DeviceFileSource(path));
+          Log.i('✅ Played notification sound from: $path', 'ENHANCED_NOTIF');
+          played = true;
+          break;
+        } catch (_) {
+          // Try next path
+        }
+      }
+      
+      if (!played) {
+        Log.w('Could not find system notification sound. User will need to enable sounds manually.', 'ENHANCED_NOTIF');
+      }
     }
   }
 
