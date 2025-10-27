@@ -1083,12 +1083,13 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     
     const result = await db.collection('messages').insertOne(message);
     
-    // Update chat's updatedAt
+    // Update chat's updatedAt and lastMessageTime
     await db.collection('chats').updateOne(
       { _id: new ObjectId(chatId) },
       { 
         $set: { 
           updatedAt: new Date(),
+          lastMessageTime: new Date(),
           lastMessage: {
             content,
             senderId: new ObjectId(userId),

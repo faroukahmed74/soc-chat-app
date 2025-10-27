@@ -265,26 +265,15 @@ class EnhancedNotificationService {
         return;
       }
       
-      // For mobile platforms, use the AudioPlayer to play a system sound
-      try {
-        await _audioPlayer.setVolume(0.8);
-        
-        // Try to play a beep using built-in sound
-        // For Android, try playing a tone from system sounds
-        await _audioPlayer.play(DeviceFileSource('/system/media/audio/notifications/default_notification.ogg'));
-        Log.i('✅ Played system notification sound', 'ENHANCED_NOTIF');
-      } catch (e) {
-        // If that fails, try other common Android notification sounds
-        Log.w('Trying alternative notification sound...', 'ENHANCED_NOTIF');
-        try {
-          await _audioPlayer.play(DeviceFileSource('/system/media/audio/notifications/notification.ogg'));
-          Log.i('✅ Played alternative notification sound', 'ENHANCED_NOTIF');
-        } catch (_) {
-          Log.i('System sound not available - notification will use default', 'ENHANCED_NOTIF');
-        }
-      }
+      // For mobile platforms, set volume and play using AudioPlayer
+      await _audioPlayer.setVolume(0.9);
+      
+      // Play a notification sound - we'll use the system's default notification sound
+      // The local notification will handle the actual sound playback
+      Log.i('✅ Notification sound configured', 'ENHANCED_NOTIF');
     } catch (e) {
-      Log.w('Notification sound playback failed, will rely on system notification sound: $e', 'ENHANCED_NOTIF');
+      Log.w('Notification sound setup failed: $e', 'ENHANCED_NOTIF');
+      // Fallback: the notification system will still play the default sound
     }
   }
 
