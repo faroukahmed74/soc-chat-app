@@ -162,12 +162,22 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     final nowCairo = DateTime.now().toUtc().add(const Duration(hours: 2));
     final difference = nowCairo.difference(cairo);
 
-    if (difference.inDays > 0) {
-      return '${cairo.day}/${cairo.month}';
-    } else if (difference.inHours > 0) {
-      return '${cairo.hour}:${cairo.minute.toString().padLeft(2, '0')}';
-    } else {
-      return '${cairo.minute.toString().padLeft(2, '0')}';
+    // Today - just show time
+    if (difference.inDays == 0) {
+      return '${cairo.hour.toString().padLeft(2, '0')}:${cairo.minute.toString().padLeft(2, '0')}';
+    }
+    // Yesterday
+    else if (difference.inDays == 1) {
+      return 'Yesterday ${cairo.hour.toString().padLeft(2, '0')}:${cairo.minute.toString().padLeft(2, '0')}';
+    }
+    // Within a week - show day name
+    else if (difference.inDays < 7) {
+      final dayNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+      return '${dayNames[cairo.weekday - 1]} ${cairo.hour.toString().padLeft(2, '0')}:${cairo.minute.toString().padLeft(2, '0')}';
+    }
+    // Older - show date and time
+    else {
+      return '${cairo.day}/${cairo.month}/${cairo.year.toString().substring(2)} ${cairo.hour.toString().padLeft(2, '0')}:${cairo.minute.toString().padLeft(2, '0')}';
     }
   }
 
@@ -278,20 +288,34 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
               ),
           ],
         ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+        subtitle: Row(
           children: [
-            if (lastMessage.isNotEmpty) ...[
-              Text(
-                lastMessage,
+            Expanded(
+              child: Text(
+                lastMessage.isNotEmpty ? lastMessage : 'No messages yet',
                 overflow: TextOverflow.ellipsis,
                 style: AppDesignSystem.bodyMedium.copyWith(
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
                 maxLines: 1,
               ),
-              SizedBox(height: 2),
+            ),
+            if (lastMessageTime != null) ...[
+              SizedBox(width: 8),
+              Text(
+                _formatTimestamp(lastMessageTime),
+                style: AppDesignSystem.bodySmall.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                  fontSize: 11,
+                ),
+              ),
             ],
+          ],
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
             if (lastMessageTime != null)
               Text(
                 _formatTimestamp(lastMessageTime),
@@ -300,25 +324,26 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                   fontSize: 11,
                 ),
               ),
-          ],
-        ),
-        trailing: unreadCount > 0
-            ? Container(
-                margin: const EdgeInsets.only(top: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            if (unreadCount > 0) ...[
+              SizedBox(height: 4),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: AppDesignSystem.errorColor,
-                  borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                  borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
                 ),
                 child: Text(
-                  unreadCount.toString(),
+                  unreadCount > 99 ? '99+' : unreadCount.toString(),
                   style: AppDesignSystem.labelSmall.copyWith(
                     color: Colors.white,
                     fontWeight: FontWeight.bold,
+                    fontSize: 12,
                   ),
                 ),
-              )
-            : null,
+              ),
+            ],
+          ],
+        ),
         onTap: () {
           Navigator.push(
             context,
@@ -763,3 +788,4 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     } catch (_) {}
   }
 }
+
