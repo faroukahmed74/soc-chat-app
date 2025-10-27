@@ -321,8 +321,8 @@ echo   %GREEN%✅ ngrok tunnel started%RESET%
 goto :eof
 
 :START_WEB_SERVER
-cd /d "%WEB_BUILD_DIR%"
-start "SOC Chat App - Web Server" cmd /c "python -m http.server 8082"
+cd /d "%PROJECT_ROOT%\servers"
+start "SOC Chat App - Web Server" cmd /c "set PORT=8082 && set API_TARGET=http://localhost:3003 && node server.js"
 cd /d "%PROJECT_ROOT%"
 echo   %GREEN%✅ Web server started on port 8082%RESET%
 goto :eof

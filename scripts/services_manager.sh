@@ -136,7 +136,7 @@ stop_ngrok() { kill_from_pid_or_port "ngrok" 4040; }
 status_ngrok() {
   local pid; pid=$(pid_of ngrok)
   if is_running_pid "$pid"; then echo "ngrok: RUNNING (PID $pid)"; else echo "ngrok: NOT RUNNING"; fi
-}
+}stil
 
 # -----------------------------------------------------------------------------
 # Web Proxy Server :8082

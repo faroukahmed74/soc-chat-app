@@ -198,12 +198,12 @@ String _resolveServerUrl() {
       print('Using web server URL: ${DatabaseConfig.webServerUrl}');
       return DatabaseConfig.webServerUrl;
     }
-    // Try to derive API URL from current page (works when both on same network)
+    // Try to derive API URL from current page - USE SAME ORIGIN for proxy
     try {
-      final currentOrigin = Uri.base.origin; // e.g., http://160.2.1.18:8082
-      final apiUrl = currentOrigin.replaceAll(':8082', ':3003'); // e.g., http://160.2.1.18:3003
-      print('Using dynamic web API URL: $apiUrl');
-      return apiUrl;
+      final currentOrigin = Uri.base.origin; // e.g., http://160.2.1.18:8082 or http://10.120.4.230:8082
+      // Keep same origin - web proxy will forward /api/* to localhost:3003
+      print('Using dynamic web API URL (via proxy): $currentOrigin');
+      return currentOrigin; // API calls go to same origin, proxy handles /api routing
     } catch (e) {
       print('Error resolving dynamic API URL: $e');
     }
@@ -212,9 +212,9 @@ String _resolveServerUrl() {
       print('Using fallback server URL: ${DatabaseConfig.serverUrl}');
       return DatabaseConfig.serverUrl;
     }
-    // Final fallback: use specific local network IP for web
-    print('Using final fallback: http://10.120.4.230:3003');
-    return 'http://10.120.4.230:3003';
+    // Final fallback
+    print('Using localhost fallback');
+    return 'http://localhost:8082'; // Use proxy port
   } else {
     print('Platform: Mobile/Desktop detected');
     // Mobile/desktop builds use platform-specific URL first

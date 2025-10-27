@@ -7,16 +7,21 @@
 (function() {
   'use strict';
 
-  // Local network configuration
-  const LOCAL_NETWORK_CONFIG = {
-    baseUrl: 'http://10.120.4.230:8082',
-    apiUrl: 'http://10.120.4.230:8082/api',
-    websocketUrl: 'ws://10.120.4.230:8082',
-    fallbackUrls: [
-      'http://localhost:8082',
-      'http://127.0.0.1:8082'
-    ]
+  // Local network configuration - auto-detect from current page
+  const getLocalNetworkConfig = () => {
+    const currentOrigin = window.location.origin; // e.g., http://160.2.1.18:8082
+    return {
+      baseUrl: currentOrigin,
+      apiUrl: currentOrigin + '/api',
+      websocketUrl: currentOrigin.replace(/^http/, 'ws'),
+      fallbackUrls: [
+        'http://localhost:8082',
+        'http://127.0.0.1:8082'
+      ]
+    };
   };
+  
+  const LOCAL_NETWORK_CONFIG = getLocalNetworkConfig();
 
   // Responsive breakpoints
   const BREAKPOINTS = {

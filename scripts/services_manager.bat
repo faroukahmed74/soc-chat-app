@@ -73,8 +73,8 @@ start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok http 3003 --domain=soc-chat-ap
 echo   ✅ ngrok tunnel started
 
 echo [4/5] Starting Web Server (Port 8082)...
-cd /d "%WEB_BUILD_DIR%"
-start "SOC Chat App - Web Server" cmd /c "python -m http.server 8082"
+cd /d "%PROJECT_ROOT%\servers"
+start "SOC Chat App - Web Server" cmd /c "set PORT=8082 && set API_TARGET=http://localhost:3003 && node server.js"
 cd /d "%PROJECT_ROOT%"
 echo   ✅ Web server started on port 8082
 
@@ -255,8 +255,8 @@ if "%service_choice%"=="3" (
     pause
 )
 if "%service_choice%"=="4" (
-    cd /d "%WEB_BUILD_DIR%"
-    start "SOC Chat App - Web Server" cmd /c "python -m http.server 8082"
+    cd /d "%PROJECT_ROOT%\servers"
+    start "SOC Chat App - Web Server" cmd /c "set PORT=8082 && set API_TARGET=http://localhost:3003 && node server.js"
     cd /d "%PROJECT_ROOT%"
     echo Web server started
     pause

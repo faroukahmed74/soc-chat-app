@@ -9,31 +9,9 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8082;
 const API_TARGET = process.env.API_TARGET || 'http://127.0.0.1:3003';
 console.log('API Proxy configured to target:', API_TARGET);
 
-app.use(
-  '/api',
-  createProxyMiddleware({
-    // Target the API server directly (it already has /api routes)
-    target: API_TARGET,
-    changeOrigin: true,
-    logLevel: 'debug',
-    onProxyReq: (proxyReq, req, res) => {
-      console.log('Proxying API request:', req.method, req.url, '->', API_TARGET);
-      // Remove Origin header so API treats request as non-browser (allowed by CORS)
-      try {
-        proxyReq.setHeader('origin', '');
-      } catch (e) {}
-    },
-    onProxyRes: (proxyRes, req, res) => {
-      console.log('API Proxy response:', proxyRes.statusCode, req.url);
-    },
-    onError: (err, req, res) => {
-      console.error('API Proxy error:', err.message);
-      res.status(500).json({ error: 'Proxy error', message: err.message });
-    },
-  })
-);
+// CRITICAL: Route order matters! Proxy routes MUST come before static file serving
 
-// Proxy Socket.IO for real-time messaging
+// Proxy Socket.IO for real-time messaging (comes first to avoid conflicts)
 app.use(
   '/socket.io',
   createProxyMiddleware({
@@ -49,10 +27,40 @@ app.use(
   })
 );
 
+// Proxy API requests to local API server
+app.use(
+  '/api',
+  createProxyMiddleware({
+    target: API_TARGET,
+    changeOrigin: true,
+    logLevel: 'debug',
+    // The /api prefix is automatically stripped by app.use('/api'), so we need to add it back
+    pathRewrite: function (path, req) {
+      // path will be like '/chats' after stripping, add '/api' back
+      console.log('Proxying API:', req.url, 'path:', path, '-> /api' + path);
+      return '/api' + path;
+    },
+    onProxyReq: (proxyReq, req, res) => {
+      console.log('Proxying API request:', req.method, req.url, '->', API_TARGET + '/api' + req.url.replace(/^\/api/, ''));
+      // Remove Origin header so API treats request as non-browser (allowed by CORS)
+      try {
+        proxyReq.setHeader('origin', '');
+      } catch (e) {}
+    },
+    onProxyRes: (proxyRes, req, res) => {
+      console.log('API Proxy response:', proxyRes.statusCode, req.url);
+    },
+    onError: (err, req, res) => {
+      console.error('API Proxy error:', err.message);
+      res.status(500).json({ error: 'Proxy error', message: err.message });
+    },
+  })
+);
+
 // Serve static files from the Flutter web build (project root build/web)
 app.use(express.static(path.join(__dirname, '..', 'build', 'web')));
 
-// Handle all routes by serving index.html (for SPA)
+// Handle all routes by serving index.html (for SPA) - MUST come last
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'build', 'web', 'index.html'));
 });
