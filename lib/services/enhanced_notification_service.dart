@@ -190,6 +190,12 @@ class EnhancedNotificationService {
         Log.i('📱 Processing notification - will show local notification', 'ENHANCED_NOTIF');
         _handleChatNotification(data);
       });
+
+      // Listen for broadcast notifications
+      _socket!.on('broadcast_notification', (data) {
+        Log.i('📢 Received broadcast notification via socket: $data', 'ENHANCED_NOTIF');
+        _handleBroadcastNotification(data);
+      });
       
       // Join user to their personal notification room
       if (_currentUserId != null) {
@@ -231,27 +237,62 @@ class EnhancedNotificationService {
         final senderName = data['senderName'] ?? 'Someone';
         final messageType = data['messageType'] ?? 'text';
         
+        // Determine if this is a group chat based on title (group chats show group name in title)
+        final isGroupChat = !title.contains(senderName) && title != 'New Chat Message';
+        
         // Play notification sound
         await _playNotificationSound();
+        
+        // Use appropriate channel based on chat type
+        final channelId = isGroupChat ? groupChannelId : chatChannelId;
         
         await sendLocalNotification(
           title: title,
           body: body,
           payload: json.encode({
-            'type': 'chat_message',
+            'type': isGroupChat ? 'group_message' : 'chat_message',
             'chatId': chatId,
             'senderId': senderId,
             'senderName': senderName,
             'messageType': messageType,
             'timestamp': DateTime.now().toIso8601String(),
           }),
-          channelId: chatChannelId,
+          channelId: channelId,
         );
         
-        Log.i('🔊 PLAYED notification sound and displayed notification: $title - $body', 'ENHANCED_NOTIF');
+        Log.i('🔊 PLAYED notification sound and displayed notification ($channelId): $title - $body', 'ENHANCED_NOTIF');
       }
     } catch (e) {
       Log.e('Error handling chat notification', 'ENHANCED_NOTIF', e);
+    }
+  }
+
+  Future<void> _handleBroadcastNotification(dynamic data) async {
+    try {
+      if (data is Map<String, dynamic>) {
+        final title = data['title'] ?? '📢 Broadcast';
+        final body = data['body'] ?? '';
+        final senderName = data['senderName'] ?? 'Admin';
+        
+        // Play notification sound
+        await _playNotificationSound();
+        
+        // Display local notification
+        await sendLocalNotification(
+          title: title,
+          body: body,
+          payload: json.encode({
+            'type': 'broadcast_message',
+            'senderName': senderName,
+            'timestamp': DateTime.now().toIso8601String(),
+          }),
+          channelId: broadcastChannelId,
+        );
+        
+        Log.i('📢 PLAYED broadcast sound and displayed notification: $title - $body', 'ENHANCED_NOTIF');
+      }
+    } catch (e) {
+      Log.e('Error handling broadcast notification', 'ENHANCED_NOTIF', e);
     }
   }
 

@@ -9,6 +9,16 @@ const router = express.Router();
 const { ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 
+// Middleware to inject Socket.IO into requests
+const injectIO = (req, res, next) => {
+  const io = req.app.get('io');
+  req.io = io;
+  next();
+};
+
+// Apply Socket.IO to all routes
+router.use(injectIO);
+
 // Middleware to verify admin token
 const verifyAdminToken = (req, res, next) => {
   const token = req.headers.authorization?.split(' ')[1];
@@ -475,18 +485,21 @@ router.get('/health', verifyAdminToken, async (req, res) => {
 router.post('/broadcast', verifyAdminToken, async (req, res) => {
   try {
     const db = req.app.locals.db;
+    const io = req.io; // Get Socket.IO from middleware
     const { message, type = 'text' } = req.body;
     
     if (!message) {
       return res.status(400).json({ error: 'Message is required' });
     }
     
-    // Get all active users
-    const users = await db.collection('users')
-      .find({ status: 'active' })
-      .toArray();
+    // Get all users (not just active)
+    const users = await db.collection('users').find({}).toArray();
     
-    // Create broadcast message for each user
+    // Get admin's display name
+    const adminUser = await db.collection('users').findOne({ _id: new ObjectId(req.user.userId) });
+    const senderName = adminUser?.displayName || adminUser?.email || 'Admin';
+    
+    // Create broadcast messages for storage
     const broadcastMessages = users.map(user => ({
       type: 'broadcast',
       content: message,
@@ -499,6 +512,38 @@ router.post('/broadcast', verifyAdminToken, async (req, res) => {
     if (broadcastMessages.length > 0) {
       await db.collection('messages').insertMany(broadcastMessages);
     }
+    
+    // 🔥 EMIT REAL-TIME NOTIFICATIONS TO ALL USERS
+    for (const user of users) {
+      const userId = user._id.toString();
+      
+      // Emit notification event
+      io.to(userId).emit('notification', {
+        title: '📢 Broadcast Message',
+        body: message.length > 50 ? message.substring(0, 50) + '...' : message,
+        data: {
+          type: 'broadcast',
+          senderId: req.user.userId,
+          senderName: senderName,
+          message: message,
+          timestamp: new Date(),
+        },
+        timestamp: new Date(),
+      });
+      
+      // Also send broadcast_notification event
+      io.to(userId).emit('broadcast_notification', {
+        title: '📢 Broadcast',
+        body: message,
+        chatId: null,
+        senderId: req.user.userId,
+        senderName: senderName,
+        messageType: type || 'text',
+        timestamp: new Date(),
+      });
+    }
+    
+    console.log(`📢 Broadcast sent to ${users.length} users via Socket.IO`);
     
     res.json({
       message: 'Broadcast sent successfully',

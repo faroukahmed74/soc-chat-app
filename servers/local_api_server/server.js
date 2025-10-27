@@ -52,6 +52,9 @@ const io = socketIo(server, {
   }
 });
 
+// Make Socket.IO accessible to all routes
+app.set('io', io);
+
 // Middleware
 // Compression middleware (should be first for maximum efficiency)
 app.use(compression({
@@ -1093,7 +1096,8 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
           lastMessageTime: now, // This is the timestamp for display
           lastMessage: {
             content,
-            senderId: new ObjectId(userId),
+            senderId: userId, // Keep as string for easy matching
+            senderName: senderName, // Add sender name for group chat display
             timestamp: now.toISOString(), // Also add timestamp to lastMessage object
             createdAt: now,
           },
@@ -1134,7 +1138,8 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     console.log(`   Total Socket.IO rooms: ${allRooms.size}`);
     
     for (const memberId of otherMembers) {
-      const title = chat.isGroupChat ? chat.name : senderName;
+      // Determine title based on chat type
+      const title = (chat.type === 'group' || chat.type === 'Group') ? chat.name : senderName;
       const body = messageType === 'text' ? content : messageType === 'image' ? '📷 Image' : '📎 ' + messageType;
       
       console.log(`📤 Emitting chat_notification to room: "${memberId}" (sender: ${userId})`);

@@ -239,7 +239,12 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     // Support nested last message object or plain string
     final lastMsgObj = chat['lastMessage'];
     final String lastMessage = _buildLastMessagePreview(chat, isGroup: isGroup);
-    final lastMessageTimeStr = chat['lastMessageTime'] ?? (lastMsgObj is Map<String, dynamic> ? lastMsgObj['timestamp'] : null);
+    
+    // Try multiple sources for timestamp
+    String? lastMessageTimeStr = chat['lastMessageTime'] ?? 
+        chat['updatedAt'] ?? 
+        (lastMsgObj is Map<String, dynamic> ? (lastMsgObj['timestamp'] ?? lastMsgObj['createdAt']) : null);
+    
     DateTime? lastMessageTime;
     if (lastMessageTimeStr is String && lastMessageTimeStr.isNotEmpty) {
       try {
@@ -247,6 +252,14 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
       } catch (_) {
         lastMessageTime = null;
       }
+    }
+    
+    // Also handle DateTime objects directly
+    if (lastMessageTime == null && chat['lastMessageTime'] is DateTime) {
+      lastMessageTime = chat['lastMessageTime'];
+    }
+    if (lastMessageTime == null && chat['updatedAt'] is DateTime) {
+      lastMessageTime = chat['updatedAt'];
     }
     
     // Get unread count for current user (supports both old format and new per-user format)
@@ -298,29 +311,13 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
               ),
           ],
         ),
-        subtitle: Row(
-          children: [
-            Expanded(
-              child: Text(
-                lastMessage.isNotEmpty ? lastMessage : 'No messages yet',
-                overflow: TextOverflow.ellipsis,
-                style: AppDesignSystem.bodyMedium.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-                maxLines: 1,
-              ),
-            ),
-            if (lastMessageTime != null) ...[
-              SizedBox(width: 8),
-              Text(
-                _formatTimestamp(lastMessageTime),
-                style: AppDesignSystem.bodySmall.copyWith(
-                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7),
-                  fontSize: 11,
-                ),
-              ),
-            ],
-          ],
+        subtitle: Text(
+          lastMessage.isNotEmpty ? lastMessage : 'No messages yet',
+          overflow: TextOverflow.ellipsis,
+          style: AppDesignSystem.bodyMedium.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+          maxLines: 1,
         ),
         trailing: Column(
           mainAxisAlignment: MainAxisAlignment.center,
