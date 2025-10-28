@@ -774,37 +774,56 @@ app.post('/api/media/upload', authenticateToken, async (req, res) => {
     let finalFileName = req.file.filename;
     
     if (type === 'video' && req.file.mimetype?.startsWith('video/')) {
+      console.log('Video upload detected:', {
+        path: req.file.path,
+        filename: req.file.filename,
+        mimetype: req.file.mimetype
+      });
+      
       try {
         const transcode = require('./transcode_video');
         
-        // Check if video needs transcoding
-        const needsTranscode = await transcode.needsTranscoding(req.file.path);
-        
-        if (needsTranscode) {
-          console.log('Transcoding video to web-compatible format...');
+        // Check if ffmpeg is available
+        const ffmpegAvailable = await transcode.checkFFmpegAvailable();
+        if (!ffmpegAvailable) {
+          console.warn('⚠️  FFmpeg not available - video transcoding disabled');
+          console.warn('⚠️  Video may not play in web browsers. Install ffmpeg to enable transcoding.');
+        } else {
+          console.log('✓ FFmpeg is available');
           
-          // Generate transcoded filename
-          const originalPath = path.parse(req.file.path);
-          const transcodedPath = path.join(originalPath.dir, `transcoded_${originalPath.name}.mp4`);
+          // Check if video needs transcoding
+          console.log('Checking if video needs transcoding...');
+          const needsTranscode = await transcode.needsTranscoding(req.file.path);
+          console.log('Needs transcoding:', needsTranscode);
           
-          // Transcode the video
-          const success = await transcode.transcodeVideoToH264(req.file.path, transcodedPath);
-          
-          if (success) {
-            // Use transcoded file
-            finalFilePath = transcodedPath;
-            finalFileName = `transcoded_${req.file.filename}`;
+          if (needsTranscode) {
+            console.log('🔄 Transcoding video to web-compatible format...');
             
-            // Delete original file to save space
-            fs.unlinkSync(req.file.path);
+            // Generate transcoded filename
+            const originalPath = path.parse(req.file.path);
+            const transcodedPath = path.join(originalPath.dir, `transcoded_${originalPath.name}.mp4`);
             
-            console.log('Video transcoded successfully');
+            // Transcode the video
+            const success = await transcode.transcodeVideoToH264(req.file.path, transcodedPath);
+            
+            if (success) {
+              // Use transcoded file
+              finalFilePath = transcodedPath;
+              finalFileName = `transcoded_${req.file.filename}`;
+              
+              // Delete original file to save space
+              fs.unlinkSync(req.file.path);
+              
+              console.log('✅ Video transcoded successfully');
+            } else {
+              console.warn('❌ Video transcoding failed, using original file');
+            }
           } else {
-            console.warn('Video transcoding failed, using original file');
+            console.log('✓ Video already in compatible format');
           }
         }
       } catch (transcodeErr) {
-        console.error('Error during video transcoding:', transcodeErr);
+        console.error('❌ Error during video transcoding:', transcodeErr);
         // Continue with original file if transcoding fails
       }
     }
