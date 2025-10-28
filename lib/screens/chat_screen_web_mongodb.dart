@@ -6,6 +6,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'dart:async';
 import 'dart:typed_data';
 import '../services/theme_service.dart';
@@ -420,14 +421,45 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
                             maxWidth: 200,
                             maxHeight: 150,
                           ),
-                          child: EnhancedMediaPreview(
-                            mediaUrl: message['mediaUrl'] ?? '',
-                            mediaType: 'video',
-                            fileName: content,
-                            onTap: () => _showFullScreenMedia(message['mediaUrl'] ?? '', 'video', content),
-                            maxWidth: 200,
-                            maxHeight: 150,
-                            enableRetry: true,
+                          child: GestureDetector(
+                            onTap: () => _tryPlayVideo(message['mediaUrl'] ?? '', content),
+                            child: Stack(
+                              children: [
+                                // Video thumbnail/background
+                                Container(
+                                  width: 200,
+                                  height: 150,
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context).colorScheme.surfaceVariant,
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.play_circle_filled,
+                                      size: 48,
+                                      color: Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
+                                ),
+                                // Play button overlay
+                                Positioned(
+                                  bottom: 8,
+                                  right: 8,
+                                  child: Container(
+                                    padding: const EdgeInsets.all(6),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withOpacity(0.7),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: const Icon(
+                                      Icons.play_arrow,
+                                      color: Colors.white,
+                                      size: 20,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                         if (content.isNotEmpty)
@@ -493,6 +525,24 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
         ),
       ),
     );
+  }
+
+  Future<void> _tryPlayVideo(String mediaUrl, String caption) async {
+    // Try to play video in browser using HTML5 video
+    try {
+      // Use HTML5 video player via url_launcher
+      if (await canLaunchUrl(Uri.parse(mediaUrl))) {
+        // Try to open in external player first
+        await launchUrl(Uri.parse(mediaUrl), mode: LaunchMode.externalApplication);
+      } else {
+        // If that fails, show full screen preview (which will show download option if format is unsupported)
+        _showFullScreenMedia(mediaUrl, 'video', caption);
+      }
+    } catch (e) {
+      Log.e('Error playing video', 'CHAT_SCREEN_WEB', e);
+      // Fallback to full screen preview
+      _showFullScreenMedia(mediaUrl, 'video', caption);
+    }
   }
 
   @override
