@@ -386,6 +386,34 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
             ),
           );
         }
+        if (_hasError) {
+          // Show error with download option for unsupported formats
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(Icons.videocam_off, color: Colors.white, size: 64),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 32),
+                child: Text(
+                  _errorMessage,
+                  style: const TextStyle(color: Colors.white, fontSize: 16),
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _downloadMedia,
+                icon: const Icon(Icons.download),
+                label: const Text('Download Video'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.white,
+                  foregroundColor: Colors.black87,
+                ),
+              ),
+            ],
+          );
+        }
         return const Center(
           child: Icon(Icons.videocam, color: Colors.white, size: 64),
         );
