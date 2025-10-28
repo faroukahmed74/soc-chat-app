@@ -752,9 +752,9 @@ app.get('/api/auth/verify', async (req, res) => {
 // =========================================
 // Media Upload Route
 // =========================================
-app.post('/api/media/upload', authenticateToken, (req, res) => {
+app.post('/api/media/upload', authenticateToken, async (req, res) => {
   // Expect fields: chatId, type (image|video|audio|document), optional caption
-  upload.single('file')(req, res, (err) => {
+  upload.single('file')(req, res, async (err) => {
     if (err) {
       console.error('Upload error:', err);
       const status = err.code === 'LIMIT_FILE_SIZE' ? 413 : 400;
@@ -769,8 +769,48 @@ app.post('/api/media/upload', authenticateToken, (req, res) => {
     const type = (req.body?.type || 'media').toString();
     const caption = (req.body?.caption || '').toString();
 
-    // Build public URL to the uploaded file
-    const relativePath = path.join('chat_media', chatId, req.file.filename).replace(/\\/g, '/');
+    // If it's a video, check if transcoding is needed and transcode if necessary
+    let finalFilePath = req.file.path;
+    let finalFileName = req.file.filename;
+    
+    if (type === 'video' && req.file.mimetype?.startsWith('video/')) {
+      try {
+        const transcode = require('./transcode_video');
+        
+        // Check if video needs transcoding
+        const needsTranscode = await transcode.needsTranscoding(req.file.path);
+        
+        if (needsTranscode) {
+          console.log('Transcoding video to web-compatible format...');
+          
+          // Generate transcoded filename
+          const originalPath = path.parse(req.file.path);
+          const transcodedPath = path.join(originalPath.dir, `transcoded_${originalPath.name}.mp4`);
+          
+          // Transcode the video
+          const success = await transcode.transcodeVideoToH264(req.file.path, transcodedPath);
+          
+          if (success) {
+            // Use transcoded file
+            finalFilePath = transcodedPath;
+            finalFileName = `transcoded_${req.file.filename}`;
+            
+            // Delete original file to save space
+            fs.unlinkSync(req.file.path);
+            
+            console.log('Video transcoded successfully');
+          } else {
+            console.warn('Video transcoding failed, using original file');
+          }
+        }
+      } catch (transcodeErr) {
+        console.error('Error during video transcoding:', transcodeErr);
+        // Continue with original file if transcoding fails
+      }
+    }
+
+    // Build public URL to the uploaded file (original or transcoded)
+    const relativePath = path.join('chat_media', chatId, finalFileName).replace(/\\/g, '/');
     
     // Always use ngrok URL for media files to ensure cross-platform access
     // This ensures media sent from web can be viewed on mobile and vice versa
@@ -784,19 +824,19 @@ app.post('/api/media/upload', authenticateToken, (req, res) => {
     });
     
     console.log('Media upload successful:', {
-      fileName: req.file.filename,
+      fileName: finalFileName,
       chatId,
       type,
       mediaUrl,
-      fileSize: req.file.size
+      fileSize: fs.statSync(finalFilePath).size
     });
 
     return res.status(201).json({
       mediaUrl,
       type,
       caption,
-      fileName: req.file.filename,
-      size: req.file.size,
+      fileName: finalFileName,
+      size: fs.statSync(finalFilePath).size,
       mimeType: req.file.mimetype,
     });
   });
