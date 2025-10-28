@@ -152,13 +152,13 @@
 
   <script>
     window.addEventListener('load', function(ev) {
+      // Set CanvasKit base URL BEFORE loading Flutter
+      _flutter.buildConfig.canvasKitBaseUrl = './canvaskit/';
+      
       // Download main.dart.js
       _flutter.loader.loadEntrypoint({
         serviceWorker: {
           serviceWorkerVersion: serviceWorkerVersion,
-        },
-        config: {
-          canvasKitBaseUrl: './canvaskit/'  // Use local CanvasKit instead of Google CDN
         },
         onEntrypointLoaded: function(engineInitializer) {
           engineInitializer.initializeEngine().then(function(appRunner) {
