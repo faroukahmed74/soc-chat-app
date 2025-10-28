@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:video_player/video_player.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -105,11 +106,21 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
       _videoController!.play();
     } catch (e) {
       Log.e('Error initializing video', 'FULL_SCREEN_MEDIA_PREVIEW', e);
-      setState(() {
-        _isLoading = false;
-        _hasError = true;
-        _errorMessage = 'Failed to load video: $e';
-      });
+      
+      // For web platform, show user-friendly message about format compatibility
+      if (kIsWeb) {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = 'Video format not supported by browser. Try downloading the video instead.';
+        });
+      } else {
+        setState(() {
+          _isLoading = false;
+          _hasError = true;
+          _errorMessage = 'Failed to load video: $e';
+        });
+      }
     }
   }
 
