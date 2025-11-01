@@ -61,6 +61,32 @@ app.use(
 // Serve static files from the Flutter web build (project root build/web)
 app.use(express.static(path.join(__dirname, '..', 'build', 'web')));
 
+// Quick readiness endpoint to verify offline assets are present
+app.get('/offline-status', (req, res) => {
+  try {
+    const root = path.join(__dirname, '..', 'build', 'web');
+    const ckDir = path.join(root, 'canvaskit');
+    const hasIndex = fsExists(path.join(root, 'index.html'));
+    const hasMain = fsExists(path.join(root, 'main.dart.js'));
+    const hasSW = fsExists(path.join(root, 'flutter_service_worker.js'));
+    const hasCK = fsExists(path.join(ckDir, 'canvaskit.wasm')) && fsExists(path.join(ckDir, 'canvaskit.js'));
+    res.json({
+      ok: hasIndex && hasMain,
+      buildRoot: root,
+      indexHtml: hasIndex,
+      mainDartJs: hasMain,
+      serviceWorker: hasSW,
+      canvasKitLocal: hasCK,
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+function fsExists(p) {
+  try { return require('fs').existsSync(p); } catch (_) { return false; }
+}
+
 // Handle all routes by serving index.html (for SPA) - MUST come last
 app.get('*', (req, res) => {
     res.sendFile(path.join(__dirname, '..', 'build', 'web', 'index.html'));
@@ -75,6 +101,9 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`🚀 App is running at:`);
     console.log(`   Local: http://localhost:${PORT}`);
     console.log(`   Network: http://0.0.0.0:${PORT}`);
+    console.log('');
+    console.log('Offline assets readiness check:');
+    console.log(`   GET http://localhost:${PORT}/offline-status`);
     console.log('');
     console.log('Press Ctrl+C to stop the server');
     console.log('');

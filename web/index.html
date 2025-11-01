@@ -45,6 +45,43 @@
   <link rel="manifest" href="manifest.json">
 
   <!-- Responsive Configuration -->
+  <script>
+    // Ensure all engine resources are local and prevent Google Fonts fetches
+    window.flutterConfiguration = {
+      // Force HTML renderer to use system/local fonts to fix blank text
+      renderer: 'html',
+      canvasKitBaseUrl: './canvaskit/',
+      useHostedFonts: false // disable fetching Roboto from fonts.gstatic.com
+    };
+
+    // Proactively block any runtime attempts to insert Google Fonts stylesheets
+    (function blockExternalFonts(){
+      function removeGF() {
+        try {
+          const links = Array.from(document.querySelectorAll('link[rel="stylesheet"], link[href]'));
+          links.filter(l => /fonts\.googleapis\.com|fonts\.gstatic\.com/i.test(l.href || ''))
+               .forEach(l => { try { l.parentNode && l.parentNode.removeChild(l); } catch(_){} });
+        } catch(_) {}
+      }
+      // Initial pass
+      removeGF();
+      // Observe future injections
+      const obs = new MutationObserver(() => removeGF());
+      obs.observe(document.documentElement || document.body, { childList: true, subtree: true });
+      // Also patch appendChild to skip blocked links
+      const origAppend = Element.prototype.appendChild;
+      Element.prototype.appendChild = function(node){
+        try {
+          if (node && node.tagName === 'LINK') {
+            const href = node.getAttribute('href') || '';
+            if (/fonts\.googleapis\.com|fonts\.gstatic\.com/i.test(href)) { return node; }
+          }
+        } catch(_) {}
+        return origAppend.call(this, node);
+      };
+    })();
+  </script>
+  </script>
   <script src="responsive_config.js"></script>
   
   <script>
@@ -138,6 +175,10 @@
   </div>
 
   <style>
+    /* Prefer local/system fonts without overriding specialized icon fonts */
+    body {
+      font-family: Arial, Helvetica, 'Segoe UI', Tahoma, sans-serif;
+    }
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }
@@ -156,9 +197,6 @@
       _flutter.loader.loadEntrypoint({
         serviceWorker: {
           serviceWorkerVersion: serviceWorkerVersion,
-        },
-        config: {
-          canvasKitBaseUrl: './canvaskit/'  // Use local CanvasKit instead of Google CDN
         },
         onEntrypointLoaded: function(engineInitializer) {
           engineInitializer.initializeEngine().then(function(appRunner) {

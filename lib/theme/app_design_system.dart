@@ -47,6 +47,9 @@ class AppDesignSystem {
   static ThemeData lightTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.light,
+    // Use local bundled Roboto fonts for consistent offline web rendering
+    fontFamily: 'Roboto',
+    fontFamilyFallback: const ['Arial', 'Helvetica', 'Segoe UI', 'Tahoma', 'sans-serif'],
     primaryColor: primaryColor,
     scaffoldBackgroundColor: neutral50,
     colorScheme: const ColorScheme.light(
@@ -142,6 +145,9 @@ class AppDesignSystem {
   static ThemeData darkTheme = ThemeData(
     useMaterial3: true,
     brightness: Brightness.dark,
+    // Use local bundled Roboto fonts for consistent offline web rendering
+    fontFamily: 'Roboto',
+    fontFamilyFallback: const ['Arial', 'Helvetica', 'Segoe UI', 'Tahoma', 'sans-serif'],
     primaryColor: primaryLight,
     scaffoldBackgroundColor: neutral900,
     colorScheme: const ColorScheme.dark(
