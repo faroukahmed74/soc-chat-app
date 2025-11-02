@@ -51,7 +51,8 @@ app.post('/send-notification', async (req, res) => {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'chat_channel',
+          // Use the app's unified channel so Android background pushes play the same sound
+          channelId: 'chat_notifications',
           priority: 'high',
           defaultSound: true,
         },
@@ -59,7 +60,8 @@ app.post('/send-notification', async (req, res) => {
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            // Allow override via env var (e.g., 'notification_sound.caf'); fallback to 'default'
+            sound: process.env.APNS_SOUND || 'default',
             badge: 1,
           },
         },
@@ -105,7 +107,8 @@ app.post('/send-topic-notification', async (req, res) => {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'broadcast_channel',
+          // Use the same unified channel for topic/broadcast as well
+          channelId: 'chat_notifications',
           priority: 'high',
           defaultSound: true,
         },
@@ -113,7 +116,7 @@ app.post('/send-topic-notification', async (req, res) => {
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: process.env.APNS_SOUND || 'default',
             badge: 1,
           },
         },
@@ -158,7 +161,7 @@ app.post('/send-multicast', async (req, res) => {
       android: {
         priority: 'high',
         notification: {
-          channelId: 'chat_channel',
+          channelId: 'chat_notifications',
           priority: 'high',
           defaultSound: true,
         },
@@ -166,7 +169,7 @@ app.post('/send-multicast', async (req, res) => {
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: process.env.APNS_SOUND || 'default',
             badge: 1,
           },
         },

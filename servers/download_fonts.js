@@ -30,6 +30,35 @@ const fonts = [
       'https://raw.githubusercontent.com/googlefonts/roboto/main/src/hinted/Roboto-Bold.ttf',
     ],
   },
+  // Arabic fonts for proper rendering of Arabic text and filenames
+  {
+    filename: 'NotoNaskhArabic-Regular.ttf',
+    urls: [
+      'https://raw.githubusercontent.com/google/fonts/main/ofl/notonaskharabic/NotoNaskhArabic-Regular.ttf',
+      'https://raw.githubusercontent.com/notofonts/notofonts.github.io/noto-monthly-release-2025.05.01/fonts/NotoNaskhArabic/hinted/ttf/NotoNaskhArabic-Regular.ttf',
+    ],
+  },
+  {
+    filename: 'NotoNaskhArabic-Bold.ttf',
+    urls: [
+      'https://raw.githubusercontent.com/google/fonts/main/ofl/notonaskharabic/NotoNaskhArabic-Bold.ttf',
+      'https://raw.githubusercontent.com/notofonts/notofonts.github.io/noto-monthly-release-2025.05.01/fonts/NotoNaskhArabic/hinted/ttf/NotoNaskhArabic-Bold.ttf',
+    ],
+  },
+  {
+    filename: 'NotoSansArabic-Regular.ttf',
+    urls: [
+      'https://raw.githubusercontent.com/google/fonts/main/ofl/notosansarabic/NotoSansArabic-Regular.ttf',
+      'https://raw.githubusercontent.com/notofonts/notofonts.github.io/noto-monthly-release-2025.05.01/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Regular.ttf',
+    ],
+  },
+  {
+    filename: 'NotoSansArabic-Bold.ttf',
+    urls: [
+      'https://raw.githubusercontent.com/google/fonts/main/ofl/notosansarabic/NotoSansArabic-Bold.ttf',
+      'https://raw.githubusercontent.com/notofonts/notofonts.github.io/noto-monthly-release-2025.05.01/fonts/NotoSansArabic/hinted/ttf/NotoSansArabic-Bold.ttf',
+    ],
+  },
 ];
 
 function ensureDir(dir) {

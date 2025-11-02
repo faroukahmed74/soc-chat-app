@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:math' as math;
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -9,6 +11,8 @@ import 'package:audioplayers/audioplayers.dart';
 import '../config/database_config.dart';
 import 'logger_service.dart';
 import 'local_auth_service.dart';
+import 'web_notification_adapter_stub.dart'
+    if (dart.library.html) 'web_notification_adapter.dart' as web_notif;
 
 class EnhancedNotificationService {
   static final EnhancedNotificationService _instance = EnhancedNotificationService._();
@@ -23,6 +27,7 @@ class EnhancedNotificationService {
   bool _socketConnected = false;
   String? _authToken;
   String? _currentUserId;
+  String _webSoundAsset = 'notification_sound.mp3';
 
   // Notification channels
   static const String chatChannelId = 'chat_notifications';
@@ -39,6 +44,12 @@ class EnhancedNotificationService {
     try {
       // Initialize local notifications
       await _initializeLocalNotifications();
+      // Load web sound preference (if any)
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        _webSoundAsset = prefs.getString('web_notification_sound_asset') ?? _webSoundAsset;
+        Log.i('Web sound asset: $_webSoundAsset', 'ENHANCED_NOTIF');
+      } catch (_) {}
       
       // Get auth token and user ID
       await _loadAuthData();
@@ -87,7 +98,7 @@ class EnhancedNotificationService {
   }
 
   Future<void> _ensureChannels() async {
-    const AndroidNotificationChannel chatChannel = AndroidNotificationChannel(
+    final AndroidNotificationChannel chatChannel = AndroidNotificationChannel(
       chatChannelId,
       'Chat Notifications',
       description: 'Notifications for chat messages',
@@ -95,9 +106,11 @@ class EnhancedNotificationService {
       playSound: true,
       enableVibration: true,
       enableLights: true,
+      // Use a single, consistent raw resource sound across all channels
+      sound: RawResourceAndroidNotificationSound('notification_sound'),
     );
 
-    const AndroidNotificationChannel groupChannel = AndroidNotificationChannel(
+    final AndroidNotificationChannel groupChannel = AndroidNotificationChannel(
       groupChannelId,
       'Group Notifications',
       description: 'Notifications for group messages',
@@ -105,9 +118,11 @@ class EnhancedNotificationService {
       playSound: true,
       enableVibration: true,
       enableLights: true,
+      // Use the same sound resource for consistency
+      sound: RawResourceAndroidNotificationSound('notification_sound'),
     );
 
-    const AndroidNotificationChannel broadcastChannel = AndroidNotificationChannel(
+    final AndroidNotificationChannel broadcastChannel = AndroidNotificationChannel(
       broadcastChannelId,
       'Broadcast Notifications',
       description: 'Notifications for broadcast messages',
@@ -115,6 +130,8 @@ class EnhancedNotificationService {
       playSound: true,
       enableVibration: true,
       enableLights: true,
+      // Keep consistent sound across all channels
+      sound: RawResourceAndroidNotificationSound('notification_sound'),
     );
 
     final android = _fln.resolvePlatformSpecificImplementation<
@@ -300,22 +317,121 @@ class EnhancedNotificationService {
     try {
       Log.i('🔊 Playing notification sound...', 'ENHANCED_NOTIF');
       
-      if (kIsWeb) {
-        // For web, use HTML5 Audio API to play a simple beep
-        Log.i('Playing notification sound on web', 'ENHANCED_NOTIF');
-        return;
+      // Play the same bundled asset on all platforms for consistency.
+      // Note: Browsers require prior user interaction to allow audio.
+      await _audioPlayer.stop();
+      await _audioPlayer.setReleaseMode(ReleaseMode.stop);
+      await _audioPlayer.setVolume(1.0);
+      try {
+        // Try root asset first (may be placeholder)
+        await _audioPlayer.play(AssetSource('notification_sound.mp3'));
+        Log.i('✅ Unified notification sound played (root asset)', 'ENHANCED_NOTIF');
+      } catch (e) {
+        Log.w('Root asset sound failed or invalid (notification_sound.mp3): $e', 'ENHANCED_NOTIF');
+        // Fallback to the sound in assets/notification_sounds/
+        try {
+          await _audioPlayer.play(AssetSource('notification_sounds/chat_notification.mp3'));
+          Log.i('✅ Unified notification sound played (fallback asset)', 'ENHANCED_NOTIF');
+        } catch (e2) {
+          Log.w('Fallback asset failed: $e2. Using programmatic tone.', 'ENHANCED_NOTIF');
+          await _playProgrammaticTone();
+        }
       }
-      
-      // For mobile platforms, set volume and play using AudioPlayer
-      await _audioPlayer.setVolume(0.9);
-      
-      // Play a notification sound - we'll use the system's default notification sound
-      // The local notification will handle the actual sound playback
-      Log.i('✅ Notification sound configured', 'ENHANCED_NOTIF');
     } catch (e) {
       Log.w('Notification sound setup failed: $e', 'ENHANCED_NOTIF');
-      // Fallback: the notification system will still play the default sound
     }
+  }
+
+  /// Last-resort programmatic tone (440Hz sine, ~500ms)
+  Future<void> _playProgrammaticTone({
+    int sampleRate = 44100,
+    int durationMs = 500,
+    double frequency = 440.0,
+    double volume = 0.3,
+  }) async {
+    try {
+      final bytes = _generateWavToneBytes(
+        sampleRate: sampleRate,
+        durationMs: durationMs,
+        frequency: frequency,
+        volume: volume,
+      );
+      await _audioPlayer.stop();
+      await _audioPlayer.setReleaseMode(ReleaseMode.stop);
+      await _audioPlayer.setVolume(1.0);
+      if (kIsWeb) {
+        final dataUri = 'data:audio/wav;base64,' + base64Encode(bytes);
+        await _audioPlayer.play(UrlSource(dataUri));
+        Log.i('✅ Programmatic tone played (Web data URI)', 'ENHANCED_NOTIF');
+      } else {
+        // To avoid dart:io imports in a web-compiled unit, skip file-based playback here.
+        // Mobile should not normally reach this path since asset fallback exists.
+        Log.w('Programmatic tone is not enabled for mobile in current config', 'ENHANCED_NOTIF');
+      }
+    } catch (e) {
+      Log.e('Failed to play programmatic tone', 'ENHANCED_NOTIF', e);
+    }
+  }
+
+  Uint8List _generateWavToneBytes({
+    required int sampleRate,
+    required int durationMs,
+    required double frequency,
+    required double volume,
+  }) {
+    final numSamples = ((sampleRate * durationMs) / 1000).round();
+    final bytesPerSample = 2; // 16-bit PCM
+    final dataSize = numSamples * bytesPerSample;
+
+    final buffer = BytesBuilder();
+
+    // RIFF header
+    void writeString(String s) => buffer.add(s.codeUnits);
+    void writeInt32LE(int value) => buffer.add(Uint8List(4)
+      ..[0] = value & 0xFF
+      ..[1] = (value >> 8) & 0xFF
+      ..[2] = (value >> 16) & 0xFF
+      ..[3] = (value >> 24) & 0xFF);
+    void writeInt16LE(int value) => buffer.add(Uint8List(2)
+      ..[0] = value & 0xFF
+      ..[1] = (value >> 8) & 0xFF);
+
+    writeString('RIFF');
+    writeInt32LE(36 + dataSize); // Chunk size
+    writeString('WAVE');
+
+    // fmt chunk
+    writeString('fmt ');
+    writeInt32LE(16); // Subchunk1Size
+    writeInt16LE(1);  // AudioFormat (PCM)
+    writeInt16LE(1);  // NumChannels
+    writeInt32LE(sampleRate);
+    writeInt32LE(sampleRate * bytesPerSample); // ByteRate
+    writeInt16LE(bytesPerSample); // BlockAlign
+    writeInt16LE(16); // BitsPerSample
+
+    // data chunk
+    writeString('data');
+    writeInt32LE(dataSize);
+
+    // Generate sine wave with simple fade in/out to avoid clicks
+    final twoPiF = 2 * math.pi * frequency;
+    for (int i = 0; i < numSamples; i++) {
+      final t = i / sampleRate;
+      double sample = math.sin(twoPiF * t);
+      // Apply 5ms fade in/out
+      final fadeSamples = (0.005 * sampleRate).round();
+      double gain = 1.0;
+      if (i < fadeSamples) {
+        gain = i / fadeSamples;
+      } else if (i > numSamples - fadeSamples) {
+        gain = (numSamples - i) / fadeSamples;
+      }
+      final intSample = (sample * gain * volume * 32767).round().clamp(-32768, 32767);
+      writeInt16LE(intSample & 0xFFFF);
+    }
+
+    return Uint8List.fromList(buffer.toBytes());
   }
 
   Future<void> _handleNotificationTap(String payload) async {
@@ -377,6 +493,20 @@ class EnhancedNotificationService {
     String channelId = chatChannelId,
   }) async {
     try {
+      // On web, use the browser Notification API via adapter
+      if (kIsWeb) {
+        // Play unified sound and show a banner
+        await _playNotificationSound();
+        await web_notif.showNotification(title, body, payload);
+        // Also show an in-app banner as fallback and visual cue
+        await web_notif.showInAppBanner(title, body);
+        Log.i('Local notification sent (web adapter): $title', 'ENHANCED_NOTIF');
+        return;
+      }
+
+      // Always play the unified sound before showing system notification
+      await _playNotificationSound();
+
       final details = NotificationDetails(
         android: AndroidNotificationDetails(
           channelId,
@@ -384,17 +514,18 @@ class EnhancedNotificationService {
           channelId == broadcastChannelId ? 'Broadcast Notifications' : 'Chat Notifications',
           importance: Importance.high,
           priority: Priority.high,
-          playSound: true,
+          // Disable system sound to avoid duplicate audio; we play our own asset
+          playSound: false,
           enableVibration: true,
           enableLights: true,
-          sound: const RawResourceAndroidNotificationSound('default'), // Use system default
-          styleInformation: const BigTextStyleInformation(''),
+          // Use channel sound configured in _ensureChannels
+          styleInformation: BigTextStyleInformation(''),
         ),
-        iOS: const DarwinNotificationDetails(
+        iOS: DarwinNotificationDetails(
           presentAlert: true, 
           presentBadge: true, 
-          presentSound: true,
-          sound: 'default', // Use iOS default sound
+          // Disable system sound; we play our own asset for consistency
+          presentSound: false,
         ),
       );
 
@@ -566,6 +697,19 @@ class EnhancedNotificationService {
       channelId: chatChannelId,
     );
   }
+
+  /// Configure which bundled asset to use for web notification sound.
+  Future<void> setWebSoundAsset(String assetPath) async {
+    _webSoundAsset = assetPath;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('web_notification_sound_asset', assetPath);
+      Log.i('Web sound asset updated: $assetPath', 'ENHANCED_NOTIF');
+    } catch (_) {}
+  }
+
+  /// Get current web sound asset path.
+  String get webSoundAsset => _webSoundAsset;
 
   /// Test server notification
   Future<bool> testServerNotification() async {

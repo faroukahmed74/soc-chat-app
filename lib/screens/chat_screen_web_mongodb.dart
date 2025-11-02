@@ -531,17 +531,53 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
     // Try to play video in browser using HTML5 video
     try {
       // Use HTML5 video player via url_launcher
-      if (await canLaunchUrl(Uri.parse(mediaUrl))) {
+      final resolved = _resolveWebSameOriginUrl(mediaUrl);
+      if (await canLaunchUrl(Uri.parse(resolved))) {
         // Try to open in external player first
-        await launchUrl(Uri.parse(mediaUrl), mode: LaunchMode.externalApplication);
+        await launchUrl(Uri.parse(resolved), mode: LaunchMode.externalApplication);
       } else {
         // If that fails, show full screen preview (which will show download option if format is unsupported)
-        _showFullScreenMedia(mediaUrl, 'video', caption);
+        _showFullScreenMedia(resolved, 'video', caption);
       }
     } catch (e) {
       Log.e('Error playing video', 'CHAT_SCREEN_WEB', e);
       // Fallback to full screen preview
-      _showFullScreenMedia(mediaUrl, 'video', caption);
+      _showFullScreenMedia(_resolveWebSameOriginUrl(mediaUrl), 'video', caption);
+    }
+  }
+
+  // Resolve media URL to same-origin on web for direct loading/downloading
+  String _resolveWebSameOriginUrl(String url) {
+    if (!kIsWeb) return url;
+    try {
+      final parsed = Uri.parse(url);
+      if (parsed.scheme == 'blob' || parsed.scheme == 'data') return url;
+      if (parsed.host.contains('firebasestorage.googleapis.com')) return url;
+      final base = Uri.base;
+      final p = parsed.path;
+
+      // Prefer rewriting known server paths to same-origin
+      if (p.startsWith('/uploads') || p.contains('/uploads/')) {
+        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // Handle legacy /chat_media URLs by prefixing /uploads
+      if (p.startsWith('/chat_media') || p.contains('/chat_media/')) {
+        final adjustedPath = '/uploads' + (p.startsWith('/') ? p : '/$p');
+        return Uri.parse('${base.origin}$adjustedPath${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // Proxy API calls to same-origin
+      if (p.startsWith('/api/')) {
+        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // If already same-origin or an external URL, leave as-is
+      final originUrl = '${parsed.scheme}://${parsed.host}${parsed.hasPort ? ':${parsed.port}' : ''}';
+      if (originUrl == base.origin) return url;
+      return url;
+    } catch (_) {
+      return url;
     }
   }
 

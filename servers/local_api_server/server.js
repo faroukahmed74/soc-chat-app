@@ -158,6 +158,25 @@ app.use((req, res, next) => {
 // JSON parsing
 app.use(express.json({ limit: '2mb' }));
 app.use(morgan('dev'));
+// Helper to rewrite media URLs to same-origin for web clients
+// Accepts either an Express req or a plain headers object
+function rewriteMediaUrlIfNeeded(originalUrl, reqOrHeaders) {
+  try {
+    if (!originalUrl) return originalUrl;
+    const headers = (reqOrHeaders && (reqOrHeaders.headers || reqOrHeaders)) || {};
+    const clientBaseHeader = (headers['x-client-base'] || '').toString();
+    const clientPlatform = (headers['x-client-platform'] || '').toString();
+    if (clientPlatform === 'web' && clientBaseHeader.startsWith('http')) {
+      const parts = originalUrl.split('/uploads/');
+      if (parts.length >= 2) {
+        return `${clientBaseHeader}/uploads/${parts[1]}`;
+      }
+    }
+    return originalUrl;
+  } catch (_) {
+    return originalUrl;
+  }
+}
 
 // Rate limiting disabled for development
 // const limiter = rateLimit({
@@ -206,6 +225,9 @@ try {
 
 // Serve uploaded media statically
 app.use('/uploads', express.static(UPLOADS_DIR));
+
+// Backward-compatibility alias: serve legacy /chat_media paths from uploads/chat_media
+app.use('/chat_media', express.static(path.join(UPLOADS_DIR, 'chat_media')));
 
 // Test endpoint to verify static file serving
 app.get('/test-uploads', (req, res) => {
@@ -830,13 +852,24 @@ app.post('/api/media/upload', authenticateToken, async (req, res) => {
 
     // Build public URL to the uploaded file (original or transcoded)
     const relativePath = path.join('chat_media', chatId, finalFileName).replace(/\\/g, '/');
-    
-    // Always use ngrok URL for media files to ensure cross-platform access
-    // This ensures media sent from web can be viewed on mobile and vice versa
-    const baseUrl = process.env.MOBILE_BASE_URL || 'https://soc-chat-app.ngrok-free.app';
+
+    // Determine platform and generate appropriate base URL:
+    // - Web: use same-origin base passed via proxy header (x-client-base) to work offline/local
+    // - Mobile: keep existing ngrok/public URL for cross-network access
+    const clientBaseHeader = (req.headers['x-client-base'] || '').toString();
+    const clientPlatform = (req.headers['x-client-platform'] || '').toString();
+
+    let baseUrl;
+    if (clientPlatform === 'web' && clientBaseHeader.startsWith('http')) {
+      baseUrl = clientBaseHeader; // e.g., http://localhost:8086
+    } else {
+      baseUrl = process.env.MOBILE_BASE_URL || 'https://soc-chat-app.ngrok-free.app';
+    }
+
     const mediaUrl = `${baseUrl}/uploads/${relativePath}`;
     
-    console.log('Media URL generated (always using public URL):', {
+    console.log('Media URL generated:', {
+      platform: clientPlatform || 'unknown',
       baseUrl,
       relativePath,
       mediaUrl
@@ -1101,13 +1134,21 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'Chat not found or access denied' });
     }
     
-    const messages = await db.collection('messages')
+    let messages = await db.collection('messages')
       .find({ chatId })
       .sort({ createdAt: 1 })
       .skip(offset)
       .limit(limit)
       .toArray();
-    
+    // Rewrite media URLs for web clients to same-origin
+    try {
+      messages = messages.map(m => {
+        if (m && m.mediaUrl) {
+          m.mediaUrl = rewriteMediaUrlIfNeeded(m.mediaUrl, req);
+        }
+        return m;
+      });
+    } catch (_) {}
     res.json(messages);
   } catch (err) {
     console.error(err);
@@ -1181,12 +1222,21 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       );
     }
     
-    // Emit to socket for all chat members
-    io.to(chatId).emit('new_message', {
-      id: result.insertedId,
-      senderName: senderName,
-      ...message
-    });
+    // Emit to sockets in the chat room, tailoring media URL per client
+    try {
+      const sockets = await io.in(chatId).fetchSockets();
+      for (const socket of sockets) {
+        const mediaUrlForThisSocket = rewriteMediaUrlIfNeeded(message.mediaUrl, socket.handshake?.headers || {});
+        socket.emit('new_message', {
+          id: result.insertedId,
+          senderName: senderName,
+          ...message,
+          mediaUrl: mediaUrlForThisSocket
+        });
+      }
+    } catch (e) {
+      console.warn('Socket emission failed:', e?.message || e);
+    }
     
     // Send notifications to other chat members
     console.log(`📨 Sending notifications to ${otherMembers.length} members`);
@@ -1216,9 +1266,12 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       });
     }
     
+    // Return created message (with media URL rewritten for web clients)
+    const mediaUrlForWeb = rewriteMediaUrlIfNeeded(message.mediaUrl, req.headers || {});
     res.status(201).json({
       id: result.insertedId,
-      ...message
+      ...message,
+      mediaUrl: mediaUrlForWeb
     });
   } catch (err) {
     console.error(err);
@@ -1413,15 +1466,15 @@ app.post('/api/notifications/test', async (req, res) => {
   const token = authHeader.split(' ')[1];
   
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    const decoded = jwt.verify(token, JWT_SECRET);
     
     // Send test notification to the user
-    io.to(decoded.uid).emit('notification', {
+    io.to(decoded.id).emit('notification', {
       title: 'Test Notification',
       body: 'This is a test notification from the server',
       data: { type: 'test', timestamp: new Date() },
       timestamp: new Date(),
-      senderId: decoded.uid
+      senderId: decoded.id
     });
     
     return res.status(200).json({ success: true, message: 'Test notification sent' });
@@ -1444,7 +1497,7 @@ app.post('/api/notifications/send', async (req, res) => {
   
   try {
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    const decoded = jwt.verify(token, JWT_SECRET);
     
     if (!userId || !title || !body) {
       return res.status(400).json({ error: 'userId, title, and body are required' });
@@ -1456,7 +1509,7 @@ app.post('/api/notifications/send', async (req, res) => {
       body,
       data: data || {},
       timestamp: new Date(),
-      senderId: decoded.uid
+      senderId: decoded.id
     });
     
     // Store notification in database
@@ -1467,7 +1520,7 @@ app.post('/api/notifications/send', async (req, res) => {
         body,
         data: data || {},
         timestamp: new Date(),
-        senderId: decoded.uid,
+        senderId: decoded.id,
         read: false
       });
     }
@@ -1492,7 +1545,7 @@ app.post('/api/notifications/chat', async (req, res) => {
   
   try {
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    const decoded = jwt.verify(token, JWT_SECRET);
     
     if (!chatId || !title || !body) {
       return res.status(400).json({ error: 'chatId, title, and body are required' });
@@ -1505,7 +1558,7 @@ app.post('/api/notifications/chat', async (req, res) => {
       body,
       data: data || {},
       timestamp: new Date(),
-      senderId: decoded.uid
+      senderId: decoded.id
     });
     
     return res.status(200).json({ success: true, message: 'Chat notification sent' });
@@ -1527,7 +1580,7 @@ app.get('/api/notifications', async (req, res) => {
   
   try {
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    const decoded = jwt.verify(token, JWT_SECRET);
     
     if (!db) {
       return res.status(500).json({ error: 'Database connection not available' });
@@ -1535,7 +1588,7 @@ app.get('/api/notifications', async (req, res) => {
     
     // Get user's notifications
     const notifications = await db.collection('notifications')
-      .find({ userId: decoded.uid })
+      .find({ userId: decoded.id })
       .sort({ timestamp: -1 })
       .limit(50)
       .toArray();
@@ -1560,7 +1613,7 @@ app.put('/api/notifications/:id/read', async (req, res) => {
   
   try {
     // Verify token
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
+    const decoded = jwt.verify(token, JWT_SECRET);
     
     if (!db) {
       return res.status(500).json({ error: 'Database connection not available' });
@@ -1568,7 +1621,7 @@ app.put('/api/notifications/:id/read', async (req, res) => {
     
     // Mark notification as read
     const result = await db.collection('notifications').updateOne(
-      { _id: new ObjectId(id), userId: decoded.uid },
+      { _id: new ObjectId(id), userId: decoded.id },
       { $set: { read: true } }
     );
     

@@ -185,12 +185,8 @@ class DatabaseConfig {
 
 /// Internal helper to resolve correct server URL based on platform and defines
 String _resolveServerUrl() {
-  // Prefer runtime override if present
-  if (DatabaseConfig._cachedOverrideUrl.isNotEmpty) {
-    print('Using runtime override URL: ${DatabaseConfig._cachedOverrideUrl}');
-    return DatabaseConfig._cachedOverrideUrl;
-  }
-  
+  // On web, ALWAYS use same-origin (or explicitly provided webServerUrl)
+  // to ensure local/offline behavior and avoid ngrok.
   if (kIsWeb) {
     print('Platform: Web detected');
     // For web builds, use configured web server URL first
@@ -207,16 +203,16 @@ String _resolveServerUrl() {
     } catch (e) {
       print('Error resolving dynamic API URL: $e');
     }
-    // Fallback to unified API_BASE_URL
-    if (DatabaseConfig.serverUrl.isNotEmpty) {
-      print('Using fallback server URL: ${DatabaseConfig.serverUrl}');
-      return DatabaseConfig.serverUrl;
-    }
-    // Final fallback
-    print('Using localhost fallback');
+    // Final fallback for web: local proxy
+    print('Using localhost fallback for web');
     return 'http://localhost:8082'; // Use proxy port
   } else {
     print('Platform: Mobile/Desktop detected');
+    // Prefer runtime override if present (mobile/desktop only)
+    if (DatabaseConfig._cachedOverrideUrl.isNotEmpty) {
+      print('Using runtime override URL: ${DatabaseConfig._cachedOverrideUrl}');
+      return DatabaseConfig._cachedOverrideUrl;
+    }
     // Mobile/desktop builds use platform-specific URL first
     if (DatabaseConfig.mobileServerUrl.isNotEmpty) {
       print('Using mobile server URL: ${DatabaseConfig.mobileServerUrl}');

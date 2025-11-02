@@ -43,6 +43,24 @@ const verifyAdminToken = (req, res, next) => {
   }
 };
 
+// Helper to rewrite media URLs to same-origin for web clients
+function rewriteMediaUrlIfNeeded(originalUrl, req) {
+  try {
+    if (!originalUrl) return originalUrl;
+    const clientBaseHeader = (req.headers['x-client-base'] || '').toString();
+    const clientPlatform = (req.headers['x-client-platform'] || '').toString();
+    if (clientPlatform === 'web' && clientBaseHeader.startsWith('http')) {
+      const parts = originalUrl.split('/uploads/');
+      if (parts.length >= 2) {
+        return `${clientBaseHeader}/uploads/${parts[1]}`;
+      }
+    }
+    return originalUrl;
+  } catch (_) {
+    return originalUrl;
+  }
+}
+
 // Get database statistics
 router.get('/stats', verifyAdminToken, async (req, res) => {
   try {
@@ -299,7 +317,7 @@ router.get('/messages', verifyAdminToken, async (req, res) => {
           senderName: senderName,
           type: message.type,
           content: content,
-          mediaUrl: message.mediaUrl,
+          mediaUrl: rewriteMediaUrlIfNeeded(message.mediaUrl, req),
           createdAt: message.createdAt,
           updatedAt: message.updatedAt
         };
@@ -934,7 +952,7 @@ router.get('/messages/:id', verifyAdminToken, async (req, res) => {
       senderName: senderName,
       type: message.type,
       content: message.content,
-      mediaUrl: message.mediaUrl,
+      mediaUrl: rewriteMediaUrlIfNeeded(message.mediaUrl, req),
       createdAt: message.createdAt,
       updatedAt: message.updatedAt
     });

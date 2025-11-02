@@ -167,11 +167,16 @@ class DocumentService {
       print('[DocumentService] Opening document: $fileName from URL: $url');
       
       if (kIsWeb) {
-        // For web, use enhanced online viewers
-        final extension = _getExtensionFromFileName(fileName);
-        final viewerUrl = _getWebViewerUrl(url, extension);
-        print('[DocumentService] Opening document with viewer: $viewerUrl');
-        return await launchUrl(Uri.parse(viewerUrl), mode: LaunchMode.externalApplication);
+        // For web, OPEN DIRECT SAME-ORIGIN URL to ensure offline/local behavior
+        // The browser will either render or download based on type and settings.
+        try {
+          final directUri = Uri.parse(url);
+          print('[DocumentService] Opening direct URL on web: $directUri');
+          return await launchUrl(directUri, mode: LaunchMode.externalApplication);
+        } catch (e) {
+          print('[DocumentService] Failed to open direct URL on web: $e');
+          return false;
+        }
       } else {
         // For mobile, open with system app (Word, Excel, PowerPoint, PDF viewer, etc.)
         // This will open with the default app installed on the device

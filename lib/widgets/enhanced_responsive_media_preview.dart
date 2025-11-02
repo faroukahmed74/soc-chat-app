@@ -111,7 +111,7 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
 
   Future<void> _initializeVideo() async {
     try {
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(widget.mediaUrl));
+      _videoController = VideoPlayerController.networkUrl(Uri.parse(_resolveWebSameOriginUrl(widget.mediaUrl)));
       await _videoController!.initialize();
       
       if (mounted) {
@@ -135,7 +135,7 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
   Future<void> _initializeAudio() async {
     try {
       _audioPlayer = AudioPlayer();
-      await _audioPlayer!.setSourceUrl(widget.mediaUrl);
+      await _audioPlayer!.setSourceUrl(_resolveWebSameOriginUrl(widget.mediaUrl));
       
       // Listen to audio position changes
       _audioPlayer!.onPositionChanged.listen((position) {
@@ -203,7 +203,7 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
       context,
       MaterialPageRoute(
         builder: (context) => EnhancedFullScreenMediaPreview(
-          mediaUrl: widget.mediaUrl,
+          mediaUrl: _resolveWebSameOriginUrl(widget.mediaUrl),
           mediaType: widget.mediaType,
           fileName: widget.fileName,
           fileSize: widget.fileSize,
@@ -214,7 +214,7 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
 
   void _downloadMedia() async {
     try {
-      final uri = Uri.parse(widget.mediaUrl);
+      final uri = Uri.parse(_resolveWebSameOriginUrl(widget.mediaUrl));
       
       // For documents, try to open in browser first
       if (widget.mediaType == 'document') {
@@ -369,7 +369,7 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
     return Stack(
       children: [
         Image.network(
-          widget.mediaUrl,
+          _resolveWebSameOriginUrl(widget.mediaUrl),
           fit: BoxFit.cover,
           width: double.infinity,
           height: double.infinity,
@@ -774,7 +774,7 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
 
   Future<void> _initializeVideo() async {
     try {
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(widget.mediaUrl));
+      _videoController = VideoPlayerController.networkUrl(Uri.parse(_resolveWebSameOriginUrl(widget.mediaUrl)));
       await _videoController!.initialize();
       
       if (mounted) {
@@ -798,7 +798,7 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
   Future<void> _initializeAudio() async {
     try {
       _audioPlayer = AudioPlayer();
-      await _audioPlayer!.setSourceUrl(widget.mediaUrl);
+      await _audioPlayer!.setSourceUrl(_resolveWebSameOriginUrl(widget.mediaUrl));
       
       _audioPlayer!.onPositionChanged.listen((position) {
         if (mounted) {
@@ -879,7 +879,7 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
 
   void _downloadMedia() async {
     try {
-      final uri = Uri.parse(widget.mediaUrl);
+      final uri = Uri.parse(_resolveWebSameOriginUrl(widget.mediaUrl));
       
       // For documents, try to open in browser first
       if (widget.mediaType == 'document') {
@@ -973,13 +973,13 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
       );
     }
 
-    switch (widget.mediaType) {
-      case 'image':
-        return InteractiveViewer(
-          minScale: 0.5,
-          maxScale: 4.0,
-          child: Image.network(
-            widget.mediaUrl,
+      switch (widget.mediaType) {
+        case 'image':
+          return InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Image.network(
+            _resolveWebSameOriginUrl(widget.mediaUrl),
             fit: BoxFit.contain,
             errorBuilder: (context, error, stackTrace) {
               return const Center(
@@ -1125,5 +1125,40 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
     final minutes = twoDigits(duration.inMinutes.remainder(60));
     final seconds = twoDigits(duration.inSeconds.remainder(60));
     return '$minutes:$seconds';
+  }
+}
+
+// Resolve media URL to same-origin on web for direct loading/downloading
+String _resolveWebSameOriginUrl(String url) {
+  if (!kIsWeb) return url;
+  try {
+    final parsed = Uri.parse(url);
+    if (parsed.scheme == 'blob' || parsed.scheme == 'data') return url;
+    if (parsed.host.contains('firebasestorage.googleapis.com')) return url;
+    final base = Uri.base;
+    final p = parsed.path;
+
+    // Prefer rewriting known server paths to same-origin
+    if (p.startsWith('/uploads') || p.contains('/uploads/')) {
+      return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+    }
+
+    // Handle legacy /chat_media URLs by prefixing /uploads
+    if (p.startsWith('/chat_media') || p.contains('/chat_media/')) {
+      final adjustedPath = '/uploads' + (p.startsWith('/') ? p : '/$p');
+      return Uri.parse('${base.origin}$adjustedPath${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+    }
+
+    // Proxy API calls to same-origin
+    if (p.startsWith('/api/')) {
+      return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+    }
+
+    // If already same-origin or an external URL, leave as-is
+    final originUrl = '${parsed.scheme}://${parsed.host}${parsed.hasPort ? ':${parsed.port}' : ''}';
+    if (originUrl == base.origin) return url;
+    return url;
+  } catch (_) {
+    return url;
   }
 }

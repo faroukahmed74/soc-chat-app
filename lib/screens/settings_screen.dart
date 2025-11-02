@@ -565,7 +565,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   999,
                                   '🔔 Test Notification',
                                   'This is a test notification from the real system!',
-                                  const NotificationDetails(
+                                  NotificationDetails(
                                     android: AndroidNotificationDetails(
                                       'test_channel',
                                       'Test Notifications',

@@ -11,9 +11,25 @@ const urlsToCache = [
   '/index.html',
   '/responsive_config.js',
   '/responsive.css',
+  '/icons/favicon.png',
+  '/icons/favicon.svg',
   '/icons/Icon-192.png',
   '/icons/Icon-512.png',
-  '/manifest.json'
+  '/icons/Icon-maskable-192.png',
+  '/icons/Icon-maskable-512.png',
+  '/manifest.json',
+  '/main.dart.js',
+  '/flutter.js',
+  '/canvaskit/canvaskit.js',
+  '/canvaskit/canvaskit.wasm',
+  '/canvaskit/skwasm.js',
+  '/canvaskit/skwasm.wasm',
+  '/canvaskit/skwasm_heavy.js',
+  '/canvaskit/skwasm_heavy.wasm',
+  // --- add more assets as needed, for example:
+  // '/assets/logo/logo.png',
+  // '/assets/notification_sounds/notification.mp3',
+  // '/version_info.json',
 ];
 
 // Install event - cache resources

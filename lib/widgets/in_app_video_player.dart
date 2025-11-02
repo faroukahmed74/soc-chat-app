@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
+import 'package:flutter/foundation.dart';
 import 'package:chewie/chewie.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
@@ -64,14 +65,14 @@ class _InAppVideoPlayerState extends State<InAppVideoPlayer> {
     try {
       // First try with standard network URL
       _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(widget.videoUrl),
+        Uri.parse(_resolveWebSameOriginUrl(widget.videoUrl)),
       );
       await _videoPlayerController!.initialize();
     } catch (e) {
       // If standard fails, try with additional headers for iOS
       try {
         _videoPlayerController = VideoPlayerController.networkUrl(
-          Uri.parse(widget.videoUrl),
+          Uri.parse(_resolveWebSameOriginUrl(widget.videoUrl)),
           httpHeaders: {
             'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
           },
@@ -88,7 +89,7 @@ class _InAppVideoPlayerState extends State<InAppVideoPlayer> {
 
   Future<void> _initializeVideoPlayerStandard() async {
     _videoPlayerController = VideoPlayerController.networkUrl(
-      Uri.parse(widget.videoUrl),
+      Uri.parse(_resolveWebSameOriginUrl(widget.videoUrl)),
     );
     await _videoPlayerController!.initialize();
     _createChewieController();
@@ -100,7 +101,7 @@ class _InAppVideoPlayerState extends State<InAppVideoPlayer> {
       final tempDir = await getTemporaryDirectory();
       final tempFile = File('${tempDir.path}/temp_video_${DateTime.now().millisecondsSinceEpoch}.mp4');
       
-      final response = await http.get(Uri.parse(widget.videoUrl));
+      final response = await http.get(Uri.parse(_resolveWebSameOriginUrl(widget.videoUrl)));
       await tempFile.writeAsBytes(response.bodyBytes);
       
       _videoPlayerController = VideoPlayerController.file(tempFile);
@@ -108,6 +109,41 @@ class _InAppVideoPlayerState extends State<InAppVideoPlayer> {
       _createChewieController();
     } catch (e) {
       throw Exception('Failed to load video: $e');
+    }
+  }
+
+  // Resolve media URL to same-origin on web for direct loading/downloading
+  String _resolveWebSameOriginUrl(String url) {
+    if (!kIsWeb) return url;
+    try {
+      final parsed = Uri.parse(url);
+      if (parsed.scheme == 'blob' || parsed.scheme == 'data') return url;
+      if (parsed.host.contains('firebasestorage.googleapis.com')) return url;
+      final base = Uri.base;
+      final p = parsed.path;
+
+      // Prefer rewriting known server paths to same-origin
+      if (p.startsWith('/uploads') || p.contains('/uploads/')) {
+        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // Handle legacy /chat_media URLs by prefixing /uploads
+      if (p.startsWith('/chat_media') || p.contains('/chat_media/')) {
+        final adjustedPath = '/uploads' + (p.startsWith('/') ? p : '/$p');
+        return Uri.parse('${base.origin}$adjustedPath${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // Proxy API calls to same-origin
+      if (p.startsWith('/api/')) {
+        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // If already same-origin or an external URL, leave as-is
+      final originUrl = '${parsed.scheme}://${parsed.host}${parsed.hasPort ? ':${parsed.port}' : ''}';
+      if (originUrl == base.origin) return url;
+      return url;
+    } catch (_) {
+      return url;
     }
   }
 

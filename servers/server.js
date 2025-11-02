@@ -23,6 +23,10 @@ app.use(
     onProxyReq: (proxyReq, req, res) => {
       try {
         proxyReq.setHeader('origin', '');
+        // Provide client base and platform so API can tailor Socket.IO payloads per client
+        const clientBase = `${req.protocol}://${req.headers.host}`;
+        proxyReq.setHeader('x-client-base', clientBase);
+        proxyReq.setHeader('x-client-platform', 'web');
       } catch (e) {}
     },
   })
@@ -47,6 +51,12 @@ app.use(
       try {
         proxyReq.setHeader('origin', '');
       } catch (e) {}
+      // Provide client base URL to API so it can generate same-origin media URLs for web
+      try {
+        const clientBase = `${req.protocol}://${req.headers.host}`; // e.g., http://localhost:8086
+        proxyReq.setHeader('x-client-base', clientBase);
+        proxyReq.setHeader('x-client-platform', 'web');
+      } catch (_) {}
     },
     onProxyRes: (proxyRes, req, res) => {
       console.log('API Proxy response:', proxyRes.statusCode, req.url);
@@ -54,6 +64,34 @@ app.use(
     onError: (err, req, res) => {
       console.error('API Proxy error:', err.message);
       res.status(500).json({ error: 'Proxy error', message: err.message });
+    },
+  })
+);
+
+// Proxy uploaded media so web can fetch previews from the same origin without internet
+app.use(
+  '/uploads',
+  createProxyMiddleware({
+    target: API_TARGET,
+    changeOrigin: true,
+    logLevel: 'warn',
+    onError: (err, req, res) => {
+      console.error('Uploads Proxy error:', err.message);
+      res.status(500).end('Proxy error');
+    },
+  })
+);
+
+// Proxy legacy /chat_media paths to API (served from uploads/chat_media on API)
+app.use(
+  '/chat_media',
+  createProxyMiddleware({
+    target: API_TARGET,
+    changeOrigin: true,
+    logLevel: 'warn',
+    onError: (err, req, res) => {
+      console.error('ChatMedia Proxy error:', err.message);
+      res.status(500).end('Proxy error');
     },
   })
 );

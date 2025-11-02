@@ -7,6 +7,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
+import 'package:url_launcher/url_launcher.dart';
+// Web-only PDF thumbnail embed - temporarily disabled
+// import 'web_pdf_thumbnail.dart';
 import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../services/media_cache_service.dart';
@@ -252,6 +255,22 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
             ),
           ),
         ),
+        // Download button overlay
+        Positioned(
+          top: 8,
+          left: 8,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.5),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: IconButton(
+              onPressed: _downloadMedia,
+              icon: const Icon(Icons.download, color: Colors.white, size: 20),
+              tooltip: 'Download video',
+            ),
+          ),
+        ),
         if (widget.showFullScreenButton)
           Positioned(
             top: 8,
@@ -365,17 +384,36 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   }
 
   Widget _buildDocumentWidget() {
+    final name = widget.fileName?.toLowerCase() ?? '';
+    final isPdf = name.endsWith('.pdf');
+    final isMobile = ResponsiveUtils.isMobile(context);
+    final isTablet = ResponsiveUtils.isTablet(context);
+    final maxWidth = widget.maxWidth ?? (isMobile ? 200.0 : isTablet ? 300.0 : 400.0);
+    final maxHeight = widget.maxHeight ?? (isMobile ? 200.0 : isTablet ? 300.0 : 400.0);
+    final thumbHeight = maxHeight * 0.6;
+
     return Container(
       color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.insert_drive_file,
-            color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-            size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
-          ),
-          const SizedBox(height: 16),
+          if (isPdf)
+            SizedBox(
+              width: maxWidth,
+              height: thumbHeight,
+              child: Icon(
+                Icons.picture_as_pdf,
+                color: Colors.red,
+                size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
+              ),
+            )
+          else
+            Icon(
+              Icons.insert_drive_file,
+              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+              size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
+            ),
+          const SizedBox(height: 12),
           Text(
             widget.fileName ?? 'Document',
             style: TextStyle(
@@ -392,7 +430,7 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               IconButton(
-                onPressed: widget.onTap,
+                onPressed: _downloadMedia,
                 icon: Icon(
                   Icons.download,
                   color: _themeService.isDarkMode ? Colors.white : Colors.black87,
@@ -558,25 +596,61 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
 
   /// Build network image with caching
   Widget _buildNetworkImage() {
+    final resolvedUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
     return Image.network(
-      widget.mediaUrl,
+      resolvedUrl,
       fit: BoxFit.cover,
       width: double.infinity,
       height: double.infinity,
       loadingBuilder: (context, child, loadingProgress) {
         if (loadingProgress == null) {
           // Image loaded, cache it
-          MediaCacheService.cacheMedia(widget.mediaUrl, mediaType: 'image');
+          MediaCacheService.cacheMedia(resolvedUrl, mediaType: 'image');
           return child;
         }
         return _buildLoadingWidget();
       },
       errorBuilder: (context, error, stackTrace) {
         Log.e('Image loading error', 'ENHANCED_MEDIA_PREVIEW', error);
-        Log.e('Failed URL: ${widget.mediaUrl}', 'ENHANCED_MEDIA_PREVIEW');
+        Log.e('Failed URL: $resolvedUrl', 'ENHANCED_MEDIA_PREVIEW');
         return _buildErrorWidget('Failed to load image');
       },
     );
+  }
+
+  // Resolve media URL to same-origin on web for direct loading/downloading
+  String _resolveWebSameOriginUrl(String url) {
+    if (!kIsWeb) return url;
+    try {
+      final parsed = Uri.parse(url);
+      if (parsed.scheme == 'blob' || parsed.scheme == 'data') return url;
+      if (parsed.host.contains('firebasestorage.googleapis.com')) return url;
+      final base = Uri.base;
+      final p = parsed.path;
+
+      // Prefer rewriting known server paths to same-origin
+      if (p.startsWith('/uploads') || p.contains('/uploads/')) {
+        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // Handle legacy /chat_media URLs by prefixing /uploads
+      if (p.startsWith('/chat_media') || p.contains('/chat_media/')) {
+        final adjustedPath = '/uploads' + (p.startsWith('/') ? p : '/$p');
+        return Uri.parse('${base.origin}$adjustedPath${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // Proxy API calls to same-origin
+      if (p.startsWith('/api/')) {
+        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // If already same-origin or an external URL, leave as-is
+      final originUrl = '${parsed.scheme}://${parsed.host}${parsed.hasPort ? ':${parsed.port}' : ''}';
+      if (originUrl == base.origin) return url;
+      return url;
+    } catch (_) {
+      return url;
+    }
   }
 
   /// Get cached media path or cache the media
@@ -588,5 +662,29 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
       MediaCacheService.cacheMedia(widget.mediaUrl, mediaType: widget.mediaType);
       return null;
     }
+  }
+
+  void _downloadMedia() async {
+    try {
+      final uri = Uri.parse(_resolveWebSameOriginUrl(widget.mediaUrl));
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        _showSnackBar('Cannot open media');
+      }
+    } catch (e) {
+      Log.e('Error downloading media', 'ENHANCED_MEDIA_PREVIEW', e);
+      _showSnackBar('Failed to download media: ${e.toString()}');
+    }
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: Colors.red,
+      ),
+    );
   }
 }

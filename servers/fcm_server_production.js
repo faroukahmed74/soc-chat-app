@@ -166,7 +166,8 @@ app.post('/send-notification', async (req, res) => {
       android: {
         priority: priority,
         notification: {
-          channelId: data?.channelId || 'chat_channel',
+          // Use unified app channel; allow override via data.channelId
+          channelId: data?.channelId || 'chat_notifications',
           priority: priority,
           defaultSound: true,
           icon: '@mipmap/ic_launcher',
@@ -176,7 +177,8 @@ app.post('/send-notification', async (req, res) => {
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            // Configurable APNS sound; set APNS_SOUND env to the bundled filename (e.g., notification_sound.caf)
+            sound: process.env.APNS_SOUND || 'default',
             badge: 1,
             category: data?.category || 'default',
           },
@@ -262,7 +264,7 @@ app.post('/send-topic-notification', async (req, res) => {
       android: {
         priority: priority,
         notification: {
-          channelId: data?.channelId || 'broadcast_channel',
+          channelId: data?.channelId || 'chat_notifications',
           priority: priority,
           defaultSound: true,
           icon: '@mipmap/ic_launcher',
@@ -272,7 +274,7 @@ app.post('/send-topic-notification', async (req, res) => {
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: process.env.APNS_SOUND || 'default',
             badge: 1,
             category: data?.category || 'broadcast',
           },
@@ -365,7 +367,7 @@ app.post('/send-multicast', async (req, res) => {
       android: {
         priority: priority,
         notification: {
-          channelId: data?.channelId || 'chat_channel',
+          channelId: data?.channelId || 'chat_notifications',
           priority: priority,
           defaultSound: true,
           icon: '@mipmap/ic_launcher',
@@ -375,7 +377,7 @@ app.post('/send-multicast', async (req, res) => {
       apns: {
         payload: {
           aps: {
-            sound: 'default',
+            sound: process.env.APNS_SOUND || 'default',
             badge: 1,
             category: data?.category || 'default',
           },

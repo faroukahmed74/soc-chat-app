@@ -17,6 +17,24 @@ async function connectDB() {
   return db;
 }
 
+// Helper to rewrite media URLs to same-origin for web clients
+function rewriteMediaUrlIfNeeded(originalUrl, req) {
+  try {
+    if (!originalUrl) return originalUrl;
+    const clientBaseHeader = (req.headers['x-client-base'] || '').toString();
+    const clientPlatform = (req.headers['x-client-platform'] || '').toString();
+    if (clientPlatform === 'web' && clientBaseHeader.startsWith('http')) {
+      const parts = originalUrl.split('/uploads/');
+      if (parts.length >= 2) {
+        return `${clientBaseHeader}/uploads/${parts[1]}`;
+      }
+    }
+    return originalUrl;
+  } catch (_) {
+    return originalUrl;
+  }
+}
+
 // Authentication middleware
 const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
@@ -107,7 +125,7 @@ router.post('/', authenticateToken, async (req, res) => {
         senderId: createdMessage.senderId.toString(),
         content: createdMessage.content,
         type: createdMessage.type,
-        mediaUrl: createdMessage.mediaUrl || null,
+        mediaUrl: rewriteMediaUrlIfNeeded(createdMessage.mediaUrl || null, req),
         createdAt: createdMessage.createdAt,
         updatedAt: createdMessage.updatedAt,
         edited: createdMessage.edited
@@ -176,7 +194,7 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
       senderId: msg.senderId.toString(),
       content: msg.content,
       type: msg.type,
-      mediaUrl: msg.mediaUrl || null,
+      mediaUrl: rewriteMediaUrlIfNeeded(msg.mediaUrl || null, req),
       createdAt: msg.createdAt,
       updatedAt: msg.updatedAt,
       edited: msg.edited
@@ -303,7 +321,7 @@ router.put('/:messageId', authenticateToken, async (req, res) => {
         senderId: updatedMessage.senderId.toString(),
         content: updatedMessage.content,
         type: updatedMessage.type,
-        mediaUrl: updatedMessage.mediaUrl || null,
+        mediaUrl: rewriteMediaUrlIfNeeded(updatedMessage.mediaUrl || null, req),
         createdAt: updatedMessage.createdAt,
         updatedAt: updatedMessage.updatedAt,
         edited: updatedMessage.edited
