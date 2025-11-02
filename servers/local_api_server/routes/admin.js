@@ -782,6 +782,42 @@ router.put('/users/:id', verifyAdminToken, async (req, res) => {
   }
 });
 
+// Update user password (admin only)
+router.put('/users/:id/password', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    const { password } = req.body;
+    
+    if (!password || password.trim().length < 6) {
+      return res.status(400).json({ error: 'Password must be at least 6 characters long' });
+    }
+    
+    // Hash password
+    const bcrypt = require('bcryptjs');
+    const hashedPassword = await bcrypt.hash(password.trim(), 10);
+    
+    const result = await db.collection('users').updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          password: hashedPassword,
+          updatedAt: new Date()
+        } 
+      }
+    );
+    
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Error updating user password:', error);
+    res.status(500).json({ error: 'Failed to update password' });
+  }
+});
+
 // Get single user
 router.get('/users/:id', verifyAdminToken, async (req, res) => {
   try {
@@ -837,16 +873,22 @@ router.get('/chats/:id', verifyAdminToken, async (req, res) => {
       : [];
     
     res.json({
-      id: chat._id,
-      name: chat.name,
-      type: chat.type || 'group',
-      members: members.map(member => ({
-        id: member._id,
-        name: member.displayName,
-        email: member.email
-      })),
-      createdAt: chat.createdAt,
-      updatedAt: chat.updatedAt
+      chat: {
+        _id: chat._id,
+        id: chat._id.toString(),
+        name: chat.name,
+        type: chat.type || 'group',
+        members: members.map(member => ({
+          id: member._id,
+          name: member.displayName,
+          email: member.email
+        })),
+        memberIds: (chat.members || chat.memberIds || []).map(m => m.toString()),
+        createdBy: chat.createdBy,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt,
+        archived: chat.archived || false
+      }
     });
   } catch (error) {
     console.error('Error getting chat:', error);
@@ -859,12 +901,13 @@ router.put('/chats/:id', verifyAdminToken, async (req, res) => {
   try {
     const db = req.app.locals.db;
     const { id } = req.params;
-    const { name, type, members } = req.body;
+    const { name, type, members, archived } = req.body;
     
     const updateData = {};
-    if (name) updateData.name = name;
-    if (type) updateData.type = type;
-    if (members) updateData.members = members;
+    if (name !== undefined) updateData.name = name;
+    if (type !== undefined) updateData.type = type;
+    if (members !== undefined) updateData.members = members.map(m => typeof m === 'string' && ObjectId.isValid(m) ? new ObjectId(m) : m);
+    if (archived !== undefined) updateData.archived = archived;
     updateData.updatedAt = new Date();
     
     const result = await db.collection('chats').updateOne(
@@ -880,6 +923,161 @@ router.put('/chats/:id', verifyAdminToken, async (req, res) => {
   } catch (error) {
     console.error('Error updating chat:', error);
     res.status(500).json({ error: 'Failed to update chat' });
+  }
+});
+
+// Add member to chat/group
+router.post('/chats/:id/members', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    const { userId } = req.body;
+    
+    if (!userId) {
+      return res.status(400).json({ error: 'User ID is required' });
+    }
+    
+    const chat = await db.collection('chats').findOne({ _id: new ObjectId(id) });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+    
+    const memberObjectId = typeof userId === 'string' && ObjectId.isValid(userId) ? new ObjectId(userId) : userId;
+    const currentMembers = chat.members || chat.memberIds || [];
+    
+    // Check if user is already a member
+    const isAlreadyMember = currentMembers.some(m => 
+      (typeof m === 'string' && m === userId) || 
+      (m && m.toString() === userId) ||
+      (m && m.toString() === memberObjectId.toString())
+    );
+    
+    if (isAlreadyMember) {
+      return res.status(400).json({ error: 'User is already a member of this chat' });
+    }
+    
+    // Add member
+    const updatedMembers = [...currentMembers, memberObjectId];
+    await db.collection('chats').updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          members: updatedMembers,
+          memberIds: updatedMembers,
+          updatedAt: new Date()
+        } 
+      }
+    );
+    
+    res.json({ message: 'Member added successfully' });
+  } catch (error) {
+    console.error('Error adding member to chat:', error);
+    res.status(500).json({ error: 'Failed to add member to chat' });
+  }
+});
+
+// Remove member from chat/group
+router.delete('/chats/:id/members/:userId', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id, userId } = req.params;
+    
+    const chat = await db.collection('chats').findOne({ _id: new ObjectId(id) });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+    
+    const currentMembers = chat.members || chat.memberIds || [];
+    const memberObjectId = typeof userId === 'string' && ObjectId.isValid(userId) ? new ObjectId(userId) : userId;
+    
+    // Remove member
+    const updatedMembers = currentMembers.filter(m => {
+      if (!m) return false;
+      const mId = (typeof m === 'string' && ObjectId.isValid(m)) ? new ObjectId(m) : m;
+      return mId.toString() !== memberObjectId.toString() && m.toString() !== userId;
+    });
+    
+    await db.collection('chats').updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          members: updatedMembers,
+          memberIds: updatedMembers,
+          updatedAt: new Date()
+        } 
+      }
+    );
+    
+    res.json({ message: 'Member removed successfully' });
+  } catch (error) {
+    console.error('Error removing member from chat:', error);
+    res.status(500).json({ error: 'Failed to remove member from chat' });
+  }
+});
+
+// Get chat/group statistics
+router.get('/chats/:id/statistics', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    
+    const chat = await db.collection('chats').findOne({ _id: new ObjectId(id) });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+    
+    const memberIds = chat.members || chat.memberIds || [];
+    const memberCount = memberIds.length;
+    
+    // Get messages count
+    const totalMessages = await db.collection('messages').countDocuments({ chatId: new ObjectId(id) });
+    
+    // Get messages today
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const messagesToday = await db.collection('messages').countDocuments({
+      chatId: new ObjectId(id),
+      createdAt: { $gte: today }
+    });
+    
+    // Get last activity (last message timestamp)
+    const lastMessage = await db.collection('messages')
+      .findOne(
+        { chatId: new ObjectId(id) },
+        { sort: { createdAt: -1 } }
+      );
+    
+    // Get message types distribution
+    const messageTypes = await db.collection('messages').aggregate([
+      { $match: { chatId: new ObjectId(id) } },
+      { $group: { _id: '$type', count: { $sum: 1 } } }
+    ]).toArray();
+    
+    const messageTypesMap = {};
+    messageTypes.forEach(item => {
+      messageTypesMap[item._id || 'text'] = item.count;
+    });
+    
+    // Get active members (members who sent messages in last 7 days)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const activeMemberIds = await db.collection('messages').distinct('senderId', {
+      chatId: new ObjectId(id),
+      createdAt: { $gte: sevenDaysAgo }
+    });
+    
+    res.json({
+      memberCount,
+      activeMembers: activeMemberIds.length,
+      totalMessages,
+      messagesToday,
+      lastActivity: lastMessage ? lastMessage.createdAt : null,
+      messageTypes: messageTypesMap,
+      createdAt: chat.createdAt,
+      updatedAt: chat.updatedAt
+    });
+  } catch (error) {
+    console.error('Error getting chat statistics:', error);
+    res.status(500).json({ error: 'Failed to get chat statistics' });
   }
 });
 

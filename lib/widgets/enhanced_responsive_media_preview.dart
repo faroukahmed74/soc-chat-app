@@ -1047,11 +1047,17 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
           ),
         );
       case 'document':
+        final isPdf = (widget.fileName ?? '').toLowerCase().endsWith('.pdf');
+        final resolvedUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              const Icon(Icons.insert_drive_file, color: Colors.white, size: 80),
+              Icon(
+                isPdf ? Icons.picture_as_pdf : Icons.insert_drive_file,
+                color: Colors.white,
+                size: 80,
+              ),
               const SizedBox(height: 24),
               Text(
                 widget.fileName ?? 'Document',
@@ -1065,6 +1071,26 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
               ],
+              const SizedBox(height: 24),
+              if (isPdf && kIsWeb)
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    try {
+                      final uri = Uri.parse(resolvedUrl);
+                      if (await canLaunchUrl(uri)) {
+                        await launchUrl(uri, mode: LaunchMode.platformDefault);
+                      }
+                    } catch (e) {
+                      _downloadMedia();
+                    }
+                  },
+                  icon: const Icon(Icons.open_in_browser),
+                  label: const Text('Open PDF'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    foregroundColor: Colors.black87,
+                  ),
+                ),
             ],
           ),
         );
@@ -1130,15 +1156,22 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
 
 // Resolve media URL to same-origin on web for direct loading/downloading
 String _resolveWebSameOriginUrl(String url) {
-  if (!kIsWeb) return url;
+  if (!kIsWeb) return url; // Mobile: return as-is (ngrok URLs preserved)
   try {
     final parsed = Uri.parse(url);
     if (parsed.scheme == 'blob' || parsed.scheme == 'data') return url;
     if (parsed.host.contains('firebasestorage.googleapis.com')) return url;
+    
     final base = Uri.base;
     final p = parsed.path;
 
-    // Prefer rewriting known server paths to same-origin
+    // On web, convert ngrok URLs to local network URLs
+    if (parsed.host.contains('ngrok') || parsed.host.contains('ngrok-free.app') || parsed.host.contains('ngrok.app')) {
+      // Extract the path and convert to same-origin (local network)
+      return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+    }
+
+    // Prefer rewriting known server paths to same-origin (local network)
     if (p.startsWith('/uploads') || p.contains('/uploads/')) {
       return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
     }
@@ -1149,14 +1182,16 @@ String _resolveWebSameOriginUrl(String url) {
       return Uri.parse('${base.origin}$adjustedPath${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
     }
 
-    // Proxy API calls to same-origin
+    // Proxy API calls to same-origin (local network)
     if (p.startsWith('/api/')) {
       return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
     }
 
-    // If already same-origin or an external URL, leave as-is
+    // If already same-origin (local network), leave as-is
     final originUrl = '${parsed.scheme}://${parsed.host}${parsed.hasPort ? ':${parsed.port}' : ''}';
     if (originUrl == base.origin) return url;
+    
+    // For external URLs that aren't ngrok or same-origin, leave as-is
     return url;
   } catch (_) {
     return url;

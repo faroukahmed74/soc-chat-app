@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/modern_login_screen.dart';
 import '../screens/modern_register_screen.dart';
-import '../screens/enhanced_admin_panel.dart';
+import '../screens/admin_panel_screen_mongodb.dart';
 import '../screens/chat_list_screen_mongodb.dart';
 import '../screens/user_search_screen.dart';
 import '../screens/create_group_screen.dart';
@@ -25,7 +25,7 @@ import '../services/theme_service.dart';
 Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
   '/login': (_) => const ModernLoginScreen(),
   '/register': (_) => const ModernRegisterScreen(),
-  '/admin': (_) => const EnhancedAdminPanel(),
+  '/admin': (_) => const AdminPanelScreenMongoDB(),
     '/chats': (_) => const ChatListScreenMongoDB(),
   '/search': (_) => const UserSearchScreen(),
   '/create_group': (_) => const CreateGroupScreen(),

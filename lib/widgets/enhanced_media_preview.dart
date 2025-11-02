@@ -8,8 +8,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
-// Web-only PDF thumbnail embed - temporarily disabled
-// import 'web_pdf_thumbnail.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
+import 'package:video_player/video_player.dart';
+// Conditional import: web_pdf_thumbnail only available on web
+import 'web_pdf_thumbnail.dart' if (dart.library.io) 'web_pdf_thumbnail_stub.dart';
 import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../services/media_cache_service.dart';
@@ -79,9 +82,17 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   }
 
   bool _isValidUrl(String url) {
+    if (url.isEmpty || url.trim().isEmpty) return false;
     try {
       final uri = Uri.parse(url);
-      return uri.hasScheme && (uri.scheme == 'http' || uri.scheme == 'https');
+      // Allow http, https, data, blob, file schemes
+      return uri.hasScheme && (
+        uri.scheme == 'http' || 
+        uri.scheme == 'https' || 
+        uri.scheme == 'data' || 
+        uri.scheme == 'blob' ||
+        uri.scheme == 'file'
+      );
     } catch (e) {
       return false;
     }
@@ -123,9 +134,20 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   }
 
   Widget _buildMediaContent() {
-    // Validate URL first
-    if (!_isValidUrl(widget.mediaUrl)) {
-      return _buildErrorWidget('Invalid media URL');
+    // Basic URL validation - be more lenient
+    if (widget.mediaUrl.isEmpty || widget.mediaUrl.trim().isEmpty) {
+      return _buildErrorWidget('No media URL provided');
+    }
+    
+    // Try to parse URL - if it fails, still try to load (might be a relative path)
+    try {
+      final uri = Uri.parse(widget.mediaUrl);
+      // Only reject if it's clearly invalid (empty scheme and not a relative path)
+      if (!uri.hasScheme && !widget.mediaUrl.startsWith('/') && !widget.mediaUrl.startsWith('uploads/')) {
+        Log.w('Media URL might be invalid, but trying anyway', 'ENHANCED_MEDIA_PREVIEW');
+      }
+    } catch (e) {
+      Log.w('Error parsing media URL, but trying anyway: $e', 'ENHANCED_MEDIA_PREVIEW');
     }
 
     switch (widget.mediaType) {
@@ -144,52 +166,94 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   }
 
   Widget _buildImageWidget() {
-    return Stack(
+    // Ensure URL is resolved before building
+    final resolvedUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
+    
+    return GestureDetector(
+      onTap: widget.onTap, // Make entire image tappable for fullscreen
+      child: Stack(
       children: [
+          // Image thumbnail/preview - this will use resolved URL internally
         _buildCachedImage(),
+          // Download button overlay
+          Positioned(
+            top: 8,
+            left: 8,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: IconButton(
+                onPressed: _downloadMedia,
+                icon: const Icon(Icons.download, color: Colors.white, size: 20),
+                tooltip: 'Download image',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 40,
+                  minHeight: 40,
+                ),
+              ),
+            ),
+          ),
+          // Fullscreen button overlay
         if (widget.showFullScreenButton)
           Positioned(
             top: 8,
             right: 8,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.5),
+                  color: Colors.black.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: IconButton(
                 onPressed: widget.onTap,
                 icon: const Icon(Icons.fullscreen, color: Colors.white, size: 20),
                 tooltip: 'View full screen',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
               ),
             ),
           ),
-        Positioned(
+            ),
+          // Image info bar - only show if image loaded successfully
+          Positioned(
           bottom: 8,
           left: 8,
           right: 8,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.5),
+                color: Colors.black.withValues(alpha: 0.7),
               borderRadius: BorderRadius.circular(8),
             ),
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
                 const Icon(Icons.image, color: Colors.white, size: 16),
-                const SizedBox(width: 4),
+                  const SizedBox(width: 6),
                 Expanded(
                   child: Text(
                     widget.fileName ?? 'Image',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12),
+                        fontWeight: FontWeight.w500,
+                      ),
                     overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
                   ),
                 ),
                 if (widget.fileSize != null) ...[
-                  const SizedBox(width: 4),
+                    const SizedBox(width: 6),
                   Text(
                     widget.fileSize!,
-                    style: const TextStyle(color: Colors.white70, fontSize: 10),
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 10),
+                      ),
                   ),
                 ],
               ],
@@ -197,62 +261,89 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
           ),
         ),
       ],
+      ),
     );
   }
 
   Widget _buildVideoWidget() {
-    return Stack(
+    return _VideoThumbnailBuilder(
+      mediaUrl: widget.mediaUrl,
+      fileName: widget.fileName,
+      fileSize: widget.fileSize,
+      onTap: widget.onTap,
+      onDownload: _downloadMedia,
+      showFullScreenButton: widget.showFullScreenButton,
+      themeService: _themeService,
+    );
+  }
+
+  Widget _buildAudioWidget() {
+    return GestureDetector(
+      onTap: widget.onTap, // Make entire audio widget tappable
+      child: Stack(
       children: [
         Container(
-          width: double.infinity,
-          height: double.infinity,
           decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.1),
+              color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.videocam,
+                Container(
+                  width: 80,
+                  height: 80,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: _themeService.isDarkMode ? Colors.grey[700] : Colors.grey[200],
+                  ),
+                  child: Icon(
+                    widget.mediaType == 'voice' ? Icons.mic : Icons.music_note,
+                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
                 size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
-                color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'Video Preview',
-                style: TextStyle(
-                  color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-                  fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
-                  fontWeight: FontWeight.w500,
+                  ),
                 ),
-              ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    widget.fileName ?? (widget.mediaType == 'voice' ? 'Voice Message' : 'Audio'),
+                style: TextStyle(
+                      color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                  fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
+                      fontWeight: FontWeight.w600,
+                    ),
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    IconButton(
+                      onPressed: widget.onTap,
+                      icon: Icon(
+                        Icons.play_arrow,
+                        color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                        size: 32,
+                      ),
+                      tooltip: 'Play audio',
+                    ),
+                  ],
+                ),
+                if (widget.fileSize != null) ...[
               const SizedBox(height: 4),
               Text(
-                'Tap to play',
+                    widget.fileSize!,
                 style: TextStyle(
                   color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
-                  fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12),
+                      fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 10),
                 ),
               ),
+                ],
             ],
-          ),
-        ),
-        // Play button overlay
-        Center(
-          child: Container(
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.6),
-              shape: BoxShape.circle,
-            ),
-            child: IconButton(
-              onPressed: widget.onTap,
-              icon: const Icon(
-                Icons.play_arrow,
-                color: Colors.white,
-                size: 40,
-              ),
-            ),
           ),
         ),
         // Download button overlay
@@ -261,123 +352,43 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
           left: 8,
           child: Container(
             decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.5),
+                color: Colors.black.withValues(alpha: 0.7),
               borderRadius: BorderRadius.circular(20),
             ),
             child: IconButton(
               onPressed: _downloadMedia,
               icon: const Icon(Icons.download, color: Colors.white, size: 20),
-              tooltip: 'Download video',
+                tooltip: 'Download audio',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 40,
+                  minHeight: 40,
             ),
           ),
         ),
+          ),
+          // Fullscreen button overlay
         if (widget.showFullScreenButton)
           Positioned(
             top: 8,
             right: 8,
             child: Container(
               decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.5),
+                  color: Colors.black.withValues(alpha: 0.7),
                 borderRadius: BorderRadius.circular(20),
               ),
               child: IconButton(
                 onPressed: widget.onTap,
                 icon: const Icon(Icons.fullscreen, color: Colors.white, size: 20),
                 tooltip: 'View full screen',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
               ),
             ),
           ),
-        Positioned(
-          bottom: 8,
-          left: 8,
-          right: 8,
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-            decoration: BoxDecoration(
-              color: Colors.black.withValues(alpha: 0.5),
-              borderRadius: BorderRadius.circular(8),
             ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Icon(Icons.videocam, color: Colors.white, size: 16),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    widget.fileName ?? 'Video',
-                    style: const TextStyle(color: Colors.white, fontSize: 12),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                if (widget.fileSize != null) ...[
-                  const SizedBox(width: 4),
-                  Text(
-                    widget.fileSize!,
-                    style: const TextStyle(color: Colors.white70, fontSize: 10),
-                  ),
-                ],
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildAudioWidget() {
-    return Container(
-      color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            widget.mediaType == 'voice' ? Icons.mic : Icons.audiotrack,
-            color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-            size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
-          ),
-          const SizedBox(height: 16),
-          Text(
-            widget.fileName ?? (widget.mediaType == 'voice' ? 'Voice Message' : 'Audio'),
-            style: TextStyle(
-              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                onPressed: widget.onTap,
-                icon: Icon(
-                  Icons.play_arrow,
-                  color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-                ),
-                tooltip: 'Play audio',
-              ),
-              if (widget.showFullScreenButton)
-                IconButton(
-                  onPressed: widget.onTap,
-                  icon: Icon(
-                    Icons.fullscreen,
-                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-                  ),
-                  tooltip: 'View full screen',
-                ),
-            ],
-          ),
-          if (widget.fileSize != null) ...[
-            const SizedBox(height: 8),
-            Text(
-              widget.fileSize!,
-              style: TextStyle(
-                color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
-                fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 10),
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -390,66 +401,102 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
     final isTablet = ResponsiveUtils.isTablet(context);
     final maxWidth = widget.maxWidth ?? (isMobile ? 200.0 : isTablet ? 300.0 : 400.0);
     final maxHeight = widget.maxHeight ?? (isMobile ? 200.0 : isTablet ? 300.0 : 400.0);
-    final thumbHeight = maxHeight * 0.6;
+    final thumbHeight = maxHeight * 0.75;
 
-    return Container(
+    return GestureDetector(
+      onTap: widget.onTap, // Make entire document tappable for fullscreen
+      child: Stack(
+        children: [
+          Container(
+            decoration: BoxDecoration(
       color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: _themeService.isDarkMode ? Colors.grey[700]! : Colors.grey[300]!,
+                width: 1,
+              ),
+            ),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Document thumbnail/preview
+                SizedBox(
+                  width: maxWidth,
+                  height: thumbHeight,
+                  child: isPdf && kIsWeb
+                      ? // PDF thumbnail on web - show first page
+                        ClipRRect(
+                            borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                            child: WebPdfThumbnail(
+                              url: '${widget.mediaUrl}#page=1&toolbar=0&navpanes=0&zoom=page-fit',
+                              width: maxWidth,
+                              height: thumbHeight,
+                              borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
+                              onTap: widget.onTap,
+                            ),
+                          )
+                      : isPdf
+                          ? // PDF icon for mobile
+                            Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.red[50],
+                                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                                ),
+                                child: Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (isPdf)
-            SizedBox(
-              width: maxWidth,
-              height: thumbHeight,
-              child: Icon(
-                Icons.picture_as_pdf,
-                color: Colors.red,
-                size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
-              ),
-            )
-          else
-            Icon(
-              Icons.insert_drive_file,
-              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-              size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
-            ),
-          const SizedBox(height: 12),
+          Icon(
+                                        Icons.picture_as_pdf,
+                                        color: Colors.red[700],
+                                        size: ResponsiveUtils.getResponsiveIconSize(context) * 2.5,
+                                      ),
+                                      const SizedBox(height: 8),
           Text(
-            widget.fileName ?? 'Document',
+                                        'PDF',
             style: TextStyle(
-              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                                          color: Colors.red[700],
               fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
-              fontWeight: FontWeight.w600,
-            ),
-            textAlign: TextAlign.center,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-          ),
-          const SizedBox(height: 8),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                onPressed: _downloadMedia,
-                icon: Icon(
-                  Icons.download,
-                  color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              )
+                          : // Other document types
+                            Container(
+                                decoration: BoxDecoration(
+                                  color: _themeService.isDarkMode ? Colors.grey[700] : Colors.grey[200],
+                                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    _getDocumentIcon(name),
+                                    color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
+                                    size: ResponsiveUtils.getResponsiveIconSize(context) * 2.5,
+                                  ),
+                                ),
+                              ),
                 ),
-                tooltip: 'Download',
-              ),
-              if (widget.showFullScreenButton)
-                IconButton(
-                  onPressed: widget.onTap,
-                  icon: Icon(
-                    Icons.fullscreen,
-                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-                  ),
-                  tooltip: 'View full screen',
-                ),
-            ],
+                // Document info
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Column(
+                    children: [
+                      Text(
+                        widget.fileName ?? 'Document',
+                        style: TextStyle(
+                          color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                          fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12),
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
           ),
           if (widget.fileSize != null) ...[
-            const SizedBox(height: 8),
+                        const SizedBox(height: 4),
             Text(
               widget.fileSize!,
               style: TextStyle(
@@ -458,9 +505,165 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
               ),
             ),
           ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Full screen button overlay
+          if (widget.showFullScreenButton)
+            Positioned(
+              top: 8,
+              right: 8,
+              child: Container(
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.7),
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: IconButton(
+                  onPressed: widget.onTap,
+                  icon: const Icon(Icons.fullscreen, color: Colors.white, size: 20),
+                  tooltip: 'View full screen',
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(
+                    minWidth: 40,
+                    minHeight: 40,
+                  ),
+                ),
+              ),
+            ),
+          // Download button overlay
+          Positioned(
+            top: 8,
+            left: 8,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: IconButton(
+                onPressed: _downloadMedia,
+                icon: const Icon(Icons.download, color: Colors.white, size: 20),
+                tooltip: 'Download document',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 40,
+                  minHeight: 40,
+                ),
+              ),
+            ),
+          ),
         ],
       ),
     );
+  }
+
+  IconData _getDocumentIcon(String fileName) {
+    final ext = fileName.split('.').last.toLowerCase();
+    switch (ext) {
+      case 'doc':
+      case 'docx':
+        return Icons.description;
+      case 'xls':
+      case 'xlsx':
+        return Icons.table_chart;
+      case 'ppt':
+      case 'pptx':
+        return Icons.slideshow;
+      case 'txt':
+        return Icons.text_snippet;
+      case 'zip':
+      case 'rar':
+        return Icons.folder_zip;
+      default:
+        return Icons.insert_drive_file;
+    }
+  }
+
+  String _resolveWebSameOriginUrl(String url) {
+    if (!kIsWeb) return url; // Mobile: return as-is (ngrok URLs preserved)
+    
+    if (url.isEmpty || url.trim().isEmpty) return url;
+    
+    try {
+      final parsed = Uri.parse(url);
+      
+      // Preserve data and blob URLs
+      if (parsed.scheme == 'blob' || parsed.scheme == 'data') return url;
+      
+      // Preserve Firebase Storage URLs
+      if (parsed.host.contains('firebasestorage.googleapis.com')) return url;
+      
+      final base = Uri.base;
+      final baseOrigin = base.origin; // e.g., "http://192.168.1.100:8082"
+      final p = parsed.path;
+      final query = parsed.hasQuery ? '?${parsed.query}' : '';
+
+      // On web, convert ngrok URLs to local network URLs
+      final host = parsed.host.toLowerCase();
+      if (host.contains('ngrok') || host.contains('ngrok-free.app') || host.contains('ngrok.app')) {
+        // Extract the path and convert to same-origin (local network)
+        // Ensure path starts with /
+        final cleanPath = p.startsWith('/') ? p : '/$p';
+        final resolved = '$baseOrigin$cleanPath$query';
+        Log.d('Resolved ngrok URL: $url -> $resolved', 'ENHANCED_MEDIA_PREVIEW');
+        return resolved;
+      }
+
+      // Prefer rewriting known server paths to same-origin (local network)
+      if (p.startsWith('/uploads') || p.contains('/uploads/')) {
+        final resolved = '$baseOrigin$p$query';
+        Log.d('Resolved uploads URL: $url -> $resolved', 'ENHANCED_MEDIA_PREVIEW');
+        return resolved;
+      }
+
+      // Handle legacy /chat_media URLs by prefixing /uploads
+      if (p.startsWith('/chat_media') || p.contains('/chat_media/')) {
+        final adjustedPath = p.startsWith('/chat_media') 
+            ? p.replaceFirst('/chat_media', '/uploads/chat_media')
+            : '/uploads/chat_media/$p';
+        final resolved = '$baseOrigin$adjustedPath$query';
+        Log.d('Resolved chat_media URL: $url -> $resolved', 'ENHANCED_MEDIA_PREVIEW');
+        return resolved;
+      }
+
+      // Proxy API calls to same-origin (local network)
+      if (p.startsWith('/api/')) {
+        final resolved = '$baseOrigin$p$query';
+        Log.d('Resolved API URL: $url -> $resolved', 'ENHANCED_MEDIA_PREVIEW');
+        return resolved;
+      }
+
+      // Check if it's already a relative path (starts with /)
+      if (p.startsWith('/') && !parsed.hasAuthority && parsed.host.isEmpty) {
+        // Already a relative path, just prepend base origin
+        final resolved = '$baseOrigin$p$query';
+        Log.d('Resolved relative URL: $url -> $resolved', 'ENHANCED_MEDIA_PREVIEW');
+        return resolved;
+      }
+
+      // If already same-origin (local network), leave as-is
+      final originUrl = '${parsed.scheme}://${parsed.host}${parsed.hasPort ? ':${parsed.port}' : ''}';
+      if (originUrl == baseOrigin || originUrl == baseOrigin.replaceAll('http://', '').replaceAll('https://', '')) {
+        Log.d('URL already same-origin: $url', 'ENHANCED_MEDIA_PREVIEW');
+        return url;
+      }
+      
+      // For external URLs that aren't ngrok or same-origin, log and try to convert if path exists
+      if (p.isNotEmpty && p.startsWith('/')) {
+        // Has a path, try to use it with base origin
+        final resolved = '$baseOrigin$p$query';
+        Log.d('Attempting to resolve external URL: $url -> $resolved', 'ENHANCED_MEDIA_PREVIEW');
+        return resolved;
+      }
+      
+      Log.w('Could not resolve URL, returning as-is: $url', 'ENHANCED_MEDIA_PREVIEW');
+      return url;
+    } catch (e) {
+      Log.e('Error resolving URL: $url', 'ENHANCED_MEDIA_PREVIEW', e);
+      return url;
+    }
   }
 
   Widget _buildLoadingWidget() {
@@ -486,6 +689,13 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   }
 
   Widget _buildErrorWidget(String message) {
+    // Don't show ngrok URLs to users - show resolved URL or simplified message
+    final displayUrl = widget.mediaUrl.isNotEmpty 
+        ? (_resolveWebSameOriginUrl(widget.mediaUrl).length > 50 
+            ? '${_resolveWebSameOriginUrl(widget.mediaUrl).substring(0, 50)}...' 
+            : _resolveWebSameOriginUrl(widget.mediaUrl))
+        : '';
+    
     return Container(
       color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[200],
       child: Center(
@@ -506,35 +716,28 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
               ),
               textAlign: TextAlign.center,
             ),
-            if (widget.enableRetry) ...[
-              const SizedBox(height: 8),
-              ElevatedButton.icon(
-                onPressed: _isRetrying ? null : _retryLoad,
-                icon: _isRetrying 
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.refresh, size: 16),
-                label: Text(_isRetrying ? 'Retrying...' : 'Retry'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.red,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  textStyle: const TextStyle(fontSize: 10),
-                ),
-              ),
-            ],
-            if (widget.mediaUrl.isNotEmpty) ...[
+            if (displayUrl.isNotEmpty && !displayUrl.contains('ngrok')) ...[
               const SizedBox(height: 4),
               Text(
-                'URL: ${widget.mediaUrl.length > 50 ? '${widget.mediaUrl.substring(0, 50)}...' : widget.mediaUrl}',
+                'URL: $displayUrl',
                 style: TextStyle(
                   color: Colors.grey[500],
                   fontSize: 8,
                 ),
                 textAlign: TextAlign.center,
+              ),
+            ],
+            if (widget.enableRetry) ...[
+              const SizedBox(height: 12),
+              ElevatedButton.icon(
+                onPressed: _retryLoad,
+                icon: const Icon(Icons.refresh, size: 16),
+                label: const Text('Retry'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                ),
               ),
             ],
           ],
@@ -557,7 +760,7 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
             ),
             const SizedBox(height: 8),
             Text(
-              'Unknown media type',
+              widget.mediaType,
               style: TextStyle(
                 color: _themeService.isDarkMode ? Colors.white : Colors.black87,
                 fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12),
@@ -571,11 +774,17 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
 
   /// Build cached image widget with fallback to network
   Widget _buildCachedImage() {
+    // On web, always use network image directly (no file caching)
+    if (kIsWeb) {
+      return _buildNetworkImage();
+    }
+    
+    // On mobile, try cache first, then fallback to network
     return FutureBuilder<String?>(
       future: _getCachedMediaPath(),
       builder: (context, snapshot) {
-        if (snapshot.hasData && snapshot.data != null) {
-          // Use cached image
+        if (snapshot.hasData && snapshot.data != null && !kIsWeb) {
+          // Use cached image (mobile only)
           return Image.file(
             File(snapshot.data!),
             fit: BoxFit.cover,
@@ -597,6 +806,21 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   /// Build network image with caching
   Widget _buildNetworkImage() {
     final resolvedUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
+    
+    // Validate URL
+    if (resolvedUrl.isEmpty) {
+      return _buildErrorWidget('Invalid image URL');
+    }
+    
+    try {
+      final uri = Uri.parse(resolvedUrl);
+      if (!uri.hasScheme || (!uri.scheme.startsWith('http') && uri.scheme != 'data' && uri.scheme != 'blob')) {
+        return _buildErrorWidget('Invalid URL scheme');
+      }
+    } catch (e) {
+      return _buildErrorWidget('Invalid URL format');
+    }
+    
     return Image.network(
       resolvedUrl,
       fit: BoxFit.cover,
@@ -604,57 +828,35 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
       height: double.infinity,
       loadingBuilder: (context, child, loadingProgress) {
         if (loadingProgress == null) {
-          // Image loaded, cache it
-          MediaCacheService.cacheMedia(resolvedUrl, mediaType: 'image');
+          // Image loaded, cache it (mobile only)
+          if (!kIsWeb) {
+            MediaCacheService.cacheMedia(resolvedUrl, mediaType: 'image');
+          }
           return child;
         }
         return _buildLoadingWidget();
       },
       errorBuilder: (context, error, stackTrace) {
         Log.e('Image loading error', 'ENHANCED_MEDIA_PREVIEW', error);
-        Log.e('Failed URL: $resolvedUrl', 'ENHANCED_MEDIA_PREVIEW');
+        Log.e('Failed URL (resolved): $resolvedUrl', 'ENHANCED_MEDIA_PREVIEW');
+        Log.e('Original URL: ${widget.mediaUrl}', 'ENHANCED_MEDIA_PREVIEW');
+        
+        // Return error widget with retry option
         return _buildErrorWidget('Failed to load image');
+      },
+      frameBuilder: (context, child, frame, wasSynchronouslyLoaded) {
+        // Show loading indicator while frame is being loaded
+        if (wasSynchronouslyLoaded) return child;
+        if (frame == null) return _buildLoadingWidget();
+        return child;
       },
     );
   }
 
-  // Resolve media URL to same-origin on web for direct loading/downloading
-  String _resolveWebSameOriginUrl(String url) {
-    if (!kIsWeb) return url;
-    try {
-      final parsed = Uri.parse(url);
-      if (parsed.scheme == 'blob' || parsed.scheme == 'data') return url;
-      if (parsed.host.contains('firebasestorage.googleapis.com')) return url;
-      final base = Uri.base;
-      final p = parsed.path;
-
-      // Prefer rewriting known server paths to same-origin
-      if (p.startsWith('/uploads') || p.contains('/uploads/')) {
-        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
-      }
-
-      // Handle legacy /chat_media URLs by prefixing /uploads
-      if (p.startsWith('/chat_media') || p.contains('/chat_media/')) {
-        final adjustedPath = '/uploads' + (p.startsWith('/') ? p : '/$p');
-        return Uri.parse('${base.origin}$adjustedPath${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
-      }
-
-      // Proxy API calls to same-origin
-      if (p.startsWith('/api/')) {
-        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
-      }
-
-      // If already same-origin or an external URL, leave as-is
-      final originUrl = '${parsed.scheme}://${parsed.host}${parsed.hasPort ? ':${parsed.port}' : ''}';
-      if (originUrl == base.origin) return url;
-      return url;
-    } catch (_) {
-      return url;
-    }
-  }
-
   /// Get cached media path or cache the media
   Future<String?> _getCachedMediaPath() async {
+    if (kIsWeb) return null; // No file caching on web
+    
     if (MediaCacheService.isCached(widget.mediaUrl)) {
       return MediaCacheService.getCachedPath(widget.mediaUrl);
     } else {
@@ -664,17 +866,109 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
     }
   }
 
-  void _downloadMedia() async {
+  Future<void> _downloadMedia() async {
     try {
-      final uri = Uri.parse(_resolveWebSameOriginUrl(widget.mediaUrl));
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!mounted) return;
+      
+      // Show downloading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Row(
+            children: [
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+              ),
+              SizedBox(width: 12),
+              Text('Downloading...'),
+            ],
+          ),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      final mediaUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
+      final uri = Uri.parse(mediaUrl);
+      
+      if (kIsWeb) {
+        // Web: Open in new tab for download
+        if (await canLaunchUrl(uri)) {
+          await launchUrl(uri, mode: LaunchMode.platformDefault);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Download started'),
+                backgroundColor: Colors.green,
+              ),
+            );
+          }
+        } else {
+          _showSnackBar('Cannot open media URL');
+        }
       } else {
-        _showSnackBar('Cannot open media');
+        // Mobile: Download file to device
+        await _downloadMediaMobile(mediaUrl);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Downloaded successfully'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
       }
     } catch (e) {
       Log.e('Error downloading media', 'ENHANCED_MEDIA_PREVIEW', e);
-      _showSnackBar('Failed to download media: ${e.toString()}');
+      _showSnackBar('Failed to download: ${e.toString()}');
+    }
+  }
+
+  Future<void> _downloadMediaMobile(String url) async {
+    try {
+      if (kIsWeb) return;
+      
+      final response = await http.get(Uri.parse(url));
+      if (response.statusCode != 200) {
+        throw Exception('Failed to download: HTTP ${response.statusCode}');
+      }
+
+      // Get file name from URL or use default
+      String fileName = widget.fileName ?? 'download';
+      final uri = Uri.parse(url);
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isNotEmpty) {
+        final lastSegment = pathSegments.last;
+        if (lastSegment.contains('.')) {
+          fileName = lastSegment;
+        } else {
+          // Add extension based on media type
+          final extension = widget.mediaType == 'video' 
+              ? '.mp4' 
+              : widget.mediaType == 'image' 
+                  ? '.jpg' 
+                  : widget.mediaType == 'audio' || widget.mediaType == 'voice'
+                      ? '.mp3'
+                      : widget.mediaType == 'document'
+                          ? '.pdf'
+                          : '.bin';
+          fileName = '$fileName$extension';
+        }
+      }
+
+      // Use path_provider to get Documents directory
+      final directory = await getApplicationDocumentsDirectory();
+      final filePath = '${directory.path}/$fileName';
+      final file = File(filePath);
+      
+      await file.writeAsBytes(response.bodyBytes);
+      
+      if (await file.exists()) {
+        Log.i('File downloaded to: $filePath', 'ENHANCED_MEDIA_PREVIEW');
+      }
+    } catch (e) {
+      Log.e('Error in mobile download', 'ENHANCED_MEDIA_PREVIEW', e);
+      rethrow;
     }
   }
 
@@ -687,4 +981,407 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
       ),
     );
   }
+
+}
+
+// Video Thumbnail Builder Widget
+class _VideoThumbnailBuilder extends StatefulWidget {
+  final String mediaUrl;
+  final String? fileName;
+  final String? fileSize;
+  final VoidCallback? onTap;
+  final VoidCallback? onDownload;
+  final bool showFullScreenButton;
+  final ThemeService themeService;
+
+  const _VideoThumbnailBuilder({
+    required this.mediaUrl,
+    this.fileName,
+    this.fileSize,
+    this.onTap,
+    this.onDownload,
+    this.showFullScreenButton = true,
+    required this.themeService,
+  });
+
+  @override
+  State<_VideoThumbnailBuilder> createState() => _VideoThumbnailBuilderState();
+}
+
+class _VideoThumbnailBuilderState extends State<_VideoThumbnailBuilder> {
+  String? _thumbnailUrl;
+  bool _isLoadingThumbnail = true;
+  bool _hasThumbnailError = false;
+  VideoPlayerController? _previewVideoController;
+  bool _isPreviewPlaying = false;
+  bool _showPreviewControls = false;
+  bool _usingVideoFrame = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVideoThumbnail();
+    // Initialize video controller to extract first frame
+    _initializeVideoForThumbnail();
+  }
+
+  @override
+  void dispose() {
+    _previewVideoController?.dispose();
+    super.dispose();
+  }
+
+  Future<void> _initializeVideoForThumbnail() async {
+    // First, try server thumbnails. If not found, extract first frame from video
+    // Wait a bit for thumbnail check to complete
+    await Future.delayed(const Duration(milliseconds: 500));
+    
+    // If no server thumbnail found, extract first frame from video
+    if (!_isLoadingThumbnail && _thumbnailUrl == null && mounted) {
+      try {
+        _previewVideoController = VideoPlayerController.networkUrl(
+          Uri.parse(widget.mediaUrl),
+          httpHeaders: kIsWeb 
+              ? <String, String>{}
+              : (!kIsWeb && Platform.isIOS
+                  ? {
+                      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'
+                    }
+                  : {
+                      'User-Agent': 'Mozilla/5.0 (Linux; Android 10) Mobile'
+                    }),
+        );
+        
+        await _previewVideoController!.initialize();
+        
+        // Seek to first frame (0 seconds) to show thumbnail
+        await _previewVideoController!.seekTo(Duration.zero);
+        _previewVideoController!.pause(); // Pause at first frame
+        
+        if (mounted) {
+          setState(() {
+            _usingVideoFrame = true;
+            _hasThumbnailError = false;
+          });
+        }
+      } catch (e) {
+        Log.e('Error extracting video frame', 'VIDEO_THUMBNAIL_BUILDER', e);
+        // Keep placeholder if extraction fails
+        if (mounted) {
+          setState(() {
+            _usingVideoFrame = false;
+          });
+        }
+      }
+    }
+  }
+
+  Future<void> _initializeVideoPreview() async {
+    try {
+      if (_previewVideoController == null) {
+        _previewVideoController = VideoPlayerController.networkUrl(Uri.parse(widget.mediaUrl));
+        await _previewVideoController!.initialize();
+      }
+      _previewVideoController!.setLooping(true);
+      _previewVideoController!.setVolume(0); // Mute preview
+      setState(() {});
+    } catch (e) {
+      Log.e('Error initializing video preview', 'VIDEO_THUMBNAIL_BUILDER', e);
+      // Fallback to thumbnail if preview fails
+    }
+  }
+
+  void _togglePreviewPlayPause() {
+    if (_previewVideoController == null || !_previewVideoController!.value.isInitialized) {
+      // If video controller not initialized, open fullscreen instead
+      widget.onTap?.call();
+      return;
+    }
+
+    setState(() {
+      if (_previewVideoController!.value.isPlaying) {
+        _previewVideoController!.pause();
+        _isPreviewPlaying = false;
+      } else {
+        _previewVideoController!.play();
+        _isPreviewPlaying = true;
+      }
+      _showPreviewControls = true;
+    });
+
+    // Hide controls after 3 seconds
+    Future.delayed(const Duration(seconds: 3), () {
+      if (mounted) {
+        setState(() {
+          _showPreviewControls = false;
+        });
+      }
+    });
+  }
+
+  Future<void> _loadVideoThumbnail() async {
+    if (!mounted) return;
+    
+    try {
+      // Try to get thumbnail URL (server-generated or fallback to video frame)
+      // Check if server provides thumbnail at video_url + '_thumb.jpg' or similar
+      final videoUrl = widget.mediaUrl;
+      
+      // Try common thumbnail URL patterns
+      final thumbnailPatterns = [
+        videoUrl.replaceAll(RegExp(r'\.(mp4|mov|avi|webm)$', caseSensitive: false), '_thumb.jpg'),
+        videoUrl.replaceAll(RegExp(r'\.(mp4|mov|avi|webm)$', caseSensitive: false), '.thumb.jpg'),
+        videoUrl + '_thumbnail.jpg',
+        videoUrl.replaceFirst(RegExp(r'/[^/]+$'), '/thumbnails/${Uri.parse(videoUrl).pathSegments.last.replaceAll(RegExp(r'\.(mp4|mov|avi|webm)$', caseSensitive: false), '.jpg')}'),
+      ];
+      
+      // Try to verify thumbnail exists (for web, we can check; for mobile, try loading)
+      if (kIsWeb) {
+        // On web, try to load thumbnail asynchronously
+        for (final pattern in thumbnailPatterns) {
+          try {
+            final response = await http.head(Uri.parse(pattern));
+            if (response.statusCode == 200) {
+              if (mounted) {
+                setState(() {
+                  _thumbnailUrl = pattern;
+                  _isLoadingThumbnail = false;
+                });
+                return;
+              }
+            }
+          } catch (e) {
+            continue;
+          }
+        }
+      }
+      
+      // No thumbnail found, use placeholder
+      if (mounted) {
+        setState(() {
+          _isLoadingThumbnail = false;
+          _hasThumbnailError = true;
+        });
+      }
+    } catch (e) {
+      Log.e('Error loading video thumbnail', 'ENHANCED_MEDIA_PREVIEW', e);
+      if (mounted) {
+        setState(() {
+          _isLoadingThumbnail = false;
+          _hasThumbnailError = true;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+        children: [
+        // Video thumbnail or placeholder
+        Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.3),
+            borderRadius: BorderRadius.circular(12),
+            gradient: _thumbnailUrl == null
+                ? LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      widget.themeService.isDarkMode 
+                          ? Colors.grey[800]! 
+                          : Colors.grey[300]!,
+                      widget.themeService.isDarkMode 
+                          ? Colors.grey[900]! 
+                          : Colors.grey[400]!,
+                    ],
+                  )
+                : null,
+          ),
+          child: _isLoadingThumbnail
+              ? Center(
+                  child: SizedBox(
+                    width: ResponsiveUtils.getResponsiveIconSize(context),
+                    height: ResponsiveUtils.getResponsiveIconSize(context),
+                    child: const CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: Colors.white70,
+                    ),
+                  ),
+                )
+              : _thumbnailUrl != null
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(12),
+                      child: Image.network(
+                        _thumbnailUrl!,
+                        fit: BoxFit.cover,
+                        width: double.infinity,
+                        height: double.infinity,
+                        errorBuilder: (context, error, stackTrace) {
+                          // If server thumbnail fails, try video frame
+                          if (!_usingVideoFrame && _previewVideoController == null) {
+                            _initializeVideoForThumbnail();
+                          }
+                          return _buildVideoPlaceholder();
+                        },
+                        loadingBuilder: (context, child, loadingProgress) {
+                          if (loadingProgress == null) return child;
+                          return Center(
+                            child: CircularProgressIndicator(
+                              value: loadingProgress.expectedTotalBytes != null
+                                  ? loadingProgress.cumulativeBytesLoaded /
+                                      loadingProgress.expectedTotalBytes!
+                                  : null,
+                              color: Colors.white70,
+                            ),
+                          );
+                        },
+                      ),
+                    )
+                  : _previewVideoController != null && 
+                     _previewVideoController!.value.isInitialized &&
+                     _usingVideoFrame
+                      ? ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: AspectRatio(
+                            aspectRatio: _previewVideoController!.value.aspectRatio,
+                            child: VideoPlayer(_previewVideoController!),
+                          ),
+                        )
+                      : _buildVideoPlaceholder(),
+        ),
+        // Play button overlay - always opens fullscreen on tap
+        Center(
+          child: GestureDetector(
+            onTap: widget.onTap, // Always open fullscreen player
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                shape: BoxShape.circle,
+              ),
+              padding: const EdgeInsets.all(8),
+              child: IconButton(
+                  onPressed: widget.onTap,
+                icon: const Icon(
+                  Icons.play_arrow,
+                  color: Colors.white,
+                  size: 48,
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ),
+          ),
+        ),
+        // Download button overlay
+        Positioned(
+          top: 8,
+          left: 8,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(20),
+            ),
+            child: IconButton(
+              onPressed: widget.onDownload,
+              icon: const Icon(Icons.download, color: Colors.white, size: 20),
+              tooltip: 'Download video',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(
+                minWidth: 40,
+                minHeight: 40,
+              ),
+            ),
+          ),
+        ),
+        if (widget.showFullScreenButton)
+          Positioned(
+            top: 8,
+            right: 8,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: IconButton(
+                onPressed: widget.onTap,
+                icon: const Icon(Icons.fullscreen, color: Colors.white, size: 20),
+                  tooltip: 'View full screen',
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 40,
+                  minHeight: 40,
+                ),
+              ),
+            ),
+          ),
+        Positioned(
+          bottom: 8,
+          left: 8,
+          right: 8,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.7),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.videocam, color: Colors.white, size: 16),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    widget.fileName ?? 'Video',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12),
+                      fontWeight: FontWeight.w500,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                    maxLines: 1,
+                  ),
+          ),
+          if (widget.fileSize != null) ...[
+                  const SizedBox(width: 6),
+            Text(
+              widget.fileSize!,
+              style: TextStyle(
+                      color: Colors.white70,
+                fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 10),
+              ),
+            ),
+          ],
+        ],
+      ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildVideoPlaceholder() {
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(
+          Icons.videocam,
+          size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
+          color: widget.themeService.isDarkMode ? Colors.white70 : Colors.black54,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Video',
+          style: TextStyle(
+            color: widget.themeService.isDarkMode ? Colors.white70 : Colors.black54,
+            fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
 }

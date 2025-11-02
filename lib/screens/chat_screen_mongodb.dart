@@ -235,7 +235,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         // Reset unread count for this chat when opened
         await _resetUnreadCount();
         
-        _scrollToBottom();
+        _scrollToBottom(force: true); // Force scroll on initial load
       }
     } catch (e) {
       Log.e('Error loading messages', 'CHAT_SCREEN_MONGODB', e);
@@ -246,12 +246,23 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     _messagesSubscription = _chatService.watchChatMessages(widget.chatId).listen(
       (messages) {
         if (mounted) {
+          // Check if user is near bottom before updating
+          final wasNearBottom = _scrollController.hasClients
+              ? (_scrollController.position.maxScrollExtent - 
+                 _scrollController.position.pixels) <= 200.0
+              : true;
+          
           setState(() {
             _messages = messages;
           });
           // Mark incoming messages as read when viewing the chat
           _markMessagesAsRead(_messages);
-          _scrollToBottom();
+          
+          // Only auto-scroll if user was already near the bottom
+          // This prevents interrupting users who are scrolling up to read old messages
+          if (wasNearBottom) {
+            _scrollToBottom();
+          }
         }
       },
       onError: (error) {
@@ -302,14 +313,26 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     }
   }
 
-  void _scrollToBottom() {
+  void _scrollToBottom({bool force = false}) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
-        _scrollController.animateTo(
-          _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeOut,
-        );
+        final position = _scrollController.position;
+        final maxScroll = position.maxScrollExtent;
+        final currentScroll = position.pixels;
+        final scrollThreshold = 200.0; // 200px threshold
+        
+        // Only scroll to bottom if:
+        // 1. Forced (e.g., on initial load or user sends a message)
+        // 2. User is already near the bottom (within threshold)
+        final isNearBottom = (maxScroll - currentScroll) <= scrollThreshold;
+        
+        if (force || isNearBottom) {
+          _scrollController.animateTo(
+            maxScroll,
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeOut,
+          );
+        }
       }
     });
   }
@@ -337,6 +360,8 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       final result = await _chatService.sendTextMessage(widget.chatId, content);
       if (result != null) {
         _messageController.clear();
+        // Force scroll to bottom when user sends their own message
+        _scrollToBottom(force: true);
         // Message will be added via the stream listener
       } else {
         if (mounted) {
@@ -375,7 +400,11 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         messageType,
         content: (content != null && content.isNotEmpty) ? content : null,
       );
-      if (result == null) {
+      if (result != null) {
+        // Force scroll to bottom when user sends their own media
+        _scrollToBottom(force: true);
+        // Message will be added via the stream listener
+      } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to send media')),
@@ -745,16 +774,65 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     );
   }
 
-  void _showFullScreenMedia(String mediaUrl, String mediaType, String fileName) {
+  void _showFullScreenMedia(String mediaUrl, String mediaType, String fileName, {String? fileSize}) {
+    // CRITICAL: Resolve URL to local network on web (convert ngrok to IPv4)
+    final resolvedUrl = _resolveWebSameOriginUrl(mediaUrl);
+    Log.d('Full Screen Media - Original: $mediaUrl, Resolved: $resolvedUrl', 'CHAT_SCREEN_MONGODB');
+    
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => FullScreenMediaPreview(
-          mediaUrl: mediaUrl,
+          mediaUrl: resolvedUrl, // Use resolved URL (local network) instead of ngrok
           mediaType: mediaType,
           fileName: fileName.isNotEmpty ? fileName : null,
+          fileSize: fileSize,
         ),
       ),
     );
+  }
+  
+  // Resolve media URL to same-origin on web for direct loading/downloading
+  String _resolveWebSameOriginUrl(String url) {
+    if (!kIsWeb) return url; // Mobile: return as-is (ngrok URLs preserved)
+    try {
+      final parsed = Uri.parse(url);
+      if (parsed.scheme == 'blob' || parsed.scheme == 'data') return url;
+      if (parsed.host.contains('firebasestorage.googleapis.com')) return url;
+      
+      final base = Uri.base;
+      final p = parsed.path;
+
+      // On web, convert ngrok URLs to local network URLs
+      if (parsed.host.contains('ngrok') || parsed.host.contains('ngrok-free.app') || parsed.host.contains('ngrok.app')) {
+        // Extract the path and convert to same-origin (local network)
+        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // Prefer rewriting known server paths to same-origin (local network)
+      if (p.startsWith('/uploads') || p.contains('/uploads/')) {
+        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // Handle legacy /chat_media URLs by prefixing /uploads
+      if (p.startsWith('/chat_media') || p.contains('/chat_media/')) {
+        final adjustedPath = '/uploads' + (p.startsWith('/') ? p : '/$p');
+        return Uri.parse('${base.origin}$adjustedPath${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // Proxy API calls to same-origin (local network)
+      if (p.startsWith('/api/')) {
+        return Uri.parse('${base.origin}$p${parsed.hasQuery ? '?${parsed.query}' : ''}').toString();
+      }
+
+      // If already same-origin (local network), leave as-is
+      final originUrl = '${parsed.scheme}://${parsed.host}${parsed.hasPort ? ':${parsed.port}' : ''}';
+      if (originUrl == base.origin) return url;
+      
+      // For external URLs that aren't ngrok or same-origin, leave as-is
+      return url;
+    } catch (_) {
+      return url;
+    }
   }
 
   @override

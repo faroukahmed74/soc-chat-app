@@ -176,9 +176,29 @@
 
   <style>
     /* Prefer local/system fonts without overriding specialized icon fonts */
+    /* Emoji font fallbacks for proper emoji rendering on web */
+    @font-face {
+      font-family: 'EmojiFont';
+      src: local('Apple Color Emoji'),
+           local('Segoe UI Emoji'),
+           local('Segoe UI Symbol'),
+           local('Noto Color Emoji'),
+           local('Android Emoji');
+      unicode-range: U+1F300-1F9FF, U+2600-26FF, U+2700-27BF, U+1F600-1F64F, U+1F680-1F6FF, U+1F900-1F9FF, U+1FA00-1FA6F, U+1FA70-1FAFF, U+FE00-FE0F;
+    }
+    
     body {
       font-family: Arial, Helvetica, 'Segoe UI', Tahoma, sans-serif;
+      /* Enable emoji rendering with proper font fallback */
+      font-feature-settings: 'liga', 'kern';
+      text-rendering: optimizeLegibility;
     }
+    
+    /* Ensure emojis render properly in all text elements */
+    * {
+      font-family: Arial, Helvetica, 'Segoe UI', Tahoma, 'EmojiFont', sans-serif;
+    }
+    
     @keyframes spin {
       0% { transform: rotate(0deg); }
       100% { transform: rotate(360deg); }

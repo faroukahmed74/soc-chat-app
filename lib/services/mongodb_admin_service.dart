@@ -258,6 +258,30 @@ class MongoDBAdminService {
     }
   }
 
+  /// Update user password (admin only)
+  Future<bool> updateUserPassword(String userId, String newPassword) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) return false;
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/admin/users/$userId/password'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({'password': newPassword}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error updating user password', 'MONGODB_ADMIN_SERVICE', e);
+      return false;
+    }
+  }
+
   /// Disable/Enable user (admin only)
   Future<bool> toggleUserStatus(String userId, bool disabled) async {
     try {
@@ -793,6 +817,345 @@ class MongoDBAdminService {
     } catch (e) {
       Log.e('Error exporting data', 'MONGODB_ADMIN_SERVICE', e);
       rethrow;
+    }
+  }
+
+  /// Get user logs (admin only)
+  Future<List<Map<String, dynamic>>> getUserLogs({int page = 1, int limit = 100, String? userId}) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final queryParams = {
+        'page': page.toString(),
+        'limit': limit.toString(),
+        if (userId != null && userId.isNotEmpty) 'userId': userId,
+      };
+      final uri = Uri.parse('$baseUrl/api/admin/logs/users').replace(queryParameters: queryParams);
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['logs'] ?? data);
+      } else {
+        throw Exception('Failed to load user logs: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting user logs', 'MONGODB_ADMIN_SERVICE', e);
+      return [];
+    }
+  }
+
+  /// Get admin logs (admin only)
+  Future<List<Map<String, dynamic>>> getAdminLogs({int page = 1, int limit = 100, String? adminId}) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final queryParams = {
+        'page': page.toString(),
+        'limit': limit.toString(),
+        if (adminId != null && adminId.isNotEmpty) 'adminId': adminId,
+      };
+      final uri = Uri.parse('$baseUrl/api/admin/logs/admin').replace(queryParameters: queryParams);
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return List<Map<String, dynamic>>.from(data['logs'] ?? data);
+      } else {
+        throw Exception('Failed to load admin logs: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting admin logs', 'MONGODB_ADMIN_SERVICE', e);
+      return [];
+    }
+  }
+
+  /// Log user activity
+  Future<bool> logUserActivity(String userId, String action, Map<String, dynamic>? details) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) return false;
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/admin/logs/users'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({
+          'userId': userId,
+          'action': action,
+          'details': details ?? {},
+          'timestamp': DateTime.now().toIso8601String(),
+        }),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error logging user activity', 'MONGODB_ADMIN_SERVICE', e);
+      return false;
+    }
+  }
+
+  /// Log admin activity
+  Future<bool> logAdminActivity(String adminId, String action, Map<String, dynamic>? details) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) return false;
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/admin/logs/admin'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({
+          'adminId': adminId,
+          'action': action,
+          'details': details ?? {},
+          'timestamp': DateTime.now().toIso8601String(),
+        }),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error logging admin activity', 'MONGODB_ADMIN_SERVICE', e);
+      return false;
+    }
+  }
+
+  /// Get all groups (admin only)
+  Future<List<Map<String, dynamic>>> getAllGroups({String? search, int page = 1, int limit = 100}) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final queryParams = {
+        'page': page.toString(),
+        'limit': limit.toString(),
+        'type': 'group',
+        if (search != null && search.isNotEmpty) 'search': search,
+      };
+      final uri = Uri.parse('$baseUrl/api/admin/chats').replace(queryParameters: queryParams);
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        final chats = (data is Map && data['chats'] is List)
+            ? List<Map<String, dynamic>>.from(data['chats'])
+            : <Map<String, dynamic>>[];
+        // Filter only groups
+        return chats.where((chat) => (chat['type'] ?? '') == 'group').toList();
+      } else {
+        throw Exception('Failed to load groups: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting all groups', 'MONGODB_ADMIN_SERVICE', e);
+      return [];
+    }
+  }
+
+  /// Get group details (admin only)
+  Future<Map<String, dynamic>?> getGroupDetails(String groupId) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/admin/chats/$groupId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Map<String, dynamic>.from(data['chat'] ?? data);
+      } else {
+        throw Exception('Failed to load group details: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting group details', 'MONGODB_ADMIN_SERVICE', e);
+      return null;
+    }
+  }
+
+  /// Delete group (admin only)
+  Future<bool> deleteGroup(String groupId) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) return false;
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.delete(
+        Uri.parse('$baseUrl/api/admin/chats/$groupId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error deleting group', 'MONGODB_ADMIN_SERVICE', e);
+      return false;
+    }
+  }
+
+  /// Update group (admin only)
+  Future<bool> updateGroup(String groupId, Map<String, dynamic> updates) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) return false;
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/admin/chats/$groupId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode(updates),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error updating group', 'MONGODB_ADMIN_SERVICE', e);
+      return false;
+    }
+  }
+
+  /// Add member to group (admin only)
+  Future<bool> addMemberToGroup(String groupId, String userId) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) return false;
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/admin/chats/$groupId/members'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({'userId': userId}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error adding member to group', 'MONGODB_ADMIN_SERVICE', e);
+      return false;
+    }
+  }
+
+  /// Remove member from group (admin only)
+  Future<bool> removeMemberFromGroup(String groupId, String userId) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) return false;
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.delete(
+        Uri.parse('$baseUrl/api/admin/chats/$groupId/members/$userId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error removing member from group', 'MONGODB_ADMIN_SERVICE', e);
+      return false;
+    }
+  }
+
+  /// Get group statistics (admin only)
+  Future<Map<String, dynamic>?> getGroupStatistics(String groupId) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/admin/chats/$groupId/statistics'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Map<String, dynamic>.from(data);
+      } else {
+        throw Exception('Failed to load group statistics: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting group statistics', 'MONGODB_ADMIN_SERVICE', e);
+      return null;
+    }
+  }
+
+  /// Archive/Unarchive group (admin only)
+  Future<bool> archiveGroup(String groupId, bool archive) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) return false;
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/admin/chats/$groupId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({'archived': archive}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error archiving/unarchiving group', 'MONGODB_ADMIN_SERVICE', e);
+      return false;
     }
   }
 }

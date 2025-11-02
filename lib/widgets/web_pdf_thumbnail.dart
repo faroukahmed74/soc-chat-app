@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:ui' as ui;
-import 'dart:html' as html;
+import 'web_pdf_thumbnail_web.dart' if (dart.library.io) 'web_pdf_thumbnail_stub.dart';
 
-class WebPdfThumbnail extends StatefulWidget {
+/// PDF thumbnail widget that conditionally uses web or stub implementation
+class WebPdfThumbnail extends StatelessWidget {
   final String url;
   final double width;
   final double height;
@@ -20,43 +20,14 @@ class WebPdfThumbnail extends StatefulWidget {
   });
 
   @override
-  State<WebPdfThumbnail> createState() => _WebPdfThumbnailState();
-}
-
-class _WebPdfThumbnailState extends State<WebPdfThumbnail> {
-  late final String _viewType;
-
-  @override
-  void initState() {
-    super.initState();
-    _viewType = 'web-pdf-thumb-${widget.url.hashCode}-${DateTime.now().microsecondsSinceEpoch}';
-    // Register a platform view that embeds an iframe displaying the PDF
-    // Pointer events are disabled to make it behave like a static thumbnail.
-    ui.platformViewRegistry.registerViewFactory(_viewType, (int viewId) {
-      final iframe = html.IFrameElement()
-        ..src = widget.url
-        ..style.border = 'none'
-        ..style.pointerEvents = 'none'
-        ..style.width = '100%'
-        ..style.height = '100%';
-      iframe.setAttribute('sandbox', 'allow-same-origin allow-scripts');
-      iframe.setAttribute('scrolling', 'no');
-      return iframe;
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: widget.borderRadius,
-      child: GestureDetector(
-        onTap: widget.onTap,
-        child: SizedBox(
-          width: widget.width,
-          height: widget.height,
-          child: HtmlElementView(viewType: _viewType),
-        ),
-      ),
+    // Use conditional import - web_pdf_thumbnail_web.dart on web, stub on mobile
+    return WebPdfThumbnailImplementation(
+      url: url,
+      width: width,
+      height: height,
+      borderRadius: borderRadius,
+      onTap: onTap,
     );
   }
 }

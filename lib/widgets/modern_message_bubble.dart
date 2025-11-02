@@ -7,6 +7,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../services/theme_service.dart';
+import '../utils/responsive_utils.dart';
 import 'enhanced_media_preview.dart';
 
 class ModernMessageBubble extends StatefulWidget {
@@ -237,6 +238,8 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                 ? Colors.white
                 : (isDark ? Colors.white : Colors.black87),
             fontSize: 16,
+            fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
+            fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
           ),
         );
 
@@ -260,12 +263,29 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                 ? Colors.white
                 : (isDark ? Colors.white : Colors.black87),
             fontSize: 16,
+            fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
+            fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
           ),
         );
     }
   }
 
   Widget _buildImageMessage(String content, String? mediaUrl, bool isDark) {
+    final isMobile = ResponsiveUtils.isMobile(context);
+    final isTablet = ResponsiveUtils.isTablet(context);
+    final maxWidth = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 250.0,
+      tablet: 300.0,
+      desktop: 400.0,
+    );
+    final maxHeight = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 250.0,
+      tablet: 300.0,
+      desktop: 400.0,
+    );
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -273,18 +293,31 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
           GestureDetector(
             onTap: () => widget.onMediaTap(mediaUrl, 'image', content),
             child: Container(
-              constraints: const BoxConstraints(
-                maxWidth: 200,
-                maxHeight: 200,
+              constraints: BoxConstraints(
+                maxWidth: maxWidth,
+                maxHeight: maxHeight,
               ),
-              child: EnhancedMediaPreview(
-                mediaUrl: mediaUrl,
-                mediaType: 'image',
-                fileName: content.isNotEmpty ? content : 'Image',
-                onTap: () => widget.onMediaTap(mediaUrl, 'image', content),
-                maxWidth: 200,
-                maxHeight: 200,
-                enableRetry: true,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: EnhancedMediaPreview(
+                  mediaUrl: mediaUrl,
+                  mediaType: 'image',
+                  fileName: content.isNotEmpty ? content : 'Image',
+                  onTap: () => widget.onMediaTap(mediaUrl, 'image', content),
+                  maxWidth: maxWidth,
+                  maxHeight: maxHeight,
+                  enableRetry: true,
+                ),
               ),
             ),
           ),
@@ -298,6 +331,8 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                     ? Colors.white
                     : (isDark ? Colors.white : Colors.black87),
                 fontSize: 16,
+                fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
+                fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
               ),
             ),
           ),
@@ -306,6 +341,21 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
   }
 
   Widget _buildVideoMessage(String content, String? mediaUrl, bool isDark) {
+    final isMobile = ResponsiveUtils.isMobile(context);
+    final isTablet = ResponsiveUtils.isTablet(context);
+    final maxWidth = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 250.0,
+      tablet: 300.0,
+      desktop: 400.0,
+    );
+    final maxHeight = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 180.0,
+      tablet: 200.0,
+      desktop: 240.0,
+    );
+    
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -313,18 +363,31 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
           GestureDetector(
             onTap: () => widget.onMediaTap(mediaUrl, 'video', content),
             child: Container(
-              constraints: const BoxConstraints(
-                maxWidth: 200,
-                maxHeight: 150,
+              constraints: BoxConstraints(
+                maxWidth: maxWidth,
+                maxHeight: maxHeight,
               ),
-              child: EnhancedMediaPreview(
-                mediaUrl: mediaUrl,
-                mediaType: 'video',
-                fileName: content.isNotEmpty ? content : 'Video',
-                onTap: () => widget.onMediaTap(mediaUrl, 'video', content),
-                maxWidth: 200,
-                maxHeight: 150,
-                enableRetry: true,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.1),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: EnhancedMediaPreview(
+                  mediaUrl: mediaUrl,
+                  mediaType: 'video',
+                  fileName: content.isNotEmpty ? content : 'Video',
+                  onTap: () => widget.onMediaTap(mediaUrl, 'video', content),
+                  maxWidth: maxWidth,
+                  maxHeight: maxHeight,
+                  enableRetry: true,
+                ),
               ),
             ),
           ),
@@ -338,6 +401,8 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                     ? Colors.white
                     : (isDark ? Colors.white : Colors.black87),
                 fontSize: 16,
+                fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
+                fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
               ),
             ),
           ),
@@ -368,23 +433,51 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
   }
 
   Widget _buildDocumentMessage(String content, String? mediaUrl, bool isDark) {
+    final isMobile = ResponsiveUtils.isMobile(context);
+    final isTablet = ResponsiveUtils.isTablet(context);
+    final maxWidth = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 220.0,
+      tablet: 280.0,
+      desktop: 350.0,
+    );
+    final maxHeight = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 150.0,
+      tablet: 180.0,
+      desktop: 220.0,
+    );
+    
     return Container(
-      constraints: const BoxConstraints(
-        maxWidth: 200,
-        maxHeight: 100,
+      constraints: BoxConstraints(
+        maxWidth: maxWidth,
+        maxHeight: maxHeight,
       ),
-      child: EnhancedMediaPreview(
-        mediaUrl: mediaUrl ?? '',
-        mediaType: 'document',
-        fileName: content.isNotEmpty ? content : 'Document',
-        onTap: () {
-          if (mediaUrl != null) {
-            widget.onMediaTap(mediaUrl, 'document', content);
-          }
-        },
-        maxWidth: 200,
-        maxHeight: 100,
-        enableRetry: true,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.1),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: EnhancedMediaPreview(
+          mediaUrl: mediaUrl ?? '',
+          mediaType: 'document',
+          fileName: content.isNotEmpty ? content : 'Document',
+          onTap: () {
+            if (mediaUrl != null) {
+              widget.onMediaTap(mediaUrl, 'document', content);
+            }
+          },
+          maxWidth: maxWidth,
+          maxHeight: maxHeight,
+          enableRetry: true,
+        ),
       ),
     );
   }

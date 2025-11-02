@@ -516,10 +516,14 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
   }
 
   void _showFullScreenMedia(String mediaUrl, String mediaType, String fileName) {
+    // CRITICAL: Resolve URL to local network on web (convert ngrok to IPv4)
+    final resolvedUrl = _resolveWebSameOriginUrl(mediaUrl);
+    Log.d('Full Screen Media - Original: $mediaUrl, Resolved: $resolvedUrl', 'CHAT_SCREEN_WEB');
+    
     Navigator.of(context).push(
       MaterialPageRoute(
         builder: (context) => EnhancedFullScreenMediaPreview(
-          mediaUrl: mediaUrl,
+          mediaUrl: resolvedUrl, // Use resolved URL (local network) instead of ngrok
           mediaType: mediaType,
           fileName: fileName.isNotEmpty ? fileName : null,
         ),

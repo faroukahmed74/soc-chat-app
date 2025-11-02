@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
 import '../widgets/emoji_picker.dart';
 import '../widgets/enhanced_media_sender.dart';
@@ -340,8 +341,10 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
                       controller: widget.controller,
                       focusNode: _focusNode,
                       enabled: widget.isEnabled,
-                      maxLines: null,
+                      maxLines: kIsWeb ? 1 : null, // On web, single line allows Enter to submit
                       textCapitalization: TextCapitalization.sentences,
+                      textInputAction: TextInputAction.send,
+                      keyboardType: kIsWeb ? TextInputType.text : TextInputType.multiline,
                       decoration: InputDecoration(
                         hintText: 'Type a message...',
                         border: InputBorder.none,
@@ -356,8 +359,19 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
                       style: TextStyle(
                         color: isDark ? Colors.white : Colors.black87,
                         fontSize: 16,
+                        fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
+                        fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
                       ),
-                      onSubmitted: (_) => _sendMessage(),
+                      onSubmitted: (value) {
+                        // On web and mobile, Enter sends the message if there's text
+                        if (value.trim().isNotEmpty && widget.isEnabled) {
+                          _sendMessage();
+                        }
+                      },
+                      onChanged: (_) {
+                        // Update send button state
+                        setState(() {});
+                      },
                     ),
                   ),
                 ),
