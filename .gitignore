@@ -255,3 +255,4 @@ generated_plugin_registrant.cc
 generated_plugins.cmake
 GeneratedPluginRegistrant.swift
 /servers/local_api_server/uploads
+/build 2
