@@ -56,14 +56,17 @@ router.post('/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
     
     // Create user
+    const now = new Date();
     const newUser = {
       email,
       password: hashedPassword,
       name,
       role: 'user',
       status: 'active',
-      createdAt: new Date(),
-      updatedAt: new Date()
+      createdAt: now,
+      updatedAt: now,
+      isOnline: false, // New users start offline until they log in
+      lastSeen: now
     };
     
     const result = await usersCollection.insertOne(newUser);
@@ -115,6 +118,19 @@ router.post('/login', async (req, res) => {
     if (!isMatch) {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
+    
+    // Update online status and last seen
+    const now = new Date();
+    await usersCollection.updateOne(
+      { _id: user._id },
+      { 
+        $set: { 
+          isOnline: true,
+          lastSeen: now,
+          updatedAt: now
+        } 
+      }
+    );
     
     // Create token
     const token = jwt.sign(

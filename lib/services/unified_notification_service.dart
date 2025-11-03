@@ -102,16 +102,25 @@ class UnifiedNotificationService {
       await _audioPlayer.setReleaseMode(ReleaseMode.stop);
       await _audioPlayer.setVolume(1.0);
       try {
-        await _audioPlayer.play(AssetSource('notification_sound.mp3'));
-        Log.i('✅ Unified notification sound played (root asset)', 'UNIFIED');
+        // Primary sound: noti_sound.wav
+        await _audioPlayer.play(AssetSource('noti_sound.wav'));
+        Log.i('✅ Unified notification sound played (noti_sound.wav)', 'UNIFIED');
       } catch (e) {
-        Log.w('Root asset sound failed or invalid (notification_sound.mp3): $e', 'UNIFIED');
+        Log.w('noti_sound.wav failed, trying fallback...', 'UNIFIED');
         try {
-          await _audioPlayer.play(AssetSource('notification_sounds/chat_notification.mp3'));
-          Log.i('✅ Unified notification sound played (fallback asset)', 'UNIFIED');
+          // Fallback to notification_sound.mp3
+          await _audioPlayer.play(AssetSource('notification_sound.mp3'));
+          Log.i('✅ Unified notification sound played (notification_sound.mp3 fallback)', 'UNIFIED');
         } catch (e2) {
-          Log.w('Fallback asset failed: $e2. Using programmatic tone.', 'UNIFIED');
-          await _playProgrammaticTone();
+          Log.w('Fallback asset failed: $e2. Trying additional fallback.', 'UNIFIED');
+          try {
+            // Try notification_sounds folder
+            await _audioPlayer.play(AssetSource('notification_sounds/chat_notification.mp3'));
+            Log.i('✅ Unified notification sound played (chat_notification.mp3 fallback)', 'UNIFIED');
+          } catch (e3) {
+            Log.w('All sound assets failed: $e3. Using programmatic tone.', 'UNIFIED');
+            await _playProgrammaticTone();
+          }
         }
       }
     } catch (e) {

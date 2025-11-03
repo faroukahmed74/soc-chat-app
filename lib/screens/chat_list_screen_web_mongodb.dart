@@ -202,7 +202,23 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
     final lastMessageTime = chat['lastMessageTime'] != null
         ? DateTime.parse(chat['lastMessageTime'])
         : null;
-    final unreadCount = chat['unreadCount'] ?? 0;
+    
+    // Get unread count for current user (supports both old format and new per-user format)
+    int unreadCount = 0;
+    final unreadCountObj = chat['unreadCount'];
+    if (unreadCountObj is Map<String, dynamic>) {
+      // New format: unreadCount.USER_ID
+      // Try both string and ObjectId format
+      final userIdStr = _currentUserId?.toString() ?? '';
+      unreadCount = (unreadCountObj[userIdStr] ?? unreadCountObj[_currentUserId] ?? 0) as int;
+      // Also try as int (if server stored it as number)
+      if (unreadCount == 0 && unreadCountObj[_currentUserId] is num) {
+        unreadCount = (unreadCountObj[_currentUserId] as num).toInt();
+      }
+    } else if (unreadCountObj is int || unreadCountObj is num) {
+      // Old format: just a number
+      unreadCount = unreadCountObj is int ? unreadCountObj : unreadCountObj.toInt();
+    }
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -255,13 +271,13 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
             if (unreadCount > 0)
               Container(
                 margin: const EdgeInsets.only(top: 4),
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                padding: const EdgeInsets.symmetric(horizontal: unreadCount > 99 ? 4 : 6, vertical: 2),
                 decoration: BoxDecoration(
                   color: Colors.red,
                   borderRadius: BorderRadius.circular(10),
                 ),
                 child: Text(
-                  unreadCount.toString(),
+                  unreadCount > 99 ? '99+' : unreadCount.toString(),
                   style: const TextStyle(
                     color: Colors.white,
                     fontSize: 12,

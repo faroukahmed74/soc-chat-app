@@ -100,7 +100,8 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
   List<dynamic> _extractReadBy(Map<String, dynamic> message) {
     final readBy = message['readBy'] ?? [];
     if (readBy is List) {
-      return readBy;
+      // Convert all to strings for consistent comparison
+      return readBy.map((id) => id?.toString() ?? '').toList();
     }
     return [];
   }
@@ -519,42 +520,64 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
   Widget _buildMessageStatus(bool isDark) {
     final readBy = _extractReadBy(widget.message);
     final status = _extractStatus(widget.message);
+    final senderId = _extractSenderId(widget.message);
     
-    // For group chats, show read count
+    // For group chats, show read count (exclude sender)
     if (widget.isGroupChat) {
-      final readCount = readBy.length;
+      final readCount = readBy.where((id) => 
+        id.toString() != senderId.toString()
+      ).length;
       return _buildGroupStatus(readCount, isDark);
     }
     
     // For one-to-one chats, show status indicator
+    // We need to determine if the recipient has read it
+    // Since we don't have recipient ID directly, we check:
+    // - If readBy has items and status is 'read', it's read
+    // - If readBy has items but status isn't 'read', it's delivered  
+    // - Otherwise it's sent
     return _buildOneToOneStatus(readBy, status, isDark);
+  }
+
+  String? _extractSenderId(Map<String, dynamic> message) {
+    final v = message['senderId'] ?? message['sender_id'];
+    return v?.toString();
   }
 
   Widget _buildOneToOneStatus(List<dynamic> readBy, String? status, bool isDark) {
     IconData icon;
     Color color;
     String? tooltip;
+    final senderId = _extractSenderId(widget.message);
     
-    // Check if message is read (readBy contains the recipient's ID)
-    // For one-to-one: if readBy has items or status is 'read', it's read
-    // If status is 'delivered', show delivered; else sent
-    if (readBy.isNotEmpty || status == 'read') {
+    // Filter out sender from readBy (sender reading their own message doesn't count)
+    final recipientReadBy = readBy.where((id) => 
+      id.toString() != senderId.toString()
+    ).toList();
+    
+    // Check if message is read by recipient
+    final isRead = recipientReadBy.isNotEmpty || status == 'read';
+    
+    if (isRead) {
+      // Read: Double check blue
       icon = Icons.done_all;
       color = widget.isCurrentUser 
           ? (isDark ? Colors.blue[300]! : Colors.blue[100]!)
           : Colors.blue;
       tooltip = 'Read';
-    } else if (status == 'delivered') {
+    } else if (status == 'delivered' || readBy.isNotEmpty) {
+      // Delivered: Double check grey
       icon = Icons.done_all;
       color = widget.isCurrentUser 
           ? (isDark ? Colors.white70 : Colors.white70)
-          : Colors.grey[600]!;
+          : (isDark ? Colors.grey[400]! : Colors.grey[600]!);
       tooltip = 'Delivered';
     } else {
+      // Sent: Single check grey
       icon = Icons.done;
       color = widget.isCurrentUser 
           ? (isDark ? Colors.white70 : Colors.white70)
-          : Colors.grey[600]!;
+          : (isDark ? Colors.grey[400]! : Colors.grey[600]!);
       tooltip = 'Sent';
     }
     
@@ -570,7 +593,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
 
   Widget _buildGroupStatus(int readCount, bool isDark) {
     if (readCount == 0) {
-      // Sent but not read
+      // Sent but not read by anyone
       return Tooltip(
         message: 'Sent',
         child: Icon(
@@ -578,12 +601,12 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
           size: 14,
           color: widget.isCurrentUser 
               ? (isDark ? Colors.white70 : Colors.white70)
-              : Colors.grey[600]!,
+              : (isDark ? Colors.grey[400]! : Colors.grey[600]!),
         ),
       );
     }
     
-    // Show read count in group chats
+    // Show read count in group chats: Double check blue with count
     return Tooltip(
       message: '$readCount ${readCount == 1 ? 'person has' : 'people have'} read',
       child: Row(
@@ -603,7 +626,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
               fontSize: 10,
               color: widget.isCurrentUser 
                   ? (isDark ? Colors.white70 : Colors.white70)
-                  : Colors.grey[600]!,
+                  : (isDark ? Colors.grey[400]! : Colors.grey[600]!),
               fontWeight: FontWeight.w500,
             ),
           ),

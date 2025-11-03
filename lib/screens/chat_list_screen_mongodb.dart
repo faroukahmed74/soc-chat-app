@@ -1,8 +1,17 @@
 // =============================================================================
-// CHAT LIST SCREEN - MONGODB VERSION
+// CHAT LIST SCREEN - UNIFIED FOR ALL PLATFORMS
 // =============================================================================
 // This screen displays the list of chats using MongoDB
 // It handles chat loading, search, and navigation
+//
+// PLATFORM SUPPORT:
+// - Web: Responsive layout with wide-screen optimizations (local network routes)
+// - Android/iOS: Mobile-optimized layout (ngrok API routes)
+// - All platforms use the same screen with responsive design
+//
+// ROUTING:
+// - Web: Uses local network routes (same-origin proxy)
+// - Mobile: Uses ngrok API routes (handled by DatabaseConfig)
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
@@ -11,9 +20,11 @@ import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
+import '../services/message_sound_service.dart';
+import '../services/active_chat_service.dart';
 import '../utils/group_chat_naming_utility.dart';
+// Unified chat screen for all platforms (web, Android, iOS)
 import 'chat_screen_mongodb.dart';
-import 'chat_screen_web_mongodb.dart';
 import '../services/version_check_service.dart';
 // import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -45,6 +56,9 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
   final Map<String, String> _userNameCache = {};
   final Set<String> _userNameFetching = {};
   bool _isCheckingUpdate = false;
+  
+  // Track last message timestamps to detect new messages for sound
+  final Map<String, DateTime> _lastMessageTimes = {};
 
   @override
   void initState() {
@@ -124,9 +138,49 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
   }
 
   void _startChatListener() {
+    // Initialize last message times from current chats
+    for (final chat in _chats) {
+      final chatId = (chat['_id'] ?? chat['id'] ?? '').toString();
+      if (chatId.isEmpty) continue;
+      
+      DateTime? messageTime;
+      
+      // Try lastMessageTime first
+      final lastMessageTime = chat['lastMessageTime'];
+      if (lastMessageTime != null) {
+        if (lastMessageTime is DateTime) {
+          messageTime = lastMessageTime;
+        } else if (lastMessageTime is String) {
+          messageTime = DateTime.tryParse(lastMessageTime);
+        }
+      }
+      
+      // Fallback to lastMessage.timestamp or lastMessage.createdAt
+      if (messageTime == null) {
+        final lastMessageObj = chat['lastMessage'];
+        if (lastMessageObj is Map<String, dynamic>) {
+          final msgTimestamp = lastMessageObj['timestamp'] ?? lastMessageObj['createdAt'];
+          if (msgTimestamp != null) {
+            if (msgTimestamp is DateTime) {
+              messageTime = msgTimestamp;
+            } else if (msgTimestamp is String) {
+              messageTime = DateTime.tryParse(msgTimestamp);
+            }
+          }
+        }
+      }
+      
+      if (messageTime != null) {
+        _lastMessageTimes[chatId] = messageTime;
+      }
+    }
+    
     _chatsSubscription = _chatService.watchUserChats().listen(
       (chats) {
         if (mounted) {
+          // Check for new messages and play sound
+          _checkForNewMessages(chats);
+          
           setState(() {
             _chats = chats;
             _filteredChats = chats;
@@ -137,6 +191,84 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
         Log.e('Error in chat stream', 'CHAT_LIST_MONGODB', error);
       },
     );
+  }
+  
+  void _checkForNewMessages(List<Map<String, dynamic>> chats) {
+    if (_currentUserId == null) return;
+    
+    for (final chat in chats) {
+      final chatId = (chat['_id'] ?? chat['id'] ?? '').toString();
+      if (chatId.isEmpty) continue;
+      
+      final lastMessageObj = chat['lastMessage'];
+      final lastMessageTime = chat['lastMessageTime'];
+      
+      // Skip if this chat is currently active (sound already played in chat screen)
+      if (ActiveChatService.instance.isActive(chatId)) {
+        // Update timestamp but don't play sound
+        if (lastMessageTime != null) {
+          DateTime? messageTime;
+          if (lastMessageTime is DateTime) {
+            messageTime = lastMessageTime;
+          } else if (lastMessageTime is String) {
+            messageTime = DateTime.tryParse(lastMessageTime);
+          }
+          if (messageTime != null) {
+            _lastMessageTimes[chatId] = messageTime;
+          }
+        }
+        continue;
+      }
+      
+      // Get sender ID from last message
+      String? senderId;
+      if (lastMessageObj is Map<String, dynamic>) {
+        senderId = lastMessageObj['senderId']?.toString();
+      }
+      
+      // Skip messages from current user
+      if (senderId == null || senderId == _currentUserId) {
+        continue;
+      }
+      
+      // Check if this is a new message (timestamp changed)
+      DateTime? currentMessageTime;
+      
+      // Try lastMessageTime first
+      if (lastMessageTime != null) {
+        if (lastMessageTime is DateTime) {
+          currentMessageTime = lastMessageTime;
+        } else if (lastMessageTime is String) {
+          currentMessageTime = DateTime.tryParse(lastMessageTime);
+        }
+      }
+      
+      // Fallback to lastMessage.timestamp or lastMessage.createdAt
+      if (currentMessageTime == null && lastMessageObj is Map<String, dynamic>) {
+        final msgTimestamp = lastMessageObj['timestamp'] ?? lastMessageObj['createdAt'];
+        if (msgTimestamp != null) {
+          if (msgTimestamp is DateTime) {
+            currentMessageTime = msgTimestamp;
+          } else if (msgTimestamp is String) {
+            currentMessageTime = DateTime.tryParse(msgTimestamp);
+          }
+        }
+      }
+      
+      if (currentMessageTime != null) {
+        final previousTime = _lastMessageTimes[chatId];
+        
+        // If timestamp is newer, it's a new message
+        if (previousTime == null || currentMessageTime.isAfter(previousTime)) {
+          // Play sound for new message
+          Log.i('🔊 New message detected in chat list, playing sound...', 'CHAT_LIST_MONGODB');
+          MessageSoundService().playMessageSound();
+          
+          // Update timestamp
+          _lastMessageTimes[chatId] = currentMessageTime;
+        }
+      }
+    }
   }
 
   void _onSearchChanged() {
@@ -227,7 +359,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     return content;
   }
 
-  Widget _buildChatTile(Map<String, dynamic> chat) {
+  Widget _buildChatTile(Map<String, dynamic> chat, bool isWideScreen) {
     final chatId = chat['_id'] ?? chat['id'] ?? '';
     
     // Debug: Log chat ID to help diagnose the issue
@@ -267,14 +399,23 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     final unreadCountObj = chat['unreadCount'];
     if (unreadCountObj is Map<String, dynamic>) {
       // New format: unreadCount.USER_ID
-      unreadCount = (unreadCountObj[_currentUserId] ?? 0) as int;
-    } else if (unreadCountObj is int) {
+      // Try both string and ObjectId format
+      final userIdStr = _currentUserId?.toString() ?? '';
+      unreadCount = (unreadCountObj[userIdStr] ?? unreadCountObj[_currentUserId] ?? 0) as int;
+      // Also try as int (if server stored it as number)
+      if (unreadCount == 0 && unreadCountObj[_currentUserId] is num) {
+        unreadCount = (unreadCountObj[_currentUserId] as num).toInt();
+      }
+    } else if (unreadCountObj is int || unreadCountObj is num) {
       // Old format: just a number
-      unreadCount = unreadCountObj;
+      unreadCount = unreadCountObj is int ? unreadCountObj : unreadCountObj.toInt();
     }
 
+    // Responsive margins for web and mobile
+    final horizontalMargin = isWideScreen ? 24.0 : 16.0;
+    
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: EdgeInsets.symmetric(horizontal: horizontalMargin, vertical: 4),
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
@@ -383,6 +524,10 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
 
   @override
   Widget build(BuildContext context) {
+    // Responsive layout for web and mobile
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWideScreen = kIsWeb && screenWidth > 800;
+    
     return Scaffold(
       appBar: AppBar(
         title: Text(
@@ -604,7 +749,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(16.0),
+            padding: EdgeInsets.all(isWideScreen ? 24.0 : 16.0),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -651,9 +796,13 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                         ),
                       )
                     : ListView.builder(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: isWideScreen ? 8.0 : 0.0,
+                          vertical: 8.0,
+                        ),
                         itemCount: _filteredChats.length,
                         itemBuilder: (context, index) {
-                          return _buildChatTile(_filteredChats[index]);
+                          return _buildChatTile(_filteredChats[index], isWideScreen);
                         },
                       ),
           ),

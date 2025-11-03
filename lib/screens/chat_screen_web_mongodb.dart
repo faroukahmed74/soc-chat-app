@@ -13,6 +13,7 @@ import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
 import '../services/physical_auth_service.dart';
+import '../services/message_sound_service.dart';
 import '../services/enhanced_unified_media_service.dart';
 import '../services/document_service.dart';
 import '../services/media_cache_service.dart';
@@ -50,7 +51,17 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
   String? _currentUserId;
   String? _currentUserName;
   StreamSubscription? _messagesSubscription;
+  Timer? _statusUpdateTimer;
   late ThemeService _themeService;
+  
+  // User status for one-to-one chats
+  bool? _otherUserIsOnline;
+  DateTime? _otherUserLastSeen;
+  String? _otherUserId;
+  List<String>? _memberIds; // Store member IDs for status checking
+  
+  // Track previous message IDs for sound detection
+  final Set<String> _previousMessageIds = {};
   
   // Media selection state
   Uint8List? _selectedMediaBytes;
@@ -71,6 +82,7 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
   @override
   void dispose() {
     _messagesSubscription?.cancel();
+    _statusUpdateTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -87,6 +99,37 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
       if (user != null) {
         _currentUserId = user['id'];
         _currentUserName = user['name'] ?? user['email'];
+        
+        // Determine other user ID for one-to-one chats
+        // Try widget.userIds first, then fetch from chat details
+        List<String>? memberIds = widget.userIds;
+        if (memberIds == null || memberIds.isEmpty) {
+          // Fetch chat details to get members
+          final chatDetails = await _chatService.getChatDetails(widget.chatId);
+          if (chatDetails != null) {
+            final chat = chatDetails['chat'] ?? chatDetails;
+            final members = chat['members'];
+            if (members is List) {
+              memberIds = members.map((m) => m.toString()).toList();
+            }
+          }
+        }
+        
+        // Store member IDs for later use in status checking
+        _memberIds = memberIds;
+        
+        if (!widget.isGroupChat && memberIds != null && memberIds.length == 2) {
+          _otherUserId = memberIds.firstWhere(
+            (id) => id.toString() != _currentUserId.toString(),
+            orElse: () => '',
+          );
+          if (_otherUserId != null && _otherUserId!.isNotEmpty) {
+            // Fetch initial user status
+            await _updateUserStatus();
+            // Start periodic status updates
+            _startStatusUpdates();
+          }
+        }
       }
 
       // Load initial messages
@@ -125,12 +168,44 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
   }
 
   void _startMessageListener() {
+    // Initialize previous message IDs from current messages
+    _previousMessageIds.clear();
+    _previousMessageIds.addAll(_messages.map((m) => 
+      (m['_id']?.toString() ?? m['id']?.toString() ?? '')
+    ).where((id) => id.isNotEmpty));
+    
     _messagesSubscription = _chatService.watchChatMessages(widget.chatId).listen(
       (messages) {
         if (mounted) {
+          // Check if there are NEW messages from other users (for sound notification)
+          // Compare BEFORE updating state
+          final hasNewMessagesFromOthers = messages.any((m) {
+            final messageId = (m['_id']?.toString() ?? m['id']?.toString() ?? '');
+            final senderId = m['senderId']?.toString() ?? '';
+            final isNew = messageId.isNotEmpty && !_previousMessageIds.contains(messageId);
+            final isFromOthers = senderId.isNotEmpty && senderId != _currentUserId?.toString();
+            return isNew && isFromOthers;
+          });
+          
+          // Update previous message IDs for next check
+          _previousMessageIds.clear();
+          _previousMessageIds.addAll(messages.map((m) => 
+            (m['_id']?.toString() ?? m['id']?.toString() ?? '')
+          ).where((id) => id.isNotEmpty));
+          
           setState(() {
             _messages = messages;
           });
+          
+          // Play sound for new messages from others
+          if (hasNewMessagesFromOthers && _currentUserId != null) {
+            Log.i('🔊 New message detected, playing sound...', 'CHAT_SCREEN_WEB_MONGODB');
+            MessageSoundService().playMessageSound();
+          }
+          
+          // Mark messages as read
+          _markMessagesAsRead(_messages);
+          
           _scrollToBottom();
         }
       },
@@ -303,39 +378,72 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
   Widget _buildMessageStatus(Map<String, dynamic> message) {
     final readBy = _extractReadBy(message);
     final status = message['status'] ?? message['messageStatus'];
+    final senderId = message['senderId']?.toString() ?? '';
     
-    // For group chats, show read count
+    // For group chats, show read count (exclude sender)
     if (widget.isGroupChat) {
-      final readCount = readBy.length;
+      final readCount = readBy.where((id) => 
+        id.toString() != senderId
+      ).length;
       return _buildGroupStatus(readCount);
     }
     
     // For one-to-one chats, show status indicator
-    return _buildOneToOneStatus(readBy, status);
+    // Get recipient ID (the other member in the chat)
+    // Use stored _memberIds or fallback to widget.userIds
+    String? recipientId;
+    List<String>? memberIds = _memberIds ?? widget.userIds;
+    if (memberIds != null && memberIds.length == 2) {
+      recipientId = memberIds.firstWhere(
+        (id) => id.toString() != _currentUserId?.toString(),
+        orElse: () => '',
+      );
+    }
+    // Fallback: use _otherUserId if available
+    if ((recipientId == null || recipientId.isEmpty) && _otherUserId != null && _otherUserId!.isNotEmpty) {
+      recipientId = _otherUserId;
+    }
+    
+    return _buildOneToOneStatus(readBy, status, recipientId);
   }
 
   List<dynamic> _extractReadBy(Map<String, dynamic> message) {
     final readBy = message['readBy'] ?? [];
     if (readBy is List) {
-      return readBy;
+      // Convert all to strings for consistent comparison
+      return readBy.map((id) => id?.toString() ?? '').toList();
     }
     return [];
   }
 
-  Widget _buildOneToOneStatus(List<dynamic> readBy, String? status) {
+  Widget _buildOneToOneStatus(List<dynamic> readBy, String? status, String? recipientId) {
     IconData icon;
     Color color;
     String? tooltip;
     
-    if (readBy.isNotEmpty || status == 'read') {
+    // Check if recipient has read the message
+    final isRead = recipientId != null && 
+                   recipientId.isNotEmpty && 
+                   readBy.any((id) => id.toString() == recipientId.toString());
+    
+    if (isRead || status == 'read') {
+      // Read: Double check blue
       icon = Icons.done_all;
       color = Colors.blue;
       tooltip = 'Read';
+    } else if (readBy.isNotEmpty && !isRead) {
+      // Delivered: Double check grey (someone read it, but might not be recipient in group context)
+      // For one-to-one, if readBy has items but recipient hasn't read, it's delivered
+      icon = Icons.done_all;
+      color = _themeService.isDarkMode ? Colors.grey[400]! : Colors.grey[600]!;
+      tooltip = 'Delivered';
     } else if (status == 'delivered') {
+      // Explicitly delivered status
       icon = Icons.done_all;
       color = _themeService.isDarkMode ? Colors.grey[400]! : Colors.grey[600]!;
       tooltip = 'Delivered';
     } else {
+      // Sent: Single check grey
       icon = Icons.done;
       color = _themeService.isDarkMode ? Colors.grey[400]! : Colors.grey[600]!;
       tooltip = 'Sent';
@@ -353,6 +461,7 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
 
   Widget _buildGroupStatus(int readCount) {
     if (readCount == 0) {
+      // Sent but not read by anyone
       return Tooltip(
         message: 'Sent',
         child: Icon(
@@ -363,6 +472,7 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
       );
     }
     
+    // Show read count in group chats: Double check blue with count
     return Tooltip(
       message: '$readCount ${readCount == 1 ? 'person has' : 'people have'} read',
       child: Row(
@@ -371,7 +481,7 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
           Icon(
             Icons.done_all,
             size: 14,
-            color: Colors.blue[300]!,
+            color: Colors.blue,
           ),
           const SizedBox(width: 2),
           Text(
@@ -385,6 +495,101 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
         ],
       ),
     );
+  }
+
+  Future<void> _markMessagesAsRead(List<Map<String, dynamic>> messages) async {
+    try {
+      if (_currentUserId == null || messages.isEmpty) return;
+      
+      // Get unread messages (sent by others, not already read by current user)
+      final unreadMessages = messages.where((m) {
+        final senderId = m['senderId']?.toString() ?? '';
+        final readBy = _extractReadBy(m);
+        final isFromOthers = senderId != '' && senderId != _currentUserId.toString();
+        final alreadyRead = readBy.any((id) => id.toString() == _currentUserId.toString());
+        return isFromOthers && !alreadyRead;
+      }).toList();
+      
+      if (unreadMessages.isEmpty) return;
+      
+      final messageIds = unreadMessages
+          .map((m) => m['_id']?.toString() ?? m['id']?.toString())
+          .whereType<String>()
+          .toList();
+      
+      if (messageIds.isEmpty) return;
+      
+      await _chatService.markMessagesAsRead(widget.chatId, messageIds);
+      
+      // Reload messages to get updated readBy status
+      Future.delayed(const Duration(milliseconds: 500), () {
+        if (mounted) {
+          _loadMessages();
+        }
+      });
+    } catch (e) {
+      Log.e('Error marking messages as read', 'CHAT_SCREEN_WEB_MONGODB', e);
+    }
+  }
+
+  Future<void> _updateUserStatus() async {
+    if (_otherUserId == null || _otherUserId!.isEmpty) return;
+    
+    try {
+      final userDetails = await _chatService.getUserDetails(_otherUserId!);
+      if (userDetails != null && mounted) {
+        setState(() {
+          _otherUserIsOnline = userDetails['isOnline'] ?? false;
+          final lastSeenStr = userDetails['lastSeen'];
+          if (lastSeenStr != null) {
+            if (lastSeenStr is String) {
+              _otherUserLastSeen = DateTime.tryParse(lastSeenStr);
+            } else if (lastSeenStr is Map && lastSeenStr['\$date'] != null) {
+              final timestamp = lastSeenStr['\$date'];
+              if (timestamp is int) {
+                _otherUserLastSeen = DateTime.fromMillisecondsSinceEpoch(timestamp);
+              }
+            }
+          }
+        });
+      }
+    } catch (e) {
+      Log.e('Error fetching user status', 'CHAT_SCREEN_WEB_MONGODB', e);
+    }
+  }
+
+  void _startStatusUpdates() {
+    // Update status every 10 seconds
+    _statusUpdateTimer?.cancel();
+    _statusUpdateTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      if (mounted && !widget.isGroupChat && _otherUserId != null) {
+        _updateUserStatus();
+      } else {
+        timer.cancel();
+      }
+    });
+  }
+
+  String _formatLastSeen(DateTime? lastSeen) {
+    if (lastSeen == null) return 'Last seen recently';
+    
+    final now = DateTime.now();
+    final difference = now.difference(lastSeen);
+    
+    if (difference.inMinutes < 1) {
+      return 'Last seen just now';
+    } else if (difference.inMinutes < 60) {
+      return 'Last seen ${difference.inMinutes} ${difference.inMinutes == 1 ? 'minute' : 'minutes'} ago';
+    } else if (difference.inHours < 24) {
+      return 'Last seen ${difference.inHours} ${difference.inHours == 1 ? 'hour' : 'hours'} ago';
+    } else if (difference.inDays < 7) {
+      return 'Last seen ${difference.inDays} ${difference.inDays == 1 ? 'day' : 'days'} ago';
+    } else {
+      // Format date: "Jan 15, 2024"
+      final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      final month = months[lastSeen.month - 1];
+      return 'Last seen $month ${lastSeen.day}, ${lastSeen.year}';
+    }
   }
 
   String _formatTimestamp(DateTime timestamp) {
@@ -686,7 +891,68 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.chatName),
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(widget.chatName),
+            if (!widget.isGroupChat) ...[
+              const SizedBox(height: 2),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_otherUserIsOnline == true) ...[
+                    Container(
+                      width: 8,
+                      height: 8,
+                      decoration: BoxDecoration(
+                        color: Colors.green,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Text(
+                      'Online',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withOpacity(0.8),
+                        fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                  ] else if (_otherUserLastSeen != null) ...[
+                    Text(
+                      _formatLastSeen(_otherUserLastSeen),
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withOpacity(0.8),
+                        fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                  ] else ...[
+                    Text(
+                      'Loading...',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withOpacity(0.8),
+                        fontWeight: FontWeight.normal,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ] else ...[
+              const SizedBox(height: 2),
+              Text(
+                'Group Chat',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white.withOpacity(0.8),
+                  fontWeight: FontWeight.normal,
+                ),
+              ),
+            ],
+          ],
+        ),
         backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
         foregroundColor: Colors.white,
         actions: [

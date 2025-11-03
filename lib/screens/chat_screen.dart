@@ -1558,7 +1558,17 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                             ),
                             if (isCurrentUser) ...[
                               const SizedBox(width: 6),
-                              _buildMessageStatusIcon(_getMessageStatus(messageDoc.id), isCurrentUser),
+                              _buildMessageStatusIcon(
+                                _getMessageStatus(messageDoc.id), 
+                                isCurrentUser,
+                                messageData: data,
+                                recipientId: widget.userIds != null && widget.userIds!.length == 2
+                                    ? widget.userIds!.firstWhere(
+                                        (id) => id.toString() != _currentUserId.toString(),
+                                        orElse: () => '',
+                                      )
+                                    : null,
+                              ),
                             ],
                           ],
                         ),
@@ -2002,32 +2012,104 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
     );
   }
 
-  Widget _buildMessageStatusIcon(String status, bool isCurrentUser) {
+  Widget _buildMessageStatusIcon(String status, bool isCurrentUser, {Map<String, dynamic>? messageData, String? recipientId}) {
     IconData icon;
     Color color;
+    String? tooltip;
     
-    switch (status) {
-      case 'sent':
-        icon = Icons.check;
-        color = Colors.grey;
-        break;
-      case 'delivered':
-        icon = Icons.done_all;
-        color = Colors.grey;
-        break;
-      case 'read':
-        icon = Icons.done_all;
-        color = Colors.blue;
-        break;
-      default:
-        icon = Icons.schedule;
-        color = Colors.grey;
+    // If we have message data, check readBy array directly
+    if (messageData != null) {
+      final readBy = messageData['readBy'] ?? [];
+      List<String> readByList = [];
+      if (readBy is List) {
+        readByList = readBy.map((id) => id?.toString() ?? '').toList();
+      }
+      
+      // For one-to-one chats, check if recipient has read
+      if (recipientId != null && recipientId.isNotEmpty) {
+        final isRead = readByList.any((id) => id == recipientId);
+        if (isRead || status == 'read') {
+          icon = Icons.done_all;
+          color = Colors.blue;
+          tooltip = 'Read';
+        } else if (readByList.isNotEmpty) {
+          icon = Icons.done_all;
+          color = Colors.grey;
+          tooltip = 'Delivered';
+        } else {
+          icon = Icons.done;
+          color = Colors.grey;
+          tooltip = 'Sent';
+        }
+      } else if (widget.isGroupChat) {
+        // For group chats, show read count (exclude sender)
+        final senderId = messageData['senderId']?.toString() ?? '';
+        final readCount = readByList.where((id) => id != senderId).length;
+        if (readCount == 0) {
+          icon = Icons.done;
+          color = Colors.grey;
+          tooltip = 'Sent';
+        } else {
+          icon = Icons.done_all;
+          color = Colors.blue;
+          tooltip = '$readCount ${readCount == 1 ? 'person has' : 'people have'} read';
+        }
+      } else {
+        // Fallback to status field
+        switch (status) {
+          case 'sent':
+            icon = Icons.done;
+            color = Colors.grey;
+            tooltip = 'Sent';
+            break;
+          case 'delivered':
+            icon = Icons.done_all;
+            color = Colors.grey;
+            tooltip = 'Delivered';
+            break;
+          case 'read':
+            icon = Icons.done_all;
+            color = Colors.blue;
+            tooltip = 'Read';
+            break;
+          default:
+            icon = Icons.done;
+            color = Colors.grey;
+            tooltip = 'Sent';
+        }
+      }
+    } else {
+      // Fallback to status field only
+      switch (status) {
+        case 'sent':
+          icon = Icons.done;
+          color = Colors.grey;
+          tooltip = 'Sent';
+          break;
+        case 'delivered':
+          icon = Icons.done_all;
+          color = Colors.grey;
+          tooltip = 'Delivered';
+          break;
+        case 'read':
+          icon = Icons.done_all;
+          color = Colors.blue;
+          tooltip = 'Read';
+          break;
+        default:
+          icon = Icons.schedule;
+          color = Colors.grey;
+          tooltip = 'Sending...';
+      }
     }
     
-    return Icon(
-      icon,
-      size: 16,
-      color: isCurrentUser ? Colors.white70 : color,
+    return Tooltip(
+      message: tooltip ?? status,
+      child: Icon(
+        icon,
+        size: 16,
+        color: isCurrentUser ? Colors.white70 : color,
+      ),
     );
   }
 

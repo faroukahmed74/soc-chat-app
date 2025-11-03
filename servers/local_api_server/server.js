@@ -663,13 +663,17 @@ app.post('/api/auth/register', async (req, res) => {
     const hashedPassword = await bcrypt.hash(password, salt);
     
     // Create user
+    const now = new Date();
     const user = {
       email,
       password: hashedPassword,
       displayName,
       role: 'user',
-      createdAt: new Date(),
-      status: 'online'
+      createdAt: now,
+      updatedAt: now,
+      status: 'online',
+      isOnline: false, // New users start offline until they log in
+      lastSeen: now
     };
     
     const result = await db.collection('users').insertOne(user);
@@ -712,10 +716,18 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
     
-    // Update status
+    // Update status and online presence
+    const now = new Date();
     await db.collection('users').updateOne(
       { _id: user._id },
-      { $set: { status: 'online' } }
+      { 
+        $set: { 
+          status: 'online',
+          isOnline: true,
+          lastSeen: now,
+          updatedAt: now
+        } 
+      }
     );
     
     // Generate token
@@ -932,7 +944,33 @@ app.get('/api/users/:userId', authenticateToken, async (req, res) => {
       return res.status(404).json({ error: 'User not found' });
     }
     
-    res.json(user);
+    // Format user response with proper status fields
+    const formattedUser = {
+      _id: user._id.toString(),
+      id: user._id.toString(),
+      username: user.username || '',
+      displayName: user.displayName || user.username || '',
+      email: user.email || '',
+      role: user.role || 'user',
+      status: user.status || 'offline',
+      // Ensure isOnline and lastSeen are always present with proper formatting
+      isOnline: user.isOnline === true || user.isOnline === 'true',
+      lastSeen: user.lastSeen 
+        ? (user.lastSeen instanceof Date 
+            ? user.lastSeen.toISOString() 
+            : (typeof user.lastSeen === 'string' ? user.lastSeen : new Date().toISOString()))
+        : (user.updatedAt 
+            ? (user.updatedAt instanceof Date ? user.updatedAt.toISOString() : new Date().toISOString())
+            : new Date().toISOString()),
+      createdAt: user.createdAt 
+        ? (user.createdAt instanceof Date ? user.createdAt.toISOString() : user.createdAt)
+        : null,
+      updatedAt: user.updatedAt 
+        ? (user.updatedAt instanceof Date ? user.updatedAt.toISOString() : user.updatedAt)
+        : null,
+    };
+    
+    res.json(formattedUser);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
@@ -1140,15 +1178,31 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       .skip(offset)
       .limit(limit)
       .toArray();
-    // Rewrite media URLs for web clients to same-origin
-    try {
-      messages = messages.map(m => {
-        if (m && m.mediaUrl) {
-          m.mediaUrl = rewriteMediaUrlIfNeeded(m.mediaUrl, req);
+    // Format messages to include readBy and status
+    messages = messages.map(m => {
+      const formatted = {
+        _id: m._id.toString(),
+        id: m._id.toString(),
+        chatId: m.chatId.toString(),
+        senderId: m.senderId.toString(),
+        content: m.content,
+        type: m.type,
+        createdAt: m.createdAt,
+        updatedAt: m.updatedAt,
+        edited: m.edited || false,
+        readBy: m.readBy ? m.readBy.map(id => id.toString()) : [],
+        status: m.status || (m.readBy && m.readBy.length > 0 ? 'read' : 'sent')
+      };
+      // Rewrite media URLs for web clients to same-origin
+      if (m.mediaUrl) {
+        try {
+          formatted.mediaUrl = rewriteMediaUrlIfNeeded(m.mediaUrl, req);
+        } catch (_) {
+          formatted.mediaUrl = m.mediaUrl;
         }
-        return m;
-      });
-    } catch (_) {}
+      }
+      return formatted;
+    });
     res.json(messages);
   } catch (err) {
     console.error(err);
@@ -1181,7 +1235,9 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       content,
       messageType: messageType || 'text',
       mediaUrl,
-      createdAt: new Date()
+      createdAt: new Date(),
+      readBy: [], // Initialize empty readBy array
+      status: 'sent' // Initialize status as 'sent'
     };
     
     const result = await db.collection('messages').insertOne(message);
@@ -1228,10 +1284,17 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       for (const socket of sockets) {
         const mediaUrlForThisSocket = rewriteMediaUrlIfNeeded(message.mediaUrl, socket.handshake?.headers || {});
         socket.emit('new_message', {
-          id: result.insertedId,
+          id: result.insertedId.toString(),
+          _id: result.insertedId.toString(),
           senderName: senderName,
-          ...message,
-          mediaUrl: mediaUrlForThisSocket
+          chatId: chatId.toString(),
+          senderId: userId.toString(),
+          content: message.content,
+          messageType: message.messageType,
+          mediaUrl: mediaUrlForThisSocket,
+          createdAt: message.createdAt,
+          readBy: [], // Include readBy array (empty for new messages)
+          status: 'sent' // Include status (sent for new messages)
         });
       }
     } catch (e) {
@@ -1269,9 +1332,16 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     // Return created message (with media URL rewritten for web clients)
     const mediaUrlForWeb = rewriteMediaUrlIfNeeded(message.mediaUrl, req.headers || {});
     res.status(201).json({
-      id: result.insertedId,
-      ...message,
-      mediaUrl: mediaUrlForWeb
+      id: result.insertedId.toString(),
+      _id: result.insertedId.toString(),
+      chatId: chatId.toString(),
+      senderId: userId.toString(),
+      content: message.content,
+      messageType: message.messageType,
+      mediaUrl: mediaUrlForWeb,
+      createdAt: message.createdAt,
+      readBy: [], // Include readBy array (empty for new messages)
+      status: 'sent' // Include status (sent for new messages)
     });
   } catch (err) {
     console.error(err);

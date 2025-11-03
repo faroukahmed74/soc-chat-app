@@ -28,8 +28,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'chat_screen.dart';
-import 'chat_screen_web.dart' if (dart.library.html) 'chat_screen_web.dart' as chat_screen;
+// Unified chat screen for all platforms (web, Android, iOS)
+import 'chat_screen_mongodb.dart';
 import '../services/admin_group_service.dart';
 import '../services/theme_service.dart';
 // Firebase services removed - using MongoDB/ngrok API only
@@ -875,15 +875,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
             )
           : null,
       onTap: () {
+        // Use unified MongoDB chat screen for all platforms (web, Android, iOS)
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => kIsWeb ? chat_screen.ChatScreenWeb(
-              chatId: chatId,
-              chatName: displayName,
-              isGroupChat: isGroup,
-              userIds: memberIds,
-            ) : ChatScreen(
+            builder: (context) => ChatScreenMongoDB(
               chatId: chatId,
               chatName: displayName,
               isGroupChat: isGroup,
@@ -943,15 +939,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 )
               : null,
           onTap: () {
+            // Use unified MongoDB chat screen for all platforms (web, Android, iOS)
             Navigator.push(
               context,
               MaterialPageRoute(
-                builder: (context) => kIsWeb ? chat_screen.ChatScreenWeb(
-                  chatId: chat.id,
-                  chatName: displayName,
-                  isGroupChat: isGroup,
-                  userIds: List<String>.from(data['members'] ?? []),
-                ) : ChatScreen(
+                builder: (context) => ChatScreenMongoDB(
                   chatId: chat.id,
                   chatName: displayName,
                   isGroupChat: isGroup,

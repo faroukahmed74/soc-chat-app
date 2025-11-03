@@ -35,6 +35,7 @@ import 'routes/native_routes.dart' if (dart.library.html) 'routes/web_routes.dar
 import 'screens/chat_list_screen_mongodb.dart';
 import 'services/realtime_service.dart';
 import 'services/active_chat_service.dart';
+import 'services/message_sound_service.dart';
 
 // =============================================================================
 // GLOBAL NAVIGATOR KEY
@@ -388,6 +389,9 @@ class _MainAppState extends State<MainApp> {
       // ALWAYS initialize notifications (handles web/mobile inside)
       await _initializeNotifications();
 
+      // Note: Web audio requires user interaction before it can play
+      // Audio will be unlocked automatically on first user interaction with the app
+
       // Presence service removed - using MongoDB/ngrok API only
       Log.i('Presence service removed (physical server mode)', 'MAIN_APP');
 
@@ -399,31 +403,41 @@ class _MainAppState extends State<MainApp> {
         realtime.onNewMessage((msg) async {
           try {
             final chatId = (msg['chatId'] ?? msg['chat_id'] ?? '').toString();
+            final senderId = (msg['senderId'] ?? msg['sender_id'] ?? '').toString();
             final senderName = (msg['senderName'] ?? 'Someone').toString();
             final content = (msg['content'] ?? '').toString();
-            final active = ActiveChatService.instance.isActive(chatId);
-            if (!active) {
-              if (kIsWeb) {
-                // On web, show a simple in-app SnackBar
-                navigatorKey.currentState?.overlay?.context.mounted == true
-                    ? ScaffoldMessenger.of(navigatorKey.currentState!.overlay!.context).showSnackBar(
-                        SnackBar(content: Text('$senderName: $content')),
-                      )
-                    : null;
-              } else {
-                // On mobile, fire a local notification
-                await EnhancedNotificationService().sendLocalNotification(
-                  title: senderName,
-                  body: content.isNotEmpty ? content : 'New message',
-                  payload: json.encode({
-                    'type': 'chat_message',
-                    'chatId': chatId,
-                    'senderId': (msg['senderId'] ?? '').toString(),
-                    'senderName': senderName,
-                    'timestamp': DateTime.now().toIso8601String(),
-                  }),
-                  channelId: 'chat_notifications',
-                );
+            final currentUserId = await LocalAuthService.getCurrentUserIdAsync();
+            
+            // Only play sound and show notifications if message is not from current user
+            if (senderId != currentUserId) {
+              // Always play sound for new messages (even if chat is open)
+              await MessageSoundService().playMessageSound();
+              
+              final active = ActiveChatService.instance.isActive(chatId);
+              if (!active) {
+                // Only show visual notifications if chat is not active
+                if (kIsWeb) {
+                  // On web, show a simple in-app SnackBar
+                  navigatorKey.currentState?.overlay?.context.mounted == true
+                      ? ScaffoldMessenger.of(navigatorKey.currentState!.overlay!.context).showSnackBar(
+                          SnackBar(content: Text('$senderName: $content')),
+                        )
+                      : null;
+                } else {
+                  // On mobile, fire a local notification
+                  await EnhancedNotificationService().sendLocalNotification(
+                    title: senderName,
+                    body: content.isNotEmpty ? content : 'New message',
+                    payload: json.encode({
+                      'type': 'chat_message',
+                      'chatId': chatId,
+                      'senderId': senderId,
+                      'senderName': senderName,
+                      'timestamp': DateTime.now().toIso8601String(),
+                    }),
+                    channelId: 'chat_notifications',
+                  );
+                }
               }
             }
           } catch (e) {

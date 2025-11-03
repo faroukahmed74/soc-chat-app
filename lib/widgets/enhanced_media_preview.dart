@@ -11,8 +11,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
-// Conditional import: web_pdf_thumbnail only available on web
-import 'web_pdf_thumbnail.dart' if (dart.library.io) 'web_pdf_thumbnail_stub.dart';
+// Conditional import: web_pdf_thumbnail handles web/mobile conditional internally
+import 'web_pdf_thumbnail.dart';
 import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../services/media_cache_service.dart';

@@ -88,7 +88,9 @@ router.post('/', authenticateToken, async (req, res) => {
       type,
       createdAt: new Date(),
       updatedAt: new Date(),
-      edited: false
+      edited: false,
+      readBy: [], // Initialize empty readBy array
+      status: 'sent' // Initialize status as 'sent'
     };
     
     // Add mediaUrl if provided
@@ -128,7 +130,9 @@ router.post('/', authenticateToken, async (req, res) => {
         mediaUrl: rewriteMediaUrlIfNeeded(createdMessage.mediaUrl || null, req),
         createdAt: createdMessage.createdAt,
         updatedAt: createdMessage.updatedAt,
-        edited: createdMessage.edited
+        edited: createdMessage.edited || false,
+        readBy: createdMessage.readBy ? createdMessage.readBy.map(id => id.toString()) : [],
+        status: createdMessage.status || (createdMessage.readBy && createdMessage.readBy.length > 0 ? 'read' : 'sent')
       }
     });
   } catch (error) {
@@ -197,7 +201,9 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
       mediaUrl: rewriteMediaUrlIfNeeded(msg.mediaUrl || null, req),
       createdAt: msg.createdAt,
       updatedAt: msg.updatedAt,
-      edited: msg.edited
+      edited: msg.edited,
+      readBy: msg.readBy ? msg.readBy.map(id => id.toString()) : [],
+      status: msg.status || (msg.readBy && msg.readBy.length > 0 ? 'read' : 'sent')
     }));
     
     res.status(200).json({
