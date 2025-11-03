@@ -427,6 +427,93 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     }
   }
 
+  Widget _buildMessageStatus(Map<String, dynamic> message, bool isDark) {
+    final readBy = _extractReadBy(message);
+    final status = message['status'] ?? message['messageStatus'];
+    
+    // For group chats, show read count
+    if (widget.isGroupChat) {
+      final readCount = readBy.length;
+      return _buildGroupStatus(readCount, isDark);
+    }
+    
+    // For one-to-one chats, show status indicator
+    return _buildOneToOneStatus(readBy, status, isDark);
+  }
+
+  List<dynamic> _extractReadBy(Map<String, dynamic> message) {
+    final readBy = message['readBy'] ?? [];
+    if (readBy is List) {
+      return readBy;
+    }
+    return [];
+  }
+
+  Widget _buildOneToOneStatus(List<dynamic> readBy, String? status, bool isDark) {
+    IconData icon;
+    Color color;
+    String? tooltip;
+    
+    if (readBy.isNotEmpty || status == 'read') {
+      icon = Icons.done_all;
+      color = Colors.blue;
+      tooltip = 'Read';
+    } else if (status == 'delivered') {
+      icon = Icons.done_all;
+      color = isDark ? Colors.grey[400]! : Colors.grey[600]!;
+      tooltip = 'Delivered';
+    } else {
+      icon = Icons.done;
+      color = isDark ? Colors.grey[400]! : Colors.grey[600]!;
+      tooltip = 'Sent';
+    }
+    
+    return Tooltip(
+      message: tooltip,
+      child: Icon(
+        icon,
+        size: 14,
+        color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+      ),
+    );
+  }
+
+  Widget _buildGroupStatus(int readCount, bool isDark) {
+    if (readCount == 0) {
+      return Tooltip(
+        message: 'Sent',
+        child: Icon(
+          Icons.done,
+          size: 14,
+          color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+        ),
+      );
+    }
+    
+    return Tooltip(
+      message: '$readCount ${readCount == 1 ? 'person has' : 'people have'} read',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.done_all,
+            size: 14,
+            color: Colors.blue[300]!,
+          ),
+          const SizedBox(width: 2),
+          Text(
+            '$readCount',
+            style: AppDesignSystem.bodySmall.copyWith(
+              color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.7),
+              fontWeight: FontWeight.w500,
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatTimestamp(DateTime timestamp) {
     // Convert to Cairo time (UTC+2)
     final cairo = timestamp.toUtc().add(const Duration(hours: 2));
@@ -743,13 +830,23 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                       ),
                     ),
                   const SizedBox(height: 4),
-                  Text(
-                    _formatTimestamp(timestamp),
-                    style: AppDesignSystem.bodySmall.copyWith(
-                      color: isCurrentUser
-                          ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
-                          : Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        _formatTimestamp(timestamp),
+                        style: AppDesignSystem.bodySmall.copyWith(
+                          color: isCurrentUser
+                              ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                      if (isCurrentUser) ...[
+                        const SizedBox(width: 4),
+                        _buildMessageStatus(message, Theme.of(context).brightness == Brightness.dark),
+                      ],
+                    ],
                   ),
                 ],
               ),

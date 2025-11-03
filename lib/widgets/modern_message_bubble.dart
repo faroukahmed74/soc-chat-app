@@ -16,6 +16,7 @@ class ModernMessageBubble extends StatefulWidget {
   final bool isGroupChat;
   final Function(String mediaUrl, String type, String caption) onMediaTap;
   final String Function(DateTime timestamp) formatTimestamp;
+  final String? currentUserId; // Required for checking read status
 
   const ModernMessageBubble({
     Key? key,
@@ -24,6 +25,7 @@ class ModernMessageBubble extends StatefulWidget {
     required this.isGroupChat,
     required this.onMediaTap,
     required this.formatTimestamp,
+    this.currentUserId,
   }) : super(key: key);
 
   @override
@@ -95,6 +97,18 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
     return message['mediaUrl'] ?? message['url'];
   }
 
+  List<dynamic> _extractReadBy(Map<String, dynamic> message) {
+    final readBy = message['readBy'] ?? [];
+    if (readBy is List) {
+      return readBy;
+    }
+    return [];
+  }
+
+  String? _extractStatus(Map<String, dynamic> message) {
+    return message['status'] ?? message['messageStatus'];
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -144,7 +158,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                             theme,
                           ),
                           const SizedBox(height: 4),
-                          _buildTimestamp(timestamp, isDark),
+                          _buildTimestampRow(timestamp, isDark),
                         ],
                       ),
                     ),
@@ -482,12 +496,118 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
     );
   }
 
-  Widget _buildTimestamp(DateTime timestamp, bool isDark) {
-    return Text(
-      widget.formatTimestamp(timestamp),
-      style: TextStyle(
-        fontSize: 11,
-        color: isDark ? Colors.grey[500] : Colors.grey[600],
+  Widget _buildTimestampRow(DateTime timestamp, bool isDark) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Text(
+          widget.formatTimestamp(timestamp),
+          style: TextStyle(
+            fontSize: 11,
+            color: isDark ? Colors.grey[500] : Colors.grey[600],
+          ),
+        ),
+        if (widget.isCurrentUser) ...[
+          const SizedBox(width: 4),
+          _buildMessageStatus(isDark),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildMessageStatus(bool isDark) {
+    final readBy = _extractReadBy(widget.message);
+    final status = _extractStatus(widget.message);
+    
+    // For group chats, show read count
+    if (widget.isGroupChat) {
+      final readCount = readBy.length;
+      return _buildGroupStatus(readCount, isDark);
+    }
+    
+    // For one-to-one chats, show status indicator
+    return _buildOneToOneStatus(readBy, status, isDark);
+  }
+
+  Widget _buildOneToOneStatus(List<dynamic> readBy, String? status, bool isDark) {
+    IconData icon;
+    Color color;
+    String? tooltip;
+    
+    // Check if message is read (readBy contains the recipient's ID)
+    // For one-to-one: if readBy has items or status is 'read', it's read
+    // If status is 'delivered', show delivered; else sent
+    if (readBy.isNotEmpty || status == 'read') {
+      icon = Icons.done_all;
+      color = widget.isCurrentUser 
+          ? (isDark ? Colors.blue[300]! : Colors.blue[100]!)
+          : Colors.blue;
+      tooltip = 'Read';
+    } else if (status == 'delivered') {
+      icon = Icons.done_all;
+      color = widget.isCurrentUser 
+          ? (isDark ? Colors.white70 : Colors.white70)
+          : Colors.grey[600]!;
+      tooltip = 'Delivered';
+    } else {
+      icon = Icons.done;
+      color = widget.isCurrentUser 
+          ? (isDark ? Colors.white70 : Colors.white70)
+          : Colors.grey[600]!;
+      tooltip = 'Sent';
+    }
+    
+    return Tooltip(
+      message: tooltip,
+      child: Icon(
+        icon,
+        size: 14,
+        color: color,
+      ),
+    );
+  }
+
+  Widget _buildGroupStatus(int readCount, bool isDark) {
+    if (readCount == 0) {
+      // Sent but not read
+      return Tooltip(
+        message: 'Sent',
+        child: Icon(
+          Icons.done,
+          size: 14,
+          color: widget.isCurrentUser 
+              ? (isDark ? Colors.white70 : Colors.white70)
+              : Colors.grey[600]!,
+        ),
+      );
+    }
+    
+    // Show read count in group chats
+    return Tooltip(
+      message: '$readCount ${readCount == 1 ? 'person has' : 'people have'} read',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.done_all,
+            size: 14,
+            color: widget.isCurrentUser 
+                ? (isDark ? Colors.blue[300]! : Colors.blue[100]!)
+                : Colors.blue,
+          ),
+          const SizedBox(width: 2),
+          Text(
+            '$readCount',
+            style: TextStyle(
+              fontSize: 10,
+              color: widget.isCurrentUser 
+                  ? (isDark ? Colors.white70 : Colors.white70)
+                  : Colors.grey[600]!,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
       ),
     );
   }

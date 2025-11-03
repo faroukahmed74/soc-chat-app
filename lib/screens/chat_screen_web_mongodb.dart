@@ -300,6 +300,93 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
     }
   }
 
+  Widget _buildMessageStatus(Map<String, dynamic> message) {
+    final readBy = _extractReadBy(message);
+    final status = message['status'] ?? message['messageStatus'];
+    
+    // For group chats, show read count
+    if (widget.isGroupChat) {
+      final readCount = readBy.length;
+      return _buildGroupStatus(readCount);
+    }
+    
+    // For one-to-one chats, show status indicator
+    return _buildOneToOneStatus(readBy, status);
+  }
+
+  List<dynamic> _extractReadBy(Map<String, dynamic> message) {
+    final readBy = message['readBy'] ?? [];
+    if (readBy is List) {
+      return readBy;
+    }
+    return [];
+  }
+
+  Widget _buildOneToOneStatus(List<dynamic> readBy, String? status) {
+    IconData icon;
+    Color color;
+    String? tooltip;
+    
+    if (readBy.isNotEmpty || status == 'read') {
+      icon = Icons.done_all;
+      color = Colors.blue;
+      tooltip = 'Read';
+    } else if (status == 'delivered') {
+      icon = Icons.done_all;
+      color = _themeService.isDarkMode ? Colors.grey[400]! : Colors.grey[600]!;
+      tooltip = 'Delivered';
+    } else {
+      icon = Icons.done;
+      color = _themeService.isDarkMode ? Colors.grey[400]! : Colors.grey[600]!;
+      tooltip = 'Sent';
+    }
+    
+    return Tooltip(
+      message: tooltip,
+      child: Icon(
+        icon,
+        size: 14,
+        color: Colors.white70,
+      ),
+    );
+  }
+
+  Widget _buildGroupStatus(int readCount) {
+    if (readCount == 0) {
+      return Tooltip(
+        message: 'Sent',
+        child: Icon(
+          Icons.done,
+          size: 14,
+          color: Colors.white70,
+        ),
+      );
+    }
+    
+    return Tooltip(
+      message: '$readCount ${readCount == 1 ? 'person has' : 'people have'} read',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.done_all,
+            size: 14,
+            color: Colors.blue[300]!,
+          ),
+          const SizedBox(width: 2),
+          Text(
+            '$readCount',
+            style: TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w500,
+              fontSize: 10,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   String _formatTimestamp(DateTime timestamp) {
     // Convert to Cairo time (UTC+2)
     final cairo = timestamp.toUtc().add(const Duration(hours: 2));
@@ -486,14 +573,24 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
                       ),
                     ),
                   const SizedBox(height: 4),
-                  Text(
-                    _formatTimestamp(timestamp),
-                    style: TextStyle(
-                      fontSize: 10,
-                      color: isCurrentUser
-                          ? Colors.white70
-                          : (_themeService.isDarkMode ? Colors.white54 : Colors.black54),
-                    ),
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        _formatTimestamp(timestamp),
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: isCurrentUser
+                              ? Colors.white70
+                              : (_themeService.isDarkMode ? Colors.white54 : Colors.black54),
+                        ),
+                      ),
+                      if (isCurrentUser) ...[
+                        const SizedBox(width: 4),
+                        _buildMessageStatus(message),
+                      ],
+                    ],
                   ),
                 ],
               ),

@@ -347,7 +347,8 @@ class _EnhancedChatScreenState extends State<EnhancedChatScreen>
                               isCurrentUser: message['senderId'] == _currentUserId,
                               isGroupChat: widget.isGroupChat,
                               onMediaTap: _showFullScreenMedia,
-                              timestamp: _formatTimestamp,
+                              formatTimestamp: _formatTimestamp,
+                              currentUserId: _currentUserId,
                             );
                           },
                         ),

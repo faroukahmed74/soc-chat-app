@@ -5,6 +5,11 @@ import 'dart:typed_data';
 import '../widgets/emoji_picker.dart';
 import '../widgets/enhanced_media_sender.dart';
 
+/// Intent class for sending messages via keyboard shortcut
+class _SendMessageIntent extends Intent {
+  const _SendMessageIntent();
+}
+
 /// Enhanced chat input widget with emoji picker and media attachment
 class EnhancedChatInput extends StatefulWidget {
   final TextEditingController controller;
@@ -333,18 +338,89 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
                 // Text input
                 Expanded(
                   child: Container(
+                    constraints: BoxConstraints(
+                      maxHeight: kIsWeb ? 150 : double.infinity,
+                    ),
                     decoration: BoxDecoration(
                       color: isDark ? Colors.grey[800] : Colors.grey[100],
                       borderRadius: BorderRadius.circular(25),
                     ),
-                    child: TextField(
+                    child: kIsWeb ? Shortcuts(
+                      shortcuts: {
+                        const SingleActivator(LogicalKeyboardKey.enter): _SendMessageIntent(),
+                      },
+                      child: Actions(
+                        actions: {
+                          _SendMessageIntent: CallbackAction<_SendMessageIntent>(
+                            onInvoke: (_) {
+                              if (widget.controller.text.trim().isNotEmpty && widget.isEnabled) {
+                                _sendMessage();
+                              }
+                              return null;
+                            },
+                          ),
+                        },
+                        child: Focus(
+                          onKeyEvent: (FocusNode node, KeyEvent event) {
+                            // Allow Shift+Enter to create new lines
+                            if (event is KeyDownEvent && 
+                                event.logicalKey == LogicalKeyboardKey.enter &&
+                                HardwareKeyboard.instance.isShiftPressed) {
+                              return KeyEventResult.ignored; // Let TextField handle it
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          child: TextField(
                       controller: widget.controller,
                       focusNode: _focusNode,
                       enabled: widget.isEnabled,
-                      maxLines: kIsWeb ? 1 : null, // On web, single line allows Enter to submit
+                      maxLines: null, // Allow multiple lines on all platforms
+                      minLines: 1, // Start with single line, grow as needed
+                      textCapitalization: TextCapitalization.sentences,
+                      textInputAction: kIsWeb ? TextInputAction.newline : TextInputAction.send,
+                      keyboardType: TextInputType.multiline,
+                      decoration: InputDecoration(
+                        hintText: kIsWeb 
+                            ? 'Type a message... (Enter to send, Shift+Enter for new line)'
+                            : 'Type a message...',
+                        border: InputBorder.none,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 12,
+                        ),
+                        hintStyle: TextStyle(
+                          color: isDark ? Colors.grey[500] : Colors.grey[600],
+                          fontSize: kIsWeb ? 14 : 16,
+                        ),
+                      ),
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontSize: 16,
+                        fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
+                        fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
+                      ),
+                      onSubmitted: (value) {
+                        // On mobile, Enter sends the message
+                        if (!kIsWeb && value.trim().isNotEmpty && widget.isEnabled) {
+                          _sendMessage();
+                        }
+                      },
+                      onChanged: (_) {
+                        // Update send button state and trigger rebuild for dynamic height
+                        setState(() {});
+                      },
+                          ),
+                        ),
+                      ),
+                    ) : TextField(
+                      controller: widget.controller,
+                      focusNode: _focusNode,
+                      enabled: widget.isEnabled,
+                      maxLines: null,
+                      minLines: 1,
                       textCapitalization: TextCapitalization.sentences,
                       textInputAction: TextInputAction.send,
-                      keyboardType: kIsWeb ? TextInputType.text : TextInputType.multiline,
+                      keyboardType: TextInputType.multiline,
                       decoration: InputDecoration(
                         hintText: 'Type a message...',
                         border: InputBorder.none,
@@ -359,17 +435,13 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
                       style: TextStyle(
                         color: isDark ? Colors.white : Colors.black87,
                         fontSize: 16,
-                        fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
-                        fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
                       ),
                       onSubmitted: (value) {
-                        // On web and mobile, Enter sends the message if there's text
                         if (value.trim().isNotEmpty && widget.isEnabled) {
                           _sendMessage();
                         }
                       },
                       onChanged: (_) {
-                        // Update send button state
                         setState(() {});
                       },
                     ),
