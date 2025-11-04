@@ -252,6 +252,15 @@ class MongoDBChatService {
       }
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
+      final requestBody = {
+        'type': type,
+        'name': name,
+        'members': memberIds,
+      };
+      
+      Log.i('createChat request: type=$type, name=$name, members=$memberIds', 'MONGODB_CHAT_SERVICE');
+      Log.i('createChat request body JSON: ${json.encode(requestBody)}', 'MONGODB_CHAT_SERVICE');
+      
       final response = await http.post(
         Uri.parse('$baseUrl/api/chats'),
         headers: {
@@ -259,11 +268,7 @@ class MongoDBChatService {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-        body: json.encode({
-          'type': type,
-          'name': name,
-          'members': memberIds,
-        }),
+        body: json.encode(requestBody),
       );
 
       Log.i('createChat response status: ${response.statusCode}', 'MONGODB_CHAT_SERVICE');
@@ -275,12 +280,45 @@ class MongoDBChatService {
         // Return the chat data directly if it's in the root, or extract from 'chat' field
         return data['chat'] ?? data;
       } else {
-        Log.e('Failed to create chat: ${response.statusCode} - ${response.body}', 'MONGODB_CHAT_SERVICE');
-        throw Exception('Failed to create chat: ${response.statusCode}');
+        Log.e('❌❌❌ CHAT CREATION FAILED ❌❌❌', 'MONGODB_CHAT_SERVICE');
+        Log.e('Response status: ${response.statusCode}', 'MONGODB_CHAT_SERVICE');
+        Log.e('Response body (raw): ${response.body}', 'MONGODB_CHAT_SERVICE');
+        Log.e('Response body length: ${response.body.length} bytes', 'MONGODB_CHAT_SERVICE');
+        
+        String errorMessage = 'Unknown error';
+        Map<String, dynamic>? errorDetails;
+        try {
+          final errorData = json.decode(response.body);
+          Log.e('Parsed error data: $errorData', 'MONGODB_CHAT_SERVICE');
+          errorMessage = errorData['error'] ?? errorData['message'] ?? response.body;
+          // Include details if available
+          if (errorData['details'] != null) {
+            errorDetails = errorData['details'];
+            Log.e('Error details found: $errorDetails', 'MONGODB_CHAT_SERVICE');
+          }
+          if (errorData['received'] != null) {
+            errorDetails ??= {};
+            errorDetails!['received'] = errorData['received'];
+            Log.e('Error received data: ${errorData['received']}', 'MONGODB_CHAT_SERVICE');
+          }
+        } catch (e) {
+          Log.e('Failed to parse error response: $e', 'MONGODB_CHAT_SERVICE');
+          errorMessage = response.body;
+        }
+        
+        String fullError = errorMessage;
+        if (errorDetails != null) {
+          fullError += '\nDetails: ${json.encode(errorDetails)}';
+        }
+        
+        Log.e('Full error message: $fullError', 'MONGODB_CHAT_SERVICE');
+        Log.e('Request was: type=$type, name=$name, members=$memberIds', 'MONGODB_CHAT_SERVICE');
+        throw Exception('Failed to create chat: ${response.statusCode} - $fullError');
       }
     } catch (e) {
       Log.e('Error creating chat', 'MONGODB_CHAT_SERVICE', e);
-      return null;
+      // Re-throw the exception so the caller can see the error
+      rethrow;
     }
   }
 
@@ -297,12 +335,13 @@ class MongoDBChatService {
         Log.i('Successfully created/found chat: ${chat['_id']}', 'MONGODB_CHAT_SERVICE');
         return chat;
       } else {
-        Log.e('Failed to create/find chat', 'MONGODB_CHAT_SERVICE');
+        Log.e('Failed to create/find chat - createChat returned null', 'MONGODB_CHAT_SERVICE');
         return null;
       }
     } catch (e) {
       Log.e('Error in findOrCreateChat', 'MONGODB_CHAT_SERVICE', e);
-      return null;
+      // Re-throw the error so the caller can see the actual error message
+      rethrow;
     }
   }
 

@@ -155,8 +155,31 @@ app.use((req, res, next) => {
   next();
 });
 
+// DEBUG: Log all POST requests to /api/chats BEFORE body parsing
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path === '/api/chats') {
+    console.error('\n🔍🔍🔍 BEFORE BODY PARSING 🔍🔍🔍');
+    console.error('Path:', req.path);
+    console.error('Content-Type:', req.headers['content-type']);
+    console.error('Content-Length:', req.headers['content-length']);
+  }
+  next();
+});
+
 // JSON parsing
 app.use(express.json({ limit: '2mb' }));
+
+// DEBUG: Log all POST requests to /api/chats AFTER body parsing
+app.use((req, res, next) => {
+  if (req.method === 'POST' && req.path === '/api/chats') {
+    console.error('\n✅✅✅ AFTER BODY PARSING ✅✅✅');
+    console.error('Body type:', typeof req.body);
+    console.error('Body:', req.body);
+    console.error('Body keys:', req.body ? Object.keys(req.body) : 'null');
+  }
+  next();
+});
+
 app.use(morgan('dev'));
 // Helper to rewrite media URLs to same-origin for web clients
 // Accepts either an Express req or a plain headers object
@@ -332,6 +355,11 @@ async function connectToMongo(retryCount = 0) {
     // Set up comprehensive connection monitoring
     setupMongoMonitoring();
     
+    // Set database connection for route modules (after routes are loaded)
+    if (chatRoutes && typeof chatRoutes.setDatabase === 'function') {
+      chatRoutes.setDatabase(db);
+    }
+    
     // Test the connection
     await db.admin().ping();
     console.log('✅ MongoDB ping successful');
@@ -358,6 +386,10 @@ async function connectToMongo(retryCount = 0) {
         db = client.db('soc_chat_app');
         // Ensure app.locals has the db in fallback path as well
         app.locals.db = db;
+        // Set database connection for route modules
+        if (typeof chatRoutes.setDatabase === 'function') {
+          chatRoutes.setDatabase(db);
+        }
         connectionStatus = 'connected';
         lastConnectionTime = new Date();
         console.log('✅ Connected to MongoDB (no auth fallback)');
@@ -448,11 +480,19 @@ const authenticateToken = (req, res, next) => {
   const authHeader = req.headers['authorization'];
   const token = authHeader && authHeader.split(' ')[1];
   
-  if (!token) return res.status(401).json({ error: 'Access denied' });
+  if (!token) {
+    console.error('[AUTH] ❌ No token provided for', req.method, req.path);
+    return res.status(401).json({ error: 'Access denied' });
+  }
   
   jwt.verify(token, JWT_SECRET, (err, user) => {
-    if (err) return res.status(403).json({ error: 'Invalid token' });
+    if (err) {
+      console.error('[AUTH] ❌ Token verification failed for', req.method, req.path, ':', err.message);
+      return res.status(403).json({ error: 'Invalid token' });
+    }
+    console.error('[AUTH] ✅ Token verified for user:', user.id);
     req.user = user;
+    console.log('[AUTH] Calling next() for', req.method, req.path);
     next();
   });
 };
@@ -1023,26 +1063,244 @@ app.get('/api/chats', authenticateToken, async (req, res) => {
   }
 });
 
+// Middleware to log POST /api/chats requests BEFORE authentication
+app.use('/api/chats', (req, res, next) => {
+  if (req.method === 'POST') {
+    console.error('\n\n🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥');
+    console.error('🔥 POST /api/chats REQUEST RECEIVED (BEFORE AUTH)');
+    console.error('🔥 Timestamp:', new Date().toISOString());
+    console.error('🔥 Method:', req.method);
+    console.error('🔥 Path:', req.path);
+    console.error('🔥 Headers:', {
+      'authorization': req.headers.authorization ? 'Present' : 'Missing',
+      'content-type': req.headers['content-type'],
+      'content-length': req.headers['content-length']
+    });
+    console.error('🔥 Raw body exists?', !!req.body);
+    console.error('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥\n');
+  }
+  next();
+});
+
 // Create a new chat
 app.post('/api/chats', authenticateToken, async (req, res) => {
+  // Log immediately - use console.log to ensure it appears
+  console.log('\n\n🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥');
+  console.log('🔥🔥🔥 POST /api/chats HANDLER CALLED 🔥🔥🔥');
+  console.log('🔥 Timestamp:', new Date().toISOString());
+  console.log('🔥 Request body type:', typeof req.body);
+  console.log('🔥 Request body:', JSON.stringify(req.body));
+  console.log('🔥 Request body keys:', req.body ? Object.keys(req.body) : 'null');
+  console.log('🔥 Request user:', JSON.stringify(req.user));
+  console.log('🔥 Request user id:', req.user?.id);
+  console.log('🔥 Content-Type header:', req.headers['content-type']);
+  console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥\n');
+  
+  // Check if body is empty or undefined
+  if (!req.body || Object.keys(req.body).length === 0) {
+    console.error('❌❌❌ REQUEST BODY IS EMPTY OR UNDEFINED ❌❌❌');
+    return res.status(400).json({ 
+      error: 'Request body is required',
+      received: req.body,
+      bodyType: typeof req.body
+    });
+  }
+  
   try {
     const { type, name, members } = req.body;
     
-    if (!name || !members || !Array.isArray(members)) {
-      return res.status(400).json({ error: 'Chat name and members array are required' });
+    console.log('🔥🔥🔥 AFTER DESTRUCTURING 🔥🔥🔥');
+    console.log('🔥 type:', type, '(type:', typeof type, ')');
+    console.log('🔥 name:', name, '(type:', typeof name, ')');
+    console.log('🔥 members:', members, '(type:', typeof members, ')');
+    console.log('🔥 members isArray:', Array.isArray(members));
+    console.log('🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥🔥\n');
+    
+    // Validate authenticated user
+    if (!req.user || !req.user.id) {
+      console.log('[POST /api/chats] Validation failed: no authenticated user');
+      return res.status(401).json({ error: 'Authentication required' });
+    }
+    
+    // Intercept response to log it
+    const originalJson = res.json.bind(res);
+    res.json = function(data) {
+      console.error('\n📤📤📤 SENDING RESPONSE 📤📤📤');
+      console.error('Status:', res.statusCode);
+      console.error('Response data:', JSON.stringify(data, null, 2));
+      console.error('Response size:', JSON.stringify(data).length, 'bytes');
+      console.error('📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤📤\n');
+      return originalJson(data);
+    };
+    
+    // Validate name - check if empty, but we'll generate default after members are processed
+    let needsDefaultName = !name || (typeof name === 'string' && name.trim().length === 0);
+    
+    // Trim the name if it exists
+    let trimmedName = name && typeof name === 'string' ? name.trim() : String(name || '');
+    
+    // Don't error on empty name yet - we'll generate default after processing members
+    // Just log that we need a default
+    if (needsDefaultName || trimmedName.length === 0) {
+      console.log('\n⚠️⚠️⚠️ WARNING: Empty chat name detected, will generate default ⚠️⚠️⚠️');
+      console.log('Original name:', name);
+      trimmedName = ''; // Will be set later
+    }
+    
+    console.log('🔥 NAME VALIDATION: needsDefaultName=', needsDefaultName, 'trimmedName=', trimmedName);
+    
+    // Validate members array
+    if (!members || !Array.isArray(members)) {
+      const errorResponse = { 
+        error: 'Members array is required',
+        received: { type, name, members, membersType: typeof members, isArray: Array.isArray(members) }
+      };
+      console.error('\n❌❌❌ VALIDATION FAILED: invalid members array ❌❌❌');
+      console.error('Members value:', members);
+      console.error('Members type:', typeof members);
+      console.error('Is array?', Array.isArray(members));
+      console.error('Error response:', JSON.stringify(errorResponse, null, 2));
+      console.error('========================================\n');
+      return res.status(400).json(errorResponse);
+    }
+    
+    // Filter out empty/null members and validate ObjectIds
+    const validMembers = members.filter(memberId => {
+      const isValid = memberId != null && 
+             typeof memberId === 'string' && 
+             memberId.trim().length > 0 && 
+             ObjectId.isValid(memberId);
+      if (!isValid && memberId != null) {
+        console.log('[POST /api/chats] Invalid member ID filtered out:', memberId);
+      }
+      return isValid;
+    });
+    
+    console.log('[POST /api/chats] Valid members after filtering:', validMembers);
+    
+    // Convert to ObjectIds
+    const memberObjectIds = validMembers.map(id => new ObjectId(id));
+    
+    // Ensure the current user is included in members
+    let currentUserId;
+    try {
+      if (!ObjectId.isValid(req.user.id)) {
+        console.log('[POST /api/chats] Validation failed: invalid current user ID:', req.user.id);
+        return res.status(400).json({ error: 'Invalid authenticated user ID' });
+      }
+      currentUserId = new ObjectId(req.user.id);
+    } catch (err) {
+      console.log('[POST /api/chats] Validation failed: cannot convert current user ID to ObjectId:', req.user.id, err);
+      return res.status(400).json({ error: 'Invalid authenticated user ID format' });
+    }
+    
+    const currentUserIdStr = currentUserId.toString();
+    const hasCurrentUser = memberObjectIds.some(id => id.toString() === currentUserIdStr);
+    
+    if (!hasCurrentUser) {
+      console.log('[POST /api/chats] Adding current user to members:', currentUserIdStr);
+      memberObjectIds.push(currentUserId);
+    } else {
+      console.log('[POST /api/chats] Current user already in members');
+    }
+    
+    // Remove duplicates (in case current user was sent in members array)
+    const uniqueMemberIds = [];
+    const seenIds = new Set();
+    for (const id of memberObjectIds) {
+      const idStr = id.toString();
+      if (!seenIds.has(idStr)) {
+        seenIds.add(idStr);
+        uniqueMemberIds.push(id);
+      }
+    }
+    const finalMemberIds = uniqueMemberIds;
+    
+    console.log('[POST /api/chats] Final member IDs (unique):', finalMemberIds.map(id => id.toString()));
+    
+    // Validate member count after adding current user
+    if (finalMemberIds.length === 0) {
+      console.log('[POST /api/chats] Validation failed: no valid members');
+      return res.status(400).json({ error: 'At least one valid member ID is required' });
+    }
+    
+    // For private chats, ensure exactly 2 members
+    if (type === 'private') {
+      if (finalMemberIds.length !== 2) {
+        const errorResponse = { 
+          error: `Private chats must have exactly 2 members. Got ${finalMemberIds.length} members.`,
+          details: {
+            originalMembers: members,
+            validMembers: validMembers,
+            finalMemberIds: finalMemberIds.map(id => id.toString()),
+            currentUserId: currentUserIdStr
+          }
+        };
+        console.error('\n❌❌❌ VALIDATION FAILED: private chat needs exactly 2 members ❌❌❌');
+        console.error('Got', finalMemberIds.length, 'members');
+        console.error('Final member IDs:', finalMemberIds.map(id => id.toString()));
+        console.error('Original members:', members);
+        console.error('Valid members after filter:', validMembers);
+        console.error('Current user ID:', currentUserIdStr);
+        console.error('Error response:', JSON.stringify(errorResponse, null, 2));
+        console.error('========================================\n');
+        return res.status(400).json(errorResponse);
+      }
+      
+      // Generate default name if needed (after we have finalMemberIds)
+      if (!trimmedName || trimmedName.length === 0) {
+        console.error('\n⚠️⚠️⚠️ GENERATING DEFAULT NAME FOR PRIVATE CHAT ⚠️⚠️⚠️');
+        try {
+          // Get the other user (not the current user)
+          const otherUserId = finalMemberIds.find(id => id.toString() !== currentUserIdStr);
+          if (otherUserId) {
+            const otherUser = await db.collection('users').findOne(
+              { _id: otherUserId },
+              { projection: { username: 1, displayName: 1, email: 1, name: 1 } }
+            );
+            if (otherUser) {
+              const otherUserName = otherUser.displayName || 
+                                   otherUser.username || 
+                                   otherUser.name || 
+                                   (otherUser.email ? otherUser.email.split('@')[0] : null) || 
+                                   'User';
+              trimmedName = `Chat with ${otherUserName}`;
+              console.error('Generated default name:', trimmedName);
+            } else {
+              trimmedName = 'Chat with User';
+              console.error('User not found, using:', trimmedName);
+            }
+          } else {
+            trimmedName = 'Chat with User';
+            console.error('Other user ID not found, using:', trimmedName);
+          }
+        } catch (err) {
+          console.error('Error fetching other user for default name:', err);
+          trimmedName = 'Chat with User';
+        }
+      }
+    } else {
+      // For group chats, ensure at least 1 member (after adding creator)
+      if (finalMemberIds.length < 1) {
+        console.log('[POST /api/chats] Validation failed: group chat needs at least 1 member');
+        return res.status(400).json({ error: 'Group chats must have at least one member' });
+      }
     }
     
     // For private chats, check if chat already exists between the two users
-    if (type === 'private' && members.length === 2) {
+    if (type === 'private' && finalMemberIds.length === 2) {
+      console.log('[POST /api/chats] Checking for existing private chat between:', finalMemberIds.map(id => id.toString()));
+      
       const existingChat = await db.collection('chats').findOne({
         type: 'private',
         members: { 
-          $all: [new ObjectId(members[0]), new ObjectId(members[1])],
+          $all: finalMemberIds,
           $size: 2
         }
       });
       
       if (existingChat) {
+        console.log('[POST /api/chats] Found existing chat:', existingChat._id.toString());
         return res.json({
           _id: existingChat._id.toString(),
           id: existingChat._id.toString(),
@@ -1055,23 +1313,39 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
           lastMessage: existingChat.lastMessage,
           lastMessageTime: existingChat.lastMessageTime
         });
+      } else {
+        console.log('[POST /api/chats] No existing chat found, creating new one');
       }
     }
     
     // Create new chat
     const chat = {
       type: type || 'group',
-      name,
-      members: members.map(id => new ObjectId(id)),
-      createdBy: new ObjectId(req.user.id),
+      name: trimmedName,
+      members: finalMemberIds,
+      createdBy: currentUserId,
       createdAt: new Date(),
       updatedAt: new Date(),
       lastMessage: null,
       lastMessageTime: null
     };
     
+    console.log('[POST /api/chats] Creating chat with data:', {
+      type: chat.type,
+      name: chat.name,
+      members: chat.members.map(id => id.toString()),
+      createdBy: chat.createdBy.toString()
+    });
+    
     const result = await db.collection('chats').insertOne(chat);
     const createdChat = await db.collection('chats').findOne({ _id: result.insertedId });
+    
+    if (!createdChat) {
+      console.error('[POST /api/chats] Failed to retrieve created chat');
+      return res.status(500).json({ error: 'Failed to create chat' });
+    }
+    
+    console.log('[POST /api/chats] Chat created successfully:', createdChat._id.toString());
     
     res.status(201).json({
       _id: createdChat._id.toString(),
@@ -1086,8 +1360,26 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
       lastMessageTime: createdChat.lastMessageTime
     });
   } catch (err) {
-    console.error('Create chat error:', err);
-    res.status(500).json({ error: 'Server error' });
+    console.error('\n❌❌❌ UNEXPECTED ERROR IN POST /api/chats ❌❌❌');
+    console.error('Error:', err);
+    console.error('Error message:', err.message);
+    console.error('Error stack:', err.stack);
+    
+    let errorResponse;
+    // Provide more specific error messages
+    if (err.message && err.message.includes('ObjectId')) {
+      errorResponse = { error: 'Invalid member ID format: ' + err.message };
+    } else {
+      errorResponse = { error: 'Server error: ' + err.message };
+    }
+    
+    console.error('Sending error response:', JSON.stringify(errorResponse, null, 2));
+    console.error('========================================\n');
+    
+    if (err.message && err.message.includes('ObjectId')) {
+      return res.status(400).json(errorResponse);
+    }
+    res.status(500).json(errorResponse);
   }
 });
 
@@ -1193,7 +1485,7 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
         readBy: m.readBy ? m.readBy.map(id => id.toString()) : [],
         status: m.status || (m.readBy && m.readBy.length > 0 ? 'read' : 'sent')
       };
-      // Rewrite media URLs for web clients to same-origin
+    // Rewrite media URLs for web clients to same-origin
       if (m.mediaUrl) {
         try {
           formatted.mediaUrl = rewriteMediaUrlIfNeeded(m.mediaUrl, req);

@@ -158,39 +158,120 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
 
   Future<void> _startChat(String otherUserId) async {
     try {
+      // Validate other user ID
+      if (otherUserId.isEmpty) {
+        Log.e('Cannot start chat: other user ID is empty', 'USER_SEARCH');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid user selected')),
+          );
+        }
+        return;
+      }
+      
+      // Validate other user ID format (should be a valid MongoDB ObjectId - 24 hex characters)
+      if (otherUserId.length != 24 || !RegExp(r'^[0-9a-fA-F]{24}$').hasMatch(otherUserId)) {
+        Log.e('Cannot start chat: invalid other user ID format: $otherUserId', 'USER_SEARCH');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Invalid user ID format')),
+          );
+        }
+        return;
+      }
+      
       // Get current user ID from stored token
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
-      if (token == null) return;
+      if (token == null) {
+        Log.e('Cannot start chat: no auth token', 'USER_SEARCH');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Please log in again')),
+          );
+        }
+        return;
+      }
       
       // Get user data for the other user
       final databaseService = await DatabaseConfig.getDatabaseService();
       final userDoc = await databaseService.getUser(otherUserId);
       final userData = userDoc?.data() ?? {};
       
+      // Get chat name from user data - ensure it's not empty
+      String chatName = 'Unknown User';
+      if (userData['username'] != null && userData['username'].toString().trim().isNotEmpty) {
+        chatName = userData['username'].toString().trim();
+      } else if (userData['displayName'] != null && userData['displayName'].toString().trim().isNotEmpty) {
+        chatName = userData['displayName'].toString().trim();
+      } else if (userData['email'] != null && userData['email'].toString().trim().isNotEmpty) {
+        chatName = userData['email'].toString().trim();
+      } else if (userData['name'] != null && userData['name'].toString().trim().isNotEmpty) {
+        chatName = userData['name'].toString().trim();
+      }
+      
+      // Ensure we never send an empty string
+      if (chatName.trim().isEmpty) {
+        chatName = 'Unknown User';
+      }
+      
+      Log.i('Chat name determined: "$chatName"', 'USER_SEARCH');
+      
       // Create or find existing chat
       // Include both the current user and the other user
-      final prefsUser = prefs.getString('user_data');
+      // The server will automatically add the current user if missing
       String? currentUserId;
+      final prefsUser = prefs.getString('user_data');
       if (prefsUser != null) {
-        final currentUserObj = json.decode(prefsUser);
-        currentUserId = currentUserObj['id'] ?? currentUserObj['_id'];
+        try {
+          final currentUserObj = json.decode(prefsUser);
+          currentUserId = currentUserObj['id'] ?? currentUserObj['_id'];
+        } catch (e) {
+          Log.e('Error parsing user_data', 'USER_SEARCH', e);
+        }
       }
+      
+      // Try LocalAuthService as fallback
+      if (currentUserId == null || currentUserId.isEmpty) {
+        currentUserId = await LocalAuthService.getCurrentUserIdAsync();
+      }
+      
       final members = [
         if (currentUserId != null && currentUserId.isNotEmpty) currentUserId,
         otherUserId,
-      ];
-      Log.i('Attempting to start chat with: $otherUserId', 'USER_SEARCH');
+      ].where((id) => id != null && id.isNotEmpty).toList();
+      
+      Log.i('Attempting to start chat with: $otherUserId (members: ${members.join(", ")})', 'USER_SEARCH');
       
       // Find existing chat or create new one
       final chatService = MongoDBChatService();
-      final chatData = await chatService.findOrCreateChat('private', userData['username'] ?? userData['email'] ?? 'Unknown User', members);
+      Map<String, dynamic>? chatData;
+      String? errorMessage;
+      
+      try {
+        chatData = await chatService.findOrCreateChat('private', chatName, members);
+      } catch (e) {
+        Log.e('Error creating chat', 'USER_SEARCH', e);
+        errorMessage = e.toString();
+        // Try to extract a more user-friendly error message
+        if (errorMessage.contains('Failed to create chat:')) {
+          final match = RegExp(r'Failed to create chat: \d+ - (.+)').firstMatch(errorMessage);
+          if (match != null) {
+            errorMessage = match.group(1);
+          }
+        }
+        // Log the full error for debugging
+        Log.e('Full error details: $e', 'USER_SEARCH');
+      }
       
       if (chatData == null) {
         Log.e('Failed to create or find chat', 'USER_SEARCH');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to create or find chat')),
+            SnackBar(
+              content: Text(errorMessage ?? 'Failed to create or find chat. Please try again.'),
+              duration: const Duration(seconds: 5),
+            ),
           );
         }
         return;
@@ -219,7 +300,7 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
           MaterialPageRoute(builder: (_) => ChatScreenMongoDB(
             chatId: chatId,
             isGroupChat: false,
-            chatName: userData['username'] ?? userData['email'] ?? 'Unknown User',
+            chatName: chatName,
           )),
         );
       }
