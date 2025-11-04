@@ -24,6 +24,7 @@ class RegisterScreenMongoDB extends StatefulWidget {
 class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
   final TextEditingController _displayNameController = TextEditingController();
   final TextEditingController _emailController = TextEditingController();
+  final TextEditingController _phoneController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _confirmPasswordController = TextEditingController();
   
@@ -47,6 +48,7 @@ class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
   void dispose() {
     _displayNameController.dispose();
     _emailController.dispose();
+    _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     super.dispose();
@@ -70,6 +72,13 @@ class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
     if (!_emailController.text.trim().contains('@')) {
       setState(() {
         _error = 'Please enter a valid email address.';
+      });
+      return false;
+    }
+
+    if (_phoneController.text.trim().isEmpty) {
+      setState(() {
+        _error = 'Please enter your phone number.';
       });
       return false;
     }
@@ -114,6 +123,7 @@ class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
         _emailController.text.trim(),
         _passwordController.text,
         _displayNameController.text.trim(),
+        _phoneController.text.trim(),
       );
 
       if (result['success']) {
@@ -210,6 +220,19 @@ class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
                       border: const OutlineInputBorder(),
                     ),
                     keyboardType: TextInputType.emailAddress,
+                    textCapitalization: TextCapitalization.none,
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Phone Number Field
+                  TextField(
+                    controller: _phoneController,
+                    decoration: InputDecoration(
+                      labelText: AppLocalizations.getString('phone_number', _currentLanguage),
+                      prefixIcon: const Icon(Icons.phone),
+                      border: const OutlineInputBorder(),
+                    ),
+                    keyboardType: TextInputType.phone,
                     textCapitalization: TextCapitalization.none,
                   ),
                   const SizedBox(height: 16),

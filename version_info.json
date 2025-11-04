@@ -1,8 +1,8 @@
 {
-  "version": "1.0.5",
-  "build_number": "6",
+  "version": "1.0.8",
+  "build_number": "7",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.5 - Multi-Network Support & UI Enhancements:\n- Implemented multi-network support for web app\n- Fixed profile endpoint JWT token decoding issue\n- Enhanced chat list with improved last message display\n- Added timestamp below last message in chat tiles\n- Auto-detection of API server based on access network IP\n- Works seamlessly on multiple network interfaces (10.120.4.230 and 160.2.1.18)\n- Fixed profile screen loading issue after server restart\n- Improved chat tile layout and message preview visibility\n- Enhanced error handling and connection management",
+  "release_notes": "SOC Chat App v1.0.8 - Registration & Admin Panel Enhancements:\n- Added Display Name and Phone Number fields to all registration screens\n- Display Name and Phone Number are now stored in database\n- Admin can now change user display names from admin panel\n- Fixed logs screen - Added backend endpoints for user and admin logs\n- Logs screen now properly displays activity logs\n- Improved user management in admin panel\n- Enhanced data consistency across all platforms",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": false,

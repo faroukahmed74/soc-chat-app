@@ -756,11 +756,18 @@ router.put('/users/:id', verifyAdminToken, async (req, res) => {
   try {
     const db = req.app.locals.db;
     const { id } = req.params;
-    const { email, displayName, role, status, profilePicture } = req.body;
+    const { email, displayName, name, role, status, profilePicture } = req.body;
     
     const updateData = {};
     if (email) updateData.email = email;
-    if (displayName) updateData.displayName = displayName;
+    // Support both displayName and name for compatibility
+    if (displayName !== undefined) {
+      updateData.displayName = displayName;
+      updateData.name = displayName; // Also update name field for compatibility
+    } else if (name !== undefined) {
+      updateData.name = name;
+      updateData.displayName = name; // Also update displayName if name is provided
+    }
     if (role) updateData.role = role;
     if (status) updateData.status = status;
     if (profilePicture) updateData.profilePicture = profilePicture;
@@ -1564,6 +1571,142 @@ router.get('/collections/:name', verifyAdminToken, async (req, res) => {
   } catch (error) {
     console.error('Error getting collection documents:', error);
     res.status(500).json({ error: 'Failed to get collection documents' });
+  }
+});
+
+// ===== LOGS CRUD =====
+
+// Get user logs (admin only)
+router.get('/logs/users', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { page = 1, limit = 100, userId } = req.query;
+    
+    const query = {};
+    if (userId) {
+      query.userId = userId;
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const logs = await db.collection('user_logs')
+      .find(query)
+      .sort({ timestamp: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .toArray();
+    
+    const total = await db.collection('user_logs').countDocuments(query);
+    
+    res.json({
+      logs,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Error getting user logs:', error);
+    res.status(500).json({ error: 'Failed to get user logs' });
+  }
+});
+
+// Create user log (admin only)
+router.post('/logs/users', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { userId, action, details, timestamp } = req.body;
+    
+    if (!userId || !action) {
+      return res.status(400).json({ error: 'userId and action are required' });
+    }
+    
+    const log = {
+      userId,
+      action,
+      details: details || {},
+      timestamp: timestamp || new Date().toISOString(),
+      createdAt: new Date(),
+    };
+    
+    const result = await db.collection('user_logs').insertOne(log);
+    
+    res.status(200).json({
+      message: 'User log created successfully',
+      logId: result.insertedId
+    });
+  } catch (error) {
+    console.error('Error creating user log:', error);
+    res.status(500).json({ error: 'Failed to create user log' });
+  }
+});
+
+// Get admin logs (admin only)
+router.get('/logs/admin', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { page = 1, limit = 100, adminId } = req.query;
+    
+    const query = {};
+    if (adminId) {
+      query.adminId = adminId;
+    }
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    const logs = await db.collection('admin_logs')
+      .find(query)
+      .sort({ timestamp: -1, createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .toArray();
+    
+    const total = await db.collection('admin_logs').countDocuments(query);
+    
+    res.json({
+      logs,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (error) {
+    console.error('Error getting admin logs:', error);
+    res.status(500).json({ error: 'Failed to get admin logs' });
+  }
+});
+
+// Create admin log (admin only)
+router.post('/logs/admin', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { adminId, action, details, timestamp } = req.body;
+    
+    if (!adminId || !action) {
+      return res.status(400).json({ error: 'adminId and action are required' });
+    }
+    
+    const log = {
+      adminId,
+      action,
+      details: details || {},
+      timestamp: timestamp || new Date().toISOString(),
+      createdAt: new Date(),
+    };
+    
+    const result = await db.collection('admin_logs').insertOne(log);
+    
+    res.status(200).json({
+      message: 'Admin log created successfully',
+      logId: result.insertedId
+    });
+  } catch (error) {
+    console.error('Error creating admin log:', error);
+    res.status(500).json({ error: 'Failed to create admin log' });
   }
 });
 

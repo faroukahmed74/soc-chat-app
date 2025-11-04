@@ -15,6 +15,7 @@ class LocalAuthService {
     required String name,
     required String email,
     required String password,
+    String? phoneNumber,
   }) async {
     try {
       final endpoint = '${DatabaseConfig.physicalServerUrl}/api/auth/register';
@@ -31,6 +32,7 @@ class LocalAuthService {
           'name': name,
           'email': email,
           'password': password,
+          'phoneNumber': phoneNumber,
         }),
       ).timeout(const Duration(seconds: 30));
 

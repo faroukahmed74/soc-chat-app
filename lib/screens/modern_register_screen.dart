@@ -25,6 +25,7 @@ class _ModernRegisterScreenState extends State<ModernRegisterScreen>
   // Controllers
   final _displayNameController = TextEditingController();
   final _emailController = TextEditingController();
+  final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
@@ -78,6 +79,7 @@ class _ModernRegisterScreenState extends State<ModernRegisterScreen>
   void dispose() {
     _displayNameController.dispose();
     _emailController.dispose();
+    _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _themeService.removeListener(_themeListener);
@@ -95,9 +97,10 @@ class _ModernRegisterScreenState extends State<ModernRegisterScreen>
 
     try {
       final result = await PhysicalAuthService().register(
-        _displayNameController.text.trim(),
         _emailController.text.trim(),
         _passwordController.text,
+        _displayNameController.text.trim(),
+        _phoneController.text.trim(),
       );
 
       if (result['success']) {
@@ -178,6 +181,10 @@ class _ModernRegisterScreenState extends State<ModernRegisterScreen>
 
                           // Email Field
                           _buildEmailField(isDark),
+                          const SizedBox(height: 20),
+
+                          // Phone Number Field
+                          _buildPhoneField(isDark),
                           const SizedBox(height: 20),
 
                           // Password Field
@@ -316,6 +323,49 @@ class _ModernRegisterScreenState extends State<ModernRegisterScreen>
         hintText: 'Enter your email',
         prefixIcon: Icon(
           Icons.email_outlined,
+          color: isDark ? AppDesignSystem.neutral400 : AppDesignSystem.neutral600,
+        ),
+        filled: true,
+        fillColor: isDark ? AppDesignSystem.neutral800 : Colors.white,
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+          borderSide: BorderSide(
+            color: isDark ? AppDesignSystem.neutral700 : AppDesignSystem.neutral300,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+          borderSide: BorderSide(
+            color: isDark ? AppDesignSystem.neutral700 : AppDesignSystem.neutral300,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+          borderSide: const BorderSide(
+            color: AppDesignSystem.primaryColor,
+            width: 2,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPhoneField(bool isDark) {
+    return TextFormField(
+      controller: _phoneController,
+      keyboardType: TextInputType.phone,
+      textInputAction: TextInputAction.next,
+      validator: (value) {
+        if (value == null || value.isEmpty) {
+          return 'Please enter your phone number';
+        }
+        return null;
+      },
+      decoration: InputDecoration(
+        labelText: 'Phone Number',
+        hintText: 'Enter your phone number',
+        prefixIcon: Icon(
+          Icons.phone_outlined,
           color: isDark ? AppDesignSystem.neutral400 : AppDesignSystem.neutral600,
         ),
         filled: true,

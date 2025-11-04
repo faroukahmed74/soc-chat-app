@@ -282,6 +282,30 @@ class MongoDBAdminService {
     }
   }
 
+  /// Update user display name (admin only)
+  Future<bool> updateUserDisplayName(String userId, String displayName) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) return false;
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/admin/users/$userId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({'displayName': displayName}),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error updating user display name', 'MONGODB_ADMIN_SERVICE', e);
+      return false;
+    }
+  }
+
   /// Disable/Enable user (admin only)
   Future<bool> toggleUserStatus(String userId, bool disabled) async {
     try {

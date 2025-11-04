@@ -690,11 +690,44 @@ app.put('/api/auth/profile', async (req, res) => {
 // Legacy User Authentication - keeping for backward compatibility
 app.post('/api/auth/register', async (req, res) => {
   try {
-    const { email, password, displayName } = req.body;
+    const { email, password, displayName, name, phoneNumber } = req.body;
+    // Support both 'displayName' and 'name' for compatibility
+    const finalDisplayName = displayName || name;
     
     // Check if user exists
     const existingUser = await db.collection('users').findOne({ email });
     if (existingUser) {
+      // If user exists but phone number or displayName is missing, update them
+      const updateFields = {};
+      if (phoneNumber && !existingUser.phoneNumber) {
+        updateFields.phoneNumber = phoneNumber;
+      }
+      if (finalDisplayName && !existingUser.displayName) {
+        updateFields.displayName = finalDisplayName;
+      }
+      
+      if (Object.keys(updateFields).length > 0) {
+        updateFields.updatedAt = new Date();
+        await db.collection('users').updateOne(
+          { _id: existingUser._id },
+          { $set: updateFields }
+        );
+        const token = jwt.sign(
+          { id: existingUser._id, email, displayName: existingUser.displayName || finalDisplayName, role: 'user' },
+          JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+        return res.status(200).json({
+          token,
+          user: {
+            id: existingUser._id,
+            email,
+            displayName: existingUser.displayName || finalDisplayName,
+            phoneNumber: existingUser.phoneNumber || phoneNumber || '',
+            role: 'user'
+          }
+        });
+      }
       return res.status(400).json({ error: 'User already exists' });
     }
     
@@ -707,7 +740,8 @@ app.post('/api/auth/register', async (req, res) => {
     const user = {
       email,
       password: hashedPassword,
-      displayName,
+      displayName: finalDisplayName,
+      phoneNumber: phoneNumber || '',
       role: 'user',
       createdAt: now,
       updatedAt: now,
@@ -720,7 +754,7 @@ app.post('/api/auth/register', async (req, res) => {
     
     // Generate token
     const token = jwt.sign(
-      { id: result.insertedId, email, displayName, role: 'user' },
+      { id: result.insertedId, email, displayName: finalDisplayName, role: 'user' },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -730,7 +764,8 @@ app.post('/api/auth/register', async (req, res) => {
       user: {
         id: result.insertedId,
         email,
-        displayName,
+        displayName: finalDisplayName,
+        phoneNumber: phoneNumber || '',
         role: 'user'
       }
     });

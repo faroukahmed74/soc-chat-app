@@ -35,7 +35,7 @@ async function connectDB() {
 // Register a new user
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, name } = req.body;
+    const { email, password, name, phoneNumber } = req.body;
     
     // Validate input
     if (!email || !password || !name) {
@@ -48,6 +48,32 @@ router.post('/register', async (req, res) => {
     // Check if user already exists
     const existingUser = await usersCollection.findOne({ email });
     if (existingUser) {
+      // If user exists but phone number or name is missing, update them
+      const updateFields = {};
+      if (phoneNumber && !existingUser.phoneNumber) {
+        updateFields.phoneNumber = phoneNumber;
+      }
+      if (name && !existingUser.name) {
+        updateFields.name = name;
+      }
+      
+      if (Object.keys(updateFields).length > 0) {
+        updateFields.updatedAt = new Date();
+        await usersCollection.updateOne(
+          { _id: existingUser._id },
+          { $set: updateFields }
+        );
+        return res.status(200).json({ 
+          message: 'User information updated',
+          user: {
+            id: existingUser._id.toString(),
+            email: existingUser.email,
+            name: existingUser.name || name,
+            phoneNumber: existingUser.phoneNumber || phoneNumber || '',
+            role: existingUser.role || 'user'
+          }
+        });
+      }
       return res.status(400).json({ message: 'User already exists' });
     }
     
@@ -61,6 +87,7 @@ router.post('/register', async (req, res) => {
       email,
       password: hashedPassword,
       name,
+      phoneNumber: phoneNumber || '',
       role: 'user',
       status: 'active',
       createdAt: now,
@@ -85,6 +112,7 @@ router.post('/register', async (req, res) => {
         id: result.insertedId.toString(),
         email,
         name,
+        phoneNumber: phoneNumber || '',
         role: 'user'
       }
     });

@@ -69,7 +69,7 @@ class PhysicalAuthService {
   }
 
   /// Register new user
-  Future<Map<String, dynamic>> register(String email, String password, String name) async {
+  Future<Map<String, dynamic>> register(String email, String password, String name, String? phoneNumber) async {
     try {
       final baseUrl = DatabaseConfig.physicalServerUrl;
       Log.i('Registering user at: $baseUrl/api/auth/register', 'PHYSICAL_AUTH');
@@ -85,6 +85,7 @@ class PhysicalAuthService {
           'email': email,
           'password': password,
           'name': name,
+          'phoneNumber': phoneNumber,
         }),
       );
 

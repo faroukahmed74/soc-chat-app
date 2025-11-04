@@ -327,6 +327,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           name: _displayNameController.text.trim(),
           email: _emailController.text.trim(),
           password: _passwordController.text,
+          phoneNumber: _phoneController.text.trim(),
         );
 
         if (result['success']) {

@@ -1979,6 +1979,96 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     }
   }
 
+  Future<void> _updateUserDisplayName(String userId, String currentName) async {
+    final displayNameController = TextEditingController(text: currentName);
+    
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Update Display Name'),
+        content: TextField(
+          controller: displayNameController,
+          decoration: const InputDecoration(
+            labelText: 'Display Name',
+            border: OutlineInputBorder(),
+            prefixIcon: Icon(Icons.badge),
+            hintText: 'Enter new display name',
+          ),
+          autofocus: true,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (displayNameController.text.trim().isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Display name cannot be empty')),
+                );
+                return;
+              }
+              Navigator.pop(context, true);
+            },
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        final newDisplayName = displayNameController.text.trim();
+        final success = await _adminService.updateUserDisplayName(userId, newDisplayName);
+        
+        if (success) {
+          final user = _users.firstWhere(
+            (u) => (u['_id'] ?? u['id']) == userId,
+            orElse: () => {},
+          );
+          final userName = user['name'] ?? user['displayName'] ?? user['email'] ?? userId;
+          
+          // Log actions
+          await _logUserAction(userId, 'display_name_changed', {
+            'oldDisplayName': currentName,
+            'newDisplayName': newDisplayName,
+            'userName': userName,
+          });
+          await _logAdminAction('change_user_display_name', {
+            'userId': userId,
+            'userName': userName,
+            'oldDisplayName': currentName,
+            'newDisplayName': newDisplayName,
+          });
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Display name updated successfully'),
+                backgroundColor: Colors.green,
+              ),
+            );
+            await _loadUsers();
+          }
+        } else {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to update display name')),
+            );
+          }
+        }
+      } catch (e) {
+        Log.e('Error updating user display name', 'ADMIN_PANEL_MONGODB', e);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error: $e')),
+          );
+        }
+      }
+    }
+  }
+
   Future<void> _changeUserRole(String userId, String currentRole) async {
     final result = await showDialog<String>(
       context: context,
@@ -2723,6 +2813,9 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                   case 'change_role':
                                     await _changeUserRole(userId, role);
                                     break;
+                                  case 'update_display_name':
+                                    await _updateUserDisplayName(userId, name);
+                                    break;
                                   case 'update_password':
                                     await _updateUserPassword(userId, name);
                                     break;
@@ -2748,6 +2841,16 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                       Icon(Icons.admin_panel_settings, color: Theme.of(context).colorScheme.primary),
                                         const SizedBox(width: 8),
                                       const Text('Change Role'),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                  value: 'update_display_name',
+                                    child: Row(
+                                      children: [
+                                      Icon(Icons.badge, color: Colors.purple),
+                                        const SizedBox(width: 8),
+                                      const Text('Change Display Name'),
                                       ],
                                     ),
                                   ),
