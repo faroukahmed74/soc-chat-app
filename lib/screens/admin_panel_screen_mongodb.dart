@@ -1979,6 +1979,128 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     }
   }
 
+  Future<void> _showMobileUserMenu(BuildContext context, String userId, String name, String role, bool disabled, Map<String, dynamic> user) async {
+    final result = await showModalBottomSheet<String>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        child: SafeArea(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                margin: const EdgeInsets.only(top: 12, bottom: 8),
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.all(16),
+                child: Text(
+                  'User Actions',
+                  style: AppDesignSystem.titleLarge.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              ListTile(
+                leading: Icon(Icons.admin_panel_settings, color: Theme.of(context).colorScheme.primary),
+                title: const Text('Change Role'),
+                onTap: () {
+                  Navigator.pop(context, 'change_role');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.badge, color: Colors.purple),
+                title: const Text('Change Display Name'),
+                onTap: () {
+                  Navigator.pop(context, 'update_display_name');
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.lock_reset, color: Colors.blue),
+                title: const Text('Update Password'),
+                onTap: () {
+                  Navigator.pop(context, 'update_password');
+                },
+              ),
+              ListTile(
+                leading: Icon(
+                  disabled ? Icons.play_circle : Icons.pause_circle,
+                  color: AppDesignSystem.warningColor,
+                ),
+                title: Text(disabled ? 'Enable User' : 'Disable User'),
+                onTap: () {
+                  Navigator.pop(context, 'toggle_status');
+                },
+              ),
+              if (!user['isLocked'] ?? false)
+                ListTile(
+                  leading: const Icon(Icons.lock, color: Colors.orange),
+                  title: const Text('Lock User'),
+                  onTap: () {
+                    Navigator.pop(context, 'lock');
+                  },
+                ),
+              if (user['isLocked'] ?? false)
+                ListTile(
+                  leading: const Icon(Icons.lock_open, color: Colors.green),
+                  title: const Text('Unlock User'),
+                  onTap: () {
+                    Navigator.pop(context, 'unlock');
+                  },
+                ),
+              ListTile(
+                leading: Icon(Icons.delete, color: AppDesignSystem.errorColor),
+                title: Text(
+                  'Delete User',
+                  style: TextStyle(color: AppDesignSystem.errorColor),
+                ),
+                onTap: () {
+                  Navigator.pop(context, 'delete');
+                },
+              ),
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    if (result != null) {
+      switch (result) {
+        case 'change_role':
+          await _changeUserRole(userId, role);
+          break;
+        case 'update_display_name':
+          await _updateUserDisplayName(userId, name);
+          break;
+        case 'update_password':
+          await _updateUserPassword(userId, name);
+          break;
+        case 'toggle_status':
+          await _toggleUserStatusAction(userId, !disabled);
+          break;
+        case 'lock':
+          await _lockUser(userId);
+          break;
+        case 'unlock':
+          await _unlockUser(userId);
+          break;
+        case 'delete':
+          _deleteUser(userId);
+          break;
+      }
+    }
+  }
+
   Future<void> _updateUserDisplayName(String userId, String currentName) async {
     final displayNameController = TextEditingController(text: currentName);
     
@@ -2807,7 +2929,12 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                 ],
                               ),
                             ),
-                            trailing: PopupMenuButton<String>(
+                            trailing: ResponsiveUtils.isMobile(context)
+                                ? IconButton(
+                                    icon: const Icon(Icons.more_vert),
+                                    onPressed: () => _showMobileUserMenu(context, userId, name, role, disabled, user),
+                                  )
+                                : PopupMenuButton<String>(
                               onSelected: (value) async {
                                 switch (value) {
                                   case 'change_role':

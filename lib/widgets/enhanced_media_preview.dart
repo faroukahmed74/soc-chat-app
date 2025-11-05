@@ -13,6 +13,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 // Conditional import: web_pdf_thumbnail handles web/mobile conditional internally
 import 'web_pdf_thumbnail.dart';
+import 'mobile_pdf_thumbnail.dart';
 import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../services/media_cache_service.dart';
@@ -435,34 +436,14 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
                               onTap: widget.onTap,
                             ),
                           )
-                      : isPdf
-                          ? // PDF icon for mobile
-                            Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.red[50],
-                                  borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-                                ),
-                                child: Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-                                        Icons.picture_as_pdf,
-                                        color: Colors.red[700],
-                                        size: ResponsiveUtils.getResponsiveIconSize(context) * 2.5,
-                                      ),
-                                      const SizedBox(height: 8),
-          Text(
-                                        'PDF',
-            style: TextStyle(
-                                          color: Colors.red[700],
-              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
+                      : isPdf && !kIsWeb
+                          ? // PDF thumbnail on mobile - show first page
+                            MobilePdfThumbnail(
+                                url: widget.mediaUrl,
+                                width: maxWidth,
+                                height: thumbHeight,
+                                borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
+                                onTap: widget.onTap,
                               )
                           : // Other document types
                             Container(

@@ -6,7 +6,9 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'dart:io';
+import 'dart:typed_data';
 import '../services/logger_service.dart';
 import '../utils/responsive_utils.dart';
 
@@ -943,69 +945,150 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
 
   Widget _buildPdfViewer() {
     if (!kIsWeb) {
-      // On mobile: show download option and PDF icon
-      return LayoutBuilder(
-        builder: (context, constraints) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  width: ResponsiveUtils.getResponsiveValue(
-                    context,
-                    mobile: 120.0,
-                    tablet: 150.0,
-                    desktop: 180.0,
-                  ),
-                  height: ResponsiveUtils.getResponsiveValue(
-                    context,
-                    mobile: 120.0,
-                    tablet: 150.0,
-                    desktop: 180.0,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 2),
-                  ),
-                  child: const Icon(
-                    Icons.picture_as_pdf,
-                    color: Colors.white,
-                    size: 60,
-                  ),
-                ),
-                const SizedBox(height: 24),
-                Text(
-                  widget.fileName ?? 'PDF Document',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: ResponsiveUtils.getResponsiveFontSize(
-                      context,
-                      baseSize: 18,
-                    ),
-                    fontWeight: FontWeight.bold,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 24),
-                ElevatedButton.icon(
-                  onPressed: _downloadMedia,
-                  icon: const Icon(Icons.download),
-                  label: const Text('Download PDF'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.black87,
-                  ),
-                ),
-              ],
+      // On mobile: Show PDF viewer with download button
+      return Stack(
+        children: [
+          // PDF viewer
+          Positioned.fill(
+            child: _buildMobilePdfViewer(),
+          ),
+          // Download button overlay
+          Positioned(
+            top: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 40.0,
+              tablet: 50.0,
+              desktop: 60.0,
             ),
-          );
-        },
+            right: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 16.0,
+              tablet: 20.0,
+              desktop: 24.0,
+            ),
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.7),
+                borderRadius: BorderRadius.circular(25),
+              ),
+              child: IconButton(
+                icon: const Icon(Icons.download, color: Colors.white),
+                onPressed: _downloadMedia,
+                tooltip: 'Download PDF',
+              ),
+            ),
+          ),
+        ],
       );
     }
 
     // Web: Use iframe for PDF viewing
     return _buildWebPdfViewer();
+  }
+
+  Widget _buildMobilePdfViewer() {
+    return FutureBuilder<Uint8List?>(
+      future: _loadPdfBytes(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return Container(
+            color: Colors.black,
+            child: const Center(
+              child: CircularProgressIndicator(color: Colors.white),
+            ),
+          );
+        }
+
+        if (snapshot.hasError || snapshot.data == null) {
+          return Container(
+            color: Colors.black,
+            child: Center(
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(
+                    Icons.picture_as_pdf,
+                    color: Colors.white,
+                    size: 64,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    widget.fileName ?? 'PDF Document',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () async {
+                      try {
+                        final uri = Uri.parse(widget.mediaUrl);
+                        if (await canLaunchUrl(uri)) {
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        } else {
+                          _downloadMedia();
+                        }
+                      } catch (e) {
+                        Log.e('Error opening PDF', 'FULL_SCREEN_MEDIA_PREVIEW', e);
+                        _downloadMedia();
+                      }
+                    },
+                    icon: const Icon(Icons.open_in_browser),
+                    label: const Text('Open PDF'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black87,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _downloadMedia,
+                    icon: const Icon(Icons.download),
+                    label: const Text('Download'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.white,
+                      foregroundColor: Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+
+        return SfPdfViewer.memory(
+          snapshot.data!,
+          onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
+            Log.e('PDF load failed', 'FULL_SCREEN_MEDIA_PREVIEW', details.error);
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Failed to load PDF: ${details.error}'),
+                  backgroundColor: Colors.red,
+                ),
+              );
+            }
+          },
+        );
+      },
+    );
+  }
+
+  Future<Uint8List?> _loadPdfBytes() async {
+    try {
+      final response = await http.get(Uri.parse(widget.mediaUrl));
+      if (response.statusCode == 200) {
+        return response.bodyBytes;
+      } else {
+        throw Exception('Failed to load PDF: HTTP ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error loading PDF bytes', 'FULL_SCREEN_MEDIA_PREVIEW', e);
+      return null;
+    }
   }
 
   Widget _buildWebPdfViewer() {

@@ -52,6 +52,9 @@ dependencies:
   video_player: ^2.8.12
   chewie: ^1.7.4
 
+  # PDF viewer for document previews
+  syncfusion_flutter_pdfviewer: ^28.1.13
+
   # For encryption (example: encrypt package)
   encrypt: ^5.0.1
 
