@@ -2041,7 +2041,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                   Navigator.pop(context, 'toggle_status');
                 },
               ),
-              if (!user['isLocked'] ?? false)
+              if (!(user['isLocked'] ?? false))
                 ListTile(
                   leading: const Icon(Icons.lock, color: Colors.orange),
                   title: const Text('Lock User'),
@@ -3004,7 +3004,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                       ],
                                     ),
                                   ),
-                                if (!user['isLocked'] ?? false)
+                                if (!(user['isLocked'] ?? false))
                                 PopupMenuItem(
                                     value: 'lock',
                                   child: Row(
