@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../utils/responsive_utils.dart';
@@ -1048,16 +1049,38 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
         );
       case 'document':
         final isPdf = (widget.fileName ?? '').toLowerCase().endsWith('.pdf');
+        if (isPdf) {
+          // In-app PDF preview on mobile with top-right download icon
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: _buildMobilePdfViewer(),
+              ),
+              Positioned(
+                top: 16,
+                right: 16,
+                child: Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    borderRadius: BorderRadius.circular(24),
+                  ),
+                  child: IconButton(
+                    onPressed: _downloadMedia,
+                    icon: const Icon(Icons.download, color: Colors.white),
+                    tooltip: 'Download PDF',
+                  ),
+                ),
+              ),
+            ],
+          );
+        }
+        // Non-PDF documents: show generic document UI
         final resolvedUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
         return Center(
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                isPdf ? Icons.picture_as_pdf : Icons.insert_drive_file,
-                color: Colors.white,
-                size: 80,
-              ),
+              const Icon(Icons.insert_drive_file, color: Colors.white, size: 80),
               const SizedBox(height: 24),
               Text(
                 widget.fileName ?? 'Document',
@@ -1071,8 +1094,8 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
                   style: const TextStyle(color: Colors.white70, fontSize: 14),
                 ),
               ],
-              const SizedBox(height: 24),
-              if (isPdf && kIsWeb)
+              if (kIsWeb) ...[
+                const SizedBox(height: 24),
                 ElevatedButton.icon(
                   onPressed: () async {
                     try {
@@ -1085,12 +1108,13 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
                     }
                   },
                   icon: const Icon(Icons.open_in_browser),
-                  label: const Text('Open PDF'),
+                  label: const Text('Open'),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: Colors.white,
                     foregroundColor: Colors.black87,
                   ),
                 ),
+              ],
             ],
           ),
         );
@@ -1099,6 +1123,20 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
           child: Icon(Icons.help_outline, color: Colors.white, size: 64),
         );
     }
+  }
+
+  // =============================
+  // PDF VIEWER (MOBILE)
+  // =============================
+  Widget _buildMobilePdfViewer() {
+    // Stream directly from ngrok/server; add ngrok header to bypass warning
+    final headers = <String, String>{
+      'ngrok-skip-browser-warning': 'true',
+    };
+    return SfPdfViewer.network(
+      widget.mediaUrl,
+      headers: headers,
+    );
   }
 
   Widget _buildControlsOverlay() {

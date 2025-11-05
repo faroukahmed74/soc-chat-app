@@ -909,7 +909,13 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
     try {
       if (kIsWeb) return;
       
-      final response = await http.get(Uri.parse(url));
+      // Add headers for ngrok URLs
+      final headers = <String, String>{
+        'ngrok-skip-browser-warning': 'true',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10) Mobile',
+      };
+      
+      final response = await http.get(Uri.parse(url), headers: headers);
       if (response.statusCode != 200) {
         throw Exception('Failed to download: HTTP ${response.statusCode}');
       }

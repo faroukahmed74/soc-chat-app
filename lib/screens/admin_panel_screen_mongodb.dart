@@ -2929,7 +2929,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                 ],
                               ),
                             ),
-                            trailing: ResponsiveUtils.isMobile(context)
+                            trailing: (!kIsWeb || ResponsiveUtils.isMobile(context))
                                 ? IconButton(
                                     icon: const Icon(Icons.more_vert),
                                     onPressed: () => _showMobileUserMenu(context, userId, name, role, disabled, user),

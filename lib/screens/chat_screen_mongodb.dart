@@ -16,14 +16,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
-import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
 import '../services/physical_auth_service.dart';
-import '../services/media_cache_service.dart';
 import '../utils/group_chat_naming_utility.dart';
 import '../widgets/enhanced_chat_input.dart';
 import '../widgets/enhanced_media_preview.dart';
@@ -1005,73 +1003,24 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                       ],
                     )
                   else if (messageType == 'document')
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        GestureDetector(
-                          onTap: () => _showFullScreenMedia(mediaUrl, 'document', content),
-                          child: Container(
-                            width: 200,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: isCurrentUser
-                                  ? AppDesignSystem.warningColor
-                                  : Theme.of(context).colorScheme.surfaceVariant,
-                              borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
-                            ),
-                            child: Row(
-                              children: [
-                                const SizedBox(width: 12),
-                                Icon(
-                                  Icons.description,
-                                  color: isCurrentUser 
-                                      ? Colors.white 
-                                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                                  size: 24,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        content.isNotEmpty ? content : 'Document',
-                                        style: AppDesignSystem.bodyMedium.copyWith(
-                                          color: isCurrentUser 
-                                              ? Colors.white 
-                                              : Theme.of(context).colorScheme.onSurface,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Tap to open',
-                                        style: AppDesignSystem.bodySmall.copyWith(
-                                          color: isCurrentUser 
-                                              ? Colors.white70 
-                                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Icon(
-                                  Icons.download,
-                                  color: isCurrentUser 
-                                      ? Colors.white70 
-                                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                                  size: 20,
-                                ),
-                                const SizedBox(width: 12),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ],
+                    Container(
+                      constraints: const BoxConstraints(
+                        maxWidth: 250,
+                        maxHeight: 150,
+                      ),
+                      child: EnhancedMediaPreview(
+                        mediaUrl: mediaUrl ?? '',
+                        mediaType: 'document',
+                        fileName: content.isNotEmpty ? content : 'Document',
+                        fileSize: message['fileSize'] as String?,
+                        isCurrentUser: isCurrentUser,
+                        onTap: () {
+                          _showFullScreenMedia(mediaUrl ?? '', 'document', content, fileSize: message['fileSize'] as String?);
+                        },
+                        maxWidth: 250,
+                        maxHeight: 150,
+                        enableRetry: true,
+                      ),
                     )
                   else
                     Text(

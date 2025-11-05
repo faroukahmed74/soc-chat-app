@@ -369,7 +369,13 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
       // Import path_provider for mobile downloads
       if (kIsWeb) return;
       
-      final response = await http.get(Uri.parse(url));
+      // Add headers for ngrok URLs
+      final headers = <String, String>{
+        'ngrok-skip-browser-warning': 'true',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10) Mobile',
+      };
+      
+      final response = await http.get(Uri.parse(url), headers: headers);
       if (response.statusCode != 200) {
         throw Exception('Failed to download: HTTP ${response.statusCode}');
       }
@@ -390,7 +396,9 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
                   ? '.jpg' 
                   : widget.mediaType == 'audio' || widget.mediaType == 'voice'
                       ? '.mp3'
-                      : '.pdf';
+                      : widget.mediaType == 'document'
+                          ? '.pdf'
+                          : '.bin';
           fileName = '$fileName$extension';
         }
       }
@@ -684,8 +692,8 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
 
       case 'document':
         final isPdf = (widget.fileName ?? '').toLowerCase().endsWith('.pdf');
-        if (isPdf && kIsWeb) {
-          // Show PDF in full screen for web
+        if (isPdf) {
+          // Show PDF in full screen on all platforms
           return LayoutBuilder(
             builder: (context, constraints) {
               return Center(
@@ -945,14 +953,14 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
 
   Widget _buildPdfViewer() {
     if (!kIsWeb) {
-      // On mobile: Show PDF viewer with download button
+      // On mobile: Show PDF viewer with overlay actions
       return Stack(
         children: [
           // PDF viewer
           Positioned.fill(
             child: _buildMobilePdfViewer(),
           ),
-          // Download button overlay
+          // Overlay actions: Preview label + Download icon
           Positioned(
             top: ResponsiveUtils.getResponsiveValue(
               context,
@@ -966,16 +974,38 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
               tablet: 20.0,
               desktop: 24.0,
             ),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(25),
-              ),
-              child: IconButton(
-                icon: const Icon(Icons.download, color: Colors.white),
-                onPressed: _downloadMedia,
-                tooltip: 'Download PDF',
-              ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                  child: TextButton.icon(
+                    onPressed: () {
+                      // Already in preview; this keeps intent explicit.
+                    },
+                    icon: const Icon(Icons.picture_as_pdf, color: Colors.white),
+                    label: const Text(
+                      'Preview Document',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.7),
+                    borderRadius: BorderRadius.circular(25),
+                  ),
+                  child: IconButton(
+                    icon: const Icon(Icons.download, color: Colors.white),
+                    onPressed: _downloadMedia,
+                    tooltip: 'Download PDF',
+                  ),
+                ),
+              ],
             ),
           ),
         ],
@@ -987,99 +1017,37 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
   }
 
   Widget _buildMobilePdfViewer() {
-    return FutureBuilder<Uint8List?>(
-      future: _loadPdfBytes(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return Container(
-            color: Colors.black,
-            child: const Center(
-              child: CircularProgressIndicator(color: Colors.white),
+    // Prefer direct network preview on mobile to avoid download-only behavior
+    final headers = <String, String>{
+      'ngrok-skip-browser-warning': 'true',
+      if (!kIsWeb) 'User-Agent': 'Mozilla/5.0 (Linux; Android 10) Mobile',
+    };
+    return SfPdfViewer.network(
+      widget.mediaUrl,
+      headers: headers,
+      onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
+        Log.e('PDF load failed', 'FULL_SCREEN_MEDIA_PREVIEW', details.error);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Failed to load PDF: ${details.error}'),
+              backgroundColor: Colors.red,
             ),
           );
         }
-
-        if (snapshot.hasError || snapshot.data == null) {
-          return Container(
-            color: Colors.black,
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(
-                    Icons.picture_as_pdf,
-                    color: Colors.white,
-                    size: 64,
-                  ),
-                  const SizedBox(height: 24),
-                  Text(
-                    widget.fileName ?? 'PDF Document',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () async {
-                      try {
-                        final uri = Uri.parse(widget.mediaUrl);
-                        if (await canLaunchUrl(uri)) {
-                          await launchUrl(uri, mode: LaunchMode.externalApplication);
-                        } else {
-                          _downloadMedia();
-                        }
-                      } catch (e) {
-                        Log.e('Error opening PDF', 'FULL_SCREEN_MEDIA_PREVIEW', e);
-                        _downloadMedia();
-                      }
-                    },
-                    icon: const Icon(Icons.open_in_browser),
-                    label: const Text('Open PDF'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  ElevatedButton.icon(
-                    onPressed: _downloadMedia,
-                    icon: const Icon(Icons.download),
-                    label: const Text('Download'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.white,
-                      foregroundColor: Colors.black87,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        }
-
-        return SfPdfViewer.memory(
-          snapshot.data!,
-          onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
-            Log.e('PDF load failed', 'FULL_SCREEN_MEDIA_PREVIEW', details.error);
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text('Failed to load PDF: ${details.error}'),
-                  backgroundColor: Colors.red,
-                ),
-              );
-            }
-          },
-        );
       },
     );
   }
 
   Future<Uint8List?> _loadPdfBytes() async {
     try {
-      final response = await http.get(Uri.parse(widget.mediaUrl));
+      // Add headers for ngrok URLs on mobile
+      final headers = <String, String>{
+        'ngrok-skip-browser-warning': 'true',
+        if (!kIsWeb) 'User-Agent': 'Mozilla/5.0 (Linux; Android 10) Mobile',
+      };
+      
+      final response = await http.get(Uri.parse(widget.mediaUrl), headers: headers);
       if (response.statusCode == 200) {
         return response.bodyBytes;
       } else {
