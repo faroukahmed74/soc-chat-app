@@ -498,9 +498,16 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('User locked successfully')),
           );
-          // Force refresh the users list
-          await _loadUsers();
+          // Update local user data immediately
+          final userIndex = _users.indexWhere((u) => (u['_id'] ?? u['id']) == userId);
+          if (userIndex != -1) {
+            _users[userIndex]['isLocked'] = true;
+            _users[userIndex]['lockedAt'] = DateTime.now().toIso8601String();
+            _users[userIndex]['lockedReason'] = confirmed['reason'];
+          }
           setState(() {}); // Force UI update
+          // Also refresh from server to ensure consistency
+          await _loadUsers();
         }
       } catch (e) {
         Log.e('Error locking user', 'ADMIN_PANEL_MONGODB', e);
@@ -556,9 +563,16 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('User unlocked successfully')),
           );
-          // Force refresh the users list
-          await _loadUsers();
+          // Update local user data immediately
+          final userIndex = _users.indexWhere((u) => (u['_id'] ?? u['id']) == userId);
+          if (userIndex != -1) {
+            _users[userIndex]['isLocked'] = false;
+            _users[userIndex]['lockedAt'] = null;
+            _users[userIndex]['lockedReason'] = null;
+          }
           setState(() {}); // Force UI update
+          // Also refresh from server to ensure consistency
+          await _loadUsers();
         }
       } catch (e) {
         Log.e('Error unlocking user', 'ADMIN_PANEL_MONGODB', e);
@@ -2306,8 +2320,14 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           SnackBar(content: Text(success ? (disabled ? 'User disabled' : 'User enabled') : 'Failed to update status')),
         );
         if (success) {
-          await _loadUsers();
+          // Update local user data immediately
+          final userIndex = _users.indexWhere((u) => (u['_id'] ?? u['id']) == userId);
+          if (userIndex != -1) {
+            _users[userIndex]['disabled'] = disabled;
+          }
           setState(() {}); // Force UI update
+          // Also refresh from server to ensure consistency
+          await _loadUsers();
         }
       }
     } catch (e) {
