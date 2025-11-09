@@ -2,6 +2,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'logger_service.dart';
 
 /// Android-specific permission service that handles all Android permission scenarios
@@ -61,6 +62,96 @@ class AndroidPermissionFix {
     }
   }
 
+  /// Request videos permission with proper Android version handling (Android 13+)
+  static Future<bool> requestVideosPermission(BuildContext context) async {
+    if (kIsWeb || !Platform.isAndroid) return true;
+    try {
+      Log.i('Requesting videos permission on Android', 'ANDROID_PERMISSION_FIX');
+
+      final isAndroid13OrHigher = await _isAndroid13OrHigher();
+      Log.i('Android version check for videos: ${isAndroid13OrHigher ? "13+" : "<13"}', 'ANDROID_PERMISSION_FIX');
+
+      if (isAndroid13OrHigher) {
+        // Android 13+: READ_MEDIA_VIDEO
+        PermissionStatus status;
+        try {
+          status = await Permission.videos.status;
+          Log.i('Videos permission status: $status', 'ANDROID_PERMISSION_FIX');
+        } catch (e) {
+          Log.e('Error checking videos permission status: $e', 'ANDROID_PERMISSION_FIX');
+          status = PermissionStatus.denied;
+        }
+
+        if (status.isGranted || status.isLimited) {
+          Log.i('Videos permission already granted/limited', 'ANDROID_PERMISSION_FIX');
+          return true;
+        }
+
+        if (status.isPermanentlyDenied) {
+          Log.w('Videos permission permanently denied', 'ANDROID_PERMISSION_FIX');
+          _showSettingsDialog(
+            context,
+            'Videos Permission Required',
+            'Video library access is needed to select and share videos. Please enable it in Android Settings > Apps > Soc Chat App > Permissions > Photos and videos.'
+          );
+          return false;
+        }
+
+        Log.i('Requesting videos permission...', 'ANDROID_PERMISSION_FIX');
+        PermissionStatus result;
+        try {
+          result = await Permission.videos.request();
+          Log.i('Videos permission result: $result', 'ANDROID_PERMISSION_FIX');
+        } catch (e) {
+          Log.e('Error requesting videos permission: $e', 'ANDROID_PERMISSION_FIX');
+          _showSettingsDialog(
+            context,
+            'Videos Permission Required',
+            'Unable to request video library permission. Please enable it manually in Android Settings > Apps > Soc Chat App > Permissions > Photos and videos.'
+          );
+          return false;
+        }
+
+        if (result.isGranted || result.isLimited) {
+          Log.i('Videos permission granted/limited', 'ANDROID_PERMISSION_FIX');
+          return true;
+        }
+
+        if (result.isDenied || result.isPermanentlyDenied) {
+          Log.w('Videos permission denied or permanently denied', 'ANDROID_PERMISSION_FIX');
+          _showSettingsDialog(
+            context,
+            'Videos Permission Required',
+            'Video library access is needed to select and share videos. Please enable it in Android Settings > Apps > Soc Chat App > Permissions > Photos and videos.'
+          );
+          return false;
+        }
+
+        Log.w('Unexpected videos permission status: $result', 'ANDROID_PERMISSION_FIX');
+        return false;
+      } else {
+        // Android <13: storage permission
+        final status = await Permission.storage.status;
+        Log.i('Legacy storage permission status (for videos): $status', 'ANDROID_PERMISSION_FIX');
+        if (status.isGranted) return true;
+        if (status.isPermanentlyDenied) {
+          _showSettingsDialog(
+            context,
+            'Storage Permission Required',
+            'Storage access is needed to select and share videos. Please enable it in Android Settings > Apps > Soc Chat App > Permissions > Storage.'
+          );
+          return false;
+        }
+        final result = await Permission.storage.request();
+        Log.i('Legacy storage permission result (for videos): $result', 'ANDROID_PERMISSION_FIX');
+        return result.isGranted;
+      }
+    } catch (e) {
+      Log.e('Error requesting videos permission', 'ANDROID_PERMISSION_FIX', e);
+      return false;
+    }
+  }
+
   /// Request photos permission with proper Android version handling
   static Future<bool> requestPhotosPermission(BuildContext context) async {
     if (kIsWeb || !Platform.isAndroid) return true;
@@ -88,8 +179,15 @@ class AndroidPermissionFix {
     try {
       Log.i('Requesting modern media permission (Android 13+)', 'ANDROID_PERMISSION_FIX');
       
-      final status = await Permission.photos.status;
-      Log.i('Modern media permission status: $status', 'ANDROID_PERMISSION_FIX');
+      PermissionStatus status;
+      try {
+        status = await Permission.photos.status;
+        Log.i('Modern media permission status: $status', 'ANDROID_PERMISSION_FIX');
+      } catch (e) {
+        Log.e('Error checking photos permission status: $e', 'ANDROID_PERMISSION_FIX');
+        // If Permission.photos is not available, try to request it anyway
+        status = PermissionStatus.denied;
+      }
       
       if (status.isGranted || status.isLimited) {
         Log.i('Modern media permission already granted/limited', 'ANDROID_PERMISSION_FIX');
@@ -101,34 +199,51 @@ class AndroidPermissionFix {
         _showSettingsDialog(
           context,
           'Photos Permission Required',
-          'Photo library access is needed to select and share images. Please enable it in Android Settings > Apps > Soc Chat App > Permissions > Photos and videos.'
+          'Photo library access is needed to select and share images and videos. Please enable it in Android Settings > Apps > Soc Chat App > Permissions > Photos and videos.'
         );
         return false;
       }
       
       // Request permission
       Log.i('Requesting modern media permission...', 'ANDROID_PERMISSION_FIX');
-      final result = await Permission.photos.request();
-      Log.i('Modern media permission result: $result', 'ANDROID_PERMISSION_FIX');
+      PermissionStatus result;
+      try {
+        result = await Permission.photos.request();
+        Log.i('Modern media permission result: $result', 'ANDROID_PERMISSION_FIX');
+      } catch (e) {
+        Log.e('Error requesting photos permission: $e', 'ANDROID_PERMISSION_FIX');
+        _showSettingsDialog(
+          context,
+          'Photos Permission Required',
+          'Unable to request photo library permission. Please enable it manually in Android Settings > Apps > Soc Chat App > Permissions > Photos and videos.'
+        );
+        return false;
+      }
       
       if (result.isGranted || result.isLimited) {
         Log.i('Modern media permission granted/limited', 'ANDROID_PERMISSION_FIX');
         return true;
       }
       
-      if (result.isDenied) {
-        Log.w('Modern media permission denied', 'ANDROID_PERMISSION_FIX');
+      if (result.isDenied || result.isPermanentlyDenied) {
+        Log.w('Modern media permission denied or permanently denied', 'ANDROID_PERMISSION_FIX');
         _showSettingsDialog(
           context,
           'Photos Permission Required',
-          'Photo library access is needed to select and share images. Please enable it in Android Settings > Apps > Soc Chat App > Permissions > Photos and videos.'
+          'Photo library access is needed to select and share images and videos. Please enable it in Android Settings > Apps > Soc Chat App > Permissions > Photos and videos.'
         );
         return false;
       }
       
+      Log.w('Unexpected permission status: $result', 'ANDROID_PERMISSION_FIX');
       return false;
     } catch (e) {
       Log.e('Error requesting modern media permission', 'ANDROID_PERMISSION_FIX', e);
+      _showSettingsDialog(
+        context,
+        'Permission Error',
+        'An error occurred while requesting photo library permission. Please try enabling it manually in Android Settings > Apps > Soc Chat App > Permissions.'
+      );
       return false;
     }
   }
@@ -354,18 +469,16 @@ class AndroidPermissionFix {
   static Future<bool> _isAndroid13OrHigher() async {
     try {
       if (!Platform.isAndroid) return false;
-      
-      // Try to access photos permission - if it works, we're on Android 13+
-      try {
-        await Permission.photos.status;
-        Log.i('Photos permission available - Android 13+ detected', 'ANDROID_PERMISSION_FIX');
-        return true;
-      } catch (e) {
-        Log.i('Photos permission not available - Android <13 detected', 'ANDROID_PERMISSION_FIX');
-        return false;
-      }
+
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      final sdkInt = androidInfo.version.sdkInt;
+
+      final is13Plus = sdkInt >= 33;
+      Log.i('Android SDK: $sdkInt -> ${is13Plus ? "13+" : "<13"}', 'ANDROID_PERMISSION_FIX');
+      return is13Plus;
     } catch (e) {
-      Log.w('Could not determine Android version, defaulting to legacy permissions', 'ANDROID_PERMISSION_FIX');
+      Log.w('Could not determine Android version via device_info_plus, defaulting to legacy permissions', 'ANDROID_PERMISSION_FIX');
       return false; // Default to legacy permissions if we can't determine version
     }
   }
@@ -388,6 +501,7 @@ class AndroidPermissionFix {
       if (isAndroid13OrHigher) {
         permissions.addAll([
           Permission.photos,
+          Permission.videos,
           Permission.notification,
         ]);
       } else {

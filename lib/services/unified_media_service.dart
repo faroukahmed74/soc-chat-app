@@ -84,10 +84,10 @@ class UnifiedMediaService {
         }
       } else {
         // Android permission handling with improved service
-        final hasPermission = await AndroidPermissionFix.requestPhotosPermission(context);
+        final hasPermission = await AndroidPermissionFix.requestVideosPermission(context);
         
         if (!hasPermission) {
-          print('[UnifiedMediaService] Android photos permission denied');
+          print('[UnifiedMediaService] Android videos permission denied');
           return null;
         }
         
@@ -329,4 +329,4 @@ class UnifiedMediaService {
       }
     }
   }
-} 
+}

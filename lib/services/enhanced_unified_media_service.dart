@@ -16,6 +16,8 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
 import '../config/database_config.dart';
 import 'logger_service.dart';
+import 'android_permission_fix.dart';
+import 'ios_media_permission_fix.dart';
 import 'web_media_service.dart' if (dart.library.io) 'web_media_stub.dart';
 
 /// Enhanced media result with comprehensive metadata
@@ -336,12 +338,17 @@ class EnhancedUnifiedMediaService {
 
   static Future<EnhancedMediaResult?> _pickImageFromGalleryMobile(BuildContext context) async {
     try {
+      Log.i('Requesting photos permission for image gallery', 'ENHANCED_MEDIA_SERVICE');
+      
       // Request photos permission
       final hasPermission = await _requestPhotosPermission(context);
       if (!hasPermission) {
+        Log.w('Photos permission denied for image gallery', 'ENHANCED_MEDIA_SERVICE');
         _showPermissionDeniedDialog(context, 'Photos', 'photo access is needed to select images');
         return null;
       }
+
+      Log.i('Photos permission granted, opening image gallery', 'ENHANCED_MEDIA_SERVICE');
 
       final XFile? image = await _picker.pickImage(
         source: ImageSource.gallery,
@@ -350,8 +357,12 @@ class EnhancedUnifiedMediaService {
         imageQuality: 85,
       );
 
-      if (image == null) return null;
+      if (image == null) {
+        Log.i('User cancelled image selection', 'ENHANCED_MEDIA_SERVICE');
+        return null;
+      }
 
+      Log.i('Image selected: ${image.name}', 'ENHANCED_MEDIA_SERVICE');
       final bytes = await image.readAsBytes();
       final optimizedBytes = await _optimizeImage(bytes);
       
@@ -371,6 +382,7 @@ class EnhancedUnifiedMediaService {
       );
     } catch (e) {
       Log.e('Error picking image from gallery on mobile', 'ENHANCED_MEDIA_SERVICE', e);
+      _showErrorSnackBar(context, 'Failed to select image: ${e.toString()}');
       return null;
     }
   }
@@ -417,20 +429,29 @@ class EnhancedUnifiedMediaService {
 
   static Future<EnhancedMediaResult?> _pickVideoFromGalleryMobile(BuildContext context) async {
     try {
-      // Request photos permission
-      final hasPermission = await _requestPhotosPermission(context);
+      Log.i('Requesting videos permission for video gallery', 'ENHANCED_MEDIA_SERVICE');
+      
+      // Request videos permission (Android 13+) / photos on iOS
+      final hasPermission = await _requestVideosPermission(context);
       if (!hasPermission) {
-        _showPermissionDeniedDialog(context, 'Photos', 'photo access is needed to select videos');
+        Log.w('Videos permission denied for video gallery', 'ENHANCED_MEDIA_SERVICE');
+        _showPermissionDeniedDialog(context, 'Videos', 'video library access is needed to select videos');
         return null;
       }
+
+      Log.i('Videos permission granted, opening video gallery', 'ENHANCED_MEDIA_SERVICE');
 
       final XFile? video = await _picker.pickVideo(
         source: ImageSource.gallery,
         maxDuration: const Duration(minutes: 10),
       );
 
-      if (video == null) return null;
+      if (video == null) {
+        Log.i('User cancelled video selection', 'ENHANCED_MEDIA_SERVICE');
+        return null;
+      }
 
+      Log.i('Video selected: ${video.name}', 'ENHANCED_MEDIA_SERVICE');
       final bytes = await video.readAsBytes();
       final duration = await _getVideoDuration(video.path);
       
@@ -451,6 +472,7 @@ class EnhancedUnifiedMediaService {
       );
     } catch (e) {
       Log.e('Error picking video from gallery on mobile', 'ENHANCED_MEDIA_SERVICE', e);
+      _showErrorSnackBar(context, 'Failed to select video: ${e.toString()}');
       return null;
     }
   }
@@ -474,15 +496,57 @@ class EnhancedUnifiedMediaService {
   static Future<bool> _requestCameraPermission(BuildContext context) async {
     if (kIsWeb) return true;
     
-    final status = await Permission.camera.request();
-    return status.isGranted;
+    try {
+      if (Platform.isIOS) {
+        return await IOSMediaPermissionFix.requestCameraPermission(context);
+      } else if (Platform.isAndroid) {
+        return await AndroidPermissionFix.requestCameraPermission(context);
+      }
+      
+      // Fallback for other platforms
+      final status = await Permission.camera.request();
+      return status.isGranted;
+    } catch (e) {
+      Log.e('Error requesting camera permission', 'ENHANCED_MEDIA_SERVICE', e);
+      return false;
+    }
   }
 
   static Future<bool> _requestPhotosPermission(BuildContext context) async {
     if (kIsWeb) return true;
     
-    final status = await Permission.photos.request();
-    return status.isGranted;
+    try {
+      if (Platform.isIOS) {
+        return await IOSMediaPermissionFix.requestPhotosPermission(context);
+      } else if (Platform.isAndroid) {
+        return await AndroidPermissionFix.requestPhotosPermission(context);
+      }
+      
+      // Fallback for other platforms
+      final status = await Permission.photos.request();
+      return status.isGranted || status.isLimited;
+    } catch (e) {
+      Log.e('Error requesting photos permission', 'ENHANCED_MEDIA_SERVICE', e);
+      return false;
+    }
+  }
+
+  static Future<bool> _requestVideosPermission(BuildContext context) async {
+    if (kIsWeb) return true;
+    try {
+      if (Platform.isIOS) {
+        // iOS uses Photos permission for both images and videos
+        return await IOSMediaPermissionFix.requestPhotosPermission(context);
+      } else if (Platform.isAndroid) {
+        return await AndroidPermissionFix.requestVideosPermission(context);
+      }
+      // Fallback for other platforms
+      final status = await Permission.videos.request();
+      return status.isGranted || status.isLimited;
+    } catch (e) {
+      Log.e('Error requesting videos permission', 'ENHANCED_MEDIA_SERVICE', e);
+      return false;
+    }
   }
 
   static Future<Uint8List> _optimizeImage(Uint8List bytes) async {

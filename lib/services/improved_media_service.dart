@@ -19,6 +19,7 @@ import '../config/database_config.dart';
 import 'logger_service.dart';
 import 'document_service.dart';
 import 'web_media_service.dart' if (dart.library.io) 'web_media_stub.dart';
+import 'android_permission_fix.dart';
 
 /// Improved media service with better error handling and progress tracking
 class ImprovedMediaService {
@@ -84,11 +85,19 @@ class ImprovedMediaService {
 
     try {
       Log.i('Picking image from gallery', 'IMPROVED_MEDIA');
-      
-      final hasPermission = await _requestStoragePermission(context);
+
+      // Android: use modern media permission routing via AndroidPermissionFix
+      // iOS: request Photos permission directly
+      bool hasPermission = false;
+      if (Platform.isAndroid) {
+        hasPermission = await AndroidPermissionFix.requestPhotosPermission(context);
+      } else if (Platform.isIOS) {
+        final status = await Permission.photos.request();
+        hasPermission = status == PermissionStatus.granted || status == PermissionStatus.limited;
+      }
       if (!hasPermission) {
-        Log.w('Storage permission denied', 'IMPROVED_MEDIA');
-        _showPermissionDeniedDialog(context, 'Storage', 'storage access is needed to select photos');
+        Log.w('Photos permission denied', 'IMPROVED_MEDIA');
+        _showPermissionDeniedDialog(context, 'Photos', 'photo library access is needed to select photos');
         return null;
       }
 
@@ -130,11 +139,19 @@ class ImprovedMediaService {
 
     try {
       Log.i('Picking video from gallery', 'IMPROVED_MEDIA');
-      
-      final hasPermission = await _requestStoragePermission(context);
+
+      // Android: use modern media permission routing via AndroidPermissionFix
+      // iOS: request Photos permission (covers videos in library access)
+      bool hasPermission = false;
+      if (Platform.isAndroid) {
+        hasPermission = await AndroidPermissionFix.requestVideosPermission(context);
+      } else if (Platform.isIOS) {
+        final status = await Permission.photos.request();
+        hasPermission = status == PermissionStatus.granted || status == PermissionStatus.limited;
+      }
       if (!hasPermission) {
-        Log.w('Storage permission denied', 'IMPROVED_MEDIA');
-        _showPermissionDeniedDialog(context, 'Storage', 'storage access is needed to select videos');
+        Log.w('Videos permission denied', 'IMPROVED_MEDIA');
+        _showPermissionDeniedDialog(context, 'Videos', 'video library access is needed to select videos');
         return null;
       }
 
@@ -366,10 +383,12 @@ class ImprovedMediaService {
     }
   }
 
-  /// Request storage permission with platform handling
+  /// Deprecated: Storage permission is not used on Android 13+ for media picking.
+  /// Retained for backward compatibility in other call sites if any.
   static Future<bool> _requestStoragePermission(BuildContext context) async {
     try {
       if (Platform.isAndroid) {
+        // For legacy Android (<13), request storage; otherwise rely on AndroidPermissionFix in callers.
         return await _requestAndroidStoragePermission(context);
       } else if (Platform.isIOS) {
         return await _requestIOSStoragePermission(context);
@@ -393,7 +412,7 @@ class ImprovedMediaService {
     return status == PermissionStatus.granted;
   }
 
-  /// Request Android storage permission
+  /// Request Android storage permission (legacy Android <13 only)
   static Future<bool> _requestAndroidStoragePermission(BuildContext context) async {
     final status = await Permission.storage.request();
     return status == PermissionStatus.granted;
