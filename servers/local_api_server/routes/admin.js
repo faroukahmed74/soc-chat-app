@@ -534,15 +534,24 @@ router.post('/broadcast', verifyAdminToken, async (req, res) => {
     }
     
     // 🔥 EMIT REAL-TIME NOTIFICATIONS TO ALL USERS
+    if (!io) {
+      console.error('❌ Socket.IO instance not available!');
+      return res.status(500).json({ error: 'Socket.IO not available' });
+    }
+    
     // Get all connected user IDs from active sockets
     const connectedUserIds = new Set();
-    const allSockets = await io.fetchSockets();
-    
-    allSockets.forEach(socket => {
-      if (socket.userId) {
-        connectedUserIds.add(socket.userId.toString());
-      }
-    });
+    let allSockets = [];
+    try {
+      allSockets = await io.fetchSockets();
+      allSockets.forEach(socket => {
+        if (socket.userId) {
+          connectedUserIds.add(socket.userId.toString());
+        }
+      });
+    } catch (socketError) {
+      console.error('Error fetching sockets:', socketError);
+    }
     
     console.log(`📢 Broadcast: Found ${connectedUserIds.size} connected users out of ${users.length} total users`);
     if (connectedUserIds.size > 0) {
@@ -588,37 +597,63 @@ router.post('/broadcast', verifyAdminToken, async (req, res) => {
       timestamp: new Date(),
     };
     
-    // First, emit to all connected users using their socket.userId
+    // Strategy 1: Emit to specific user rooms
+    const emittedToRooms = new Set();
     for (const connectedUserId of connectedUserIds) {
       // Find the corresponding MongoDB user
       const user = userMap.get(connectedUserId);
       if (user) {
         const userId = user._id.toString();
-        connectedCount++;
-        console.log(`📤 Emitting broadcast to connected user: ${userId} (socket.userId: ${connectedUserId})`);
-        
-        // Emit to the room using the socket.userId (which is what they joined with)
-        io.to(connectedUserId).emit('notification', notificationPayload);
-        io.to(connectedUserId).emit('broadcast_notification', broadcastPayload);
+        if (!emittedToRooms.has(connectedUserId)) {
+          connectedCount++;
+          console.log(`📤 Emitting broadcast to connected user: ${userId} (socket.userId: ${connectedUserId})`);
+          
+          // Emit to the room using the socket.userId (which is what they joined with)
+          io.to(connectedUserId).emit('notification', notificationPayload);
+          io.to(connectedUserId).emit('broadcast_notification', broadcastPayload);
+          emittedToRooms.add(connectedUserId);
+        }
       } else {
-        console.log(`⚠️ Connected user ${connectedUserId} not found in database - emitting anyway`);
-        // Still try to emit in case the room exists
-        io.to(connectedUserId).emit('notification', notificationPayload);
-        io.to(connectedUserId).emit('broadcast_notification', broadcastPayload);
-        connectedCount++;
+        if (!emittedToRooms.has(connectedUserId)) {
+          console.log(`⚠️ Connected user ${connectedUserId} not found in database - emitting anyway`);
+          // Still try to emit in case the room exists
+          io.to(connectedUserId).emit('notification', notificationPayload);
+          io.to(connectedUserId).emit('broadcast_notification', broadcastPayload);
+          connectedCount++;
+          emittedToRooms.add(connectedUserId);
+        }
       }
     }
     
-    // Also emit to all users using MongoDB _id format as fallback
-    // This ensures we catch users even if socket.userId format doesn't match
+    // Strategy 2: Also emit to all users using MongoDB _id format as fallback
     for (const user of users) {
       const userId = user._id.toString();
       // Only emit if we haven't already emitted to this user via socket.userId
-      if (!connectedUserIds.has(userId) && (!user.uid || !connectedUserIds.has(user.uid.toString()))) {
+      if (!emittedToRooms.has(userId) && (!user.uid || !emittedToRooms.has(user.uid.toString()))) {
         // Try emitting anyway - the room might exist with this format
         io.to(userId).emit('notification', notificationPayload);
         io.to(userId).emit('broadcast_notification', broadcastPayload);
+        if (!emittedToRooms.has(userId)) {
+          emittedToRooms.add(userId);
+        }
       }
+    }
+    
+    // Strategy 3: BROADCAST TO ALL CONNECTED SOCKETS (PRIMARY METHOD)
+    // This ensures ALL connected users receive the broadcast regardless of room matching
+    // This is the most reliable method for broadcasts
+    try {
+      const totalConnectedSockets = allSockets.length;
+      console.log(`📢 Broadcasting to ALL ${totalConnectedSockets} connected sockets...`);
+      
+      // Emit to all connected sockets (most reliable for broadcasts)
+      io.emit('broadcast_notification', broadcastPayload);
+      io.emit('notification', notificationPayload);
+      
+      console.log(`✅ Broadcast sent to ALL ${totalConnectedSockets} connected sockets via io.emit()`);
+      console.log(`📢 Broadcast payload:`, JSON.stringify(broadcastPayload, null, 2));
+    } catch (broadcastError) {
+      console.error('❌ Error broadcasting to all sockets:', broadcastError);
     }
     
     // Count disconnected users
@@ -629,7 +664,7 @@ router.post('/broadcast', verifyAdminToken, async (req, res) => {
       }
     }
     
-    console.log(`📢 Broadcast summary: ${connectedCount} connected users notified, ${disconnectedCount} offline users (message stored)`);
+    console.log(`📢 Broadcast summary: ${connectedCount} users via rooms, ${allSockets.length} total connected sockets, ${disconnectedCount} offline users (message stored)`);
     
     res.json({
       message: 'Broadcast sent successfully',
@@ -1507,6 +1542,41 @@ router.post('/users/:id/unlock', verifyAdminToken, async (req, res) => {
   } catch (error) {
     console.error('Error unlocking user:', error);
     res.status(500).json({ error: 'Failed to unlock user' });
+  }
+});
+
+// Toggle user status (enable/disable)
+router.patch('/users/:id/status', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { id } = req.params;
+    const { disabled } = req.body;
+    
+    if (typeof disabled !== 'boolean') {
+      return res.status(400).json({ error: 'disabled field must be a boolean' });
+    }
+    
+    const result = await db.collection('users').updateOne(
+      { _id: new ObjectId(id) },
+      { 
+        $set: { 
+          disabled: disabled,
+          updatedAt: new Date()
+        } 
+      }
+    );
+    
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    res.json({ 
+      message: disabled ? 'User disabled successfully' : 'User enabled successfully',
+      disabled: disabled
+    });
+  } catch (error) {
+    console.error('Error toggling user status:', error);
+    res.status(500).json({ error: 'Failed to toggle user status' });
   }
 });
 

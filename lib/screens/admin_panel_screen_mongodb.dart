@@ -498,7 +498,9 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('User locked successfully')),
           );
+          // Force refresh the users list
           await _loadUsers();
+          setState(() {}); // Force UI update
         }
       } catch (e) {
         Log.e('Error locking user', 'ADMIN_PANEL_MONGODB', e);
@@ -554,7 +556,9 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('User unlocked successfully')),
           );
+          // Force refresh the users list
           await _loadUsers();
+          setState(() {}); // Force UI update
         }
       } catch (e) {
         Log.e('Error unlocking user', 'ADMIN_PANEL_MONGODB', e);
@@ -2301,7 +2305,10 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(success ? (disabled ? 'User disabled' : 'User enabled') : 'Failed to update status')),
         );
-        if (success) await _loadUsers();
+        if (success) {
+          await _loadUsers();
+          setState(() {}); // Force UI update
+        }
       }
     } catch (e) {
       Log.e('Error toggling user status', 'ADMIN_PANEL_MONGODB', e);

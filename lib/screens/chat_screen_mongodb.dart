@@ -1266,28 +1266,48 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                                     }
                                   }
                                 },
-                                itemBuilder: (context) => [
-                                  const PopupMenuItem(
-                                    value: 'make_manager',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.admin_panel_settings, size: 18),
-                                        SizedBox(width: 8),
-                                        Text('Make Manager'),
-                                      ],
-                                    ),
-                                  ),
-                                  const PopupMenuItem(
-                                    value: 'make_member',
-                                    child: Row(
-                                      children: [
-                                        Icon(Icons.person, size: 18),
-                                        SizedBox(width: 8),
-                                        Text('Make Member'),
-                                      ],
-                                    ),
-                                  ),
-                                ],
+                                itemBuilder: (context) {
+                                  // Show "Make Manager" only if member is not already a manager or admin
+                                  // Show "Make Member" only if member is a manager (not admin/creator)
+                                  final isMemberManager = role == 'manager';
+                                  final isMemberAdmin = role == 'admin' || isMemberCreator;
+                                  
+                                  final menuItems = <PopupMenuEntry<String>>[];
+                                  
+                                  // Only show "Make Manager" if member is not already manager/admin
+                                  if (!isMemberManager && !isMemberAdmin) {
+                                    menuItems.add(
+                                      const PopupMenuItem(
+                                        value: 'make_manager',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.admin_panel_settings, size: 18),
+                                            SizedBox(width: 8),
+                                            Text('Make Manager'),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  
+                                  // Only show "Make Member" if member is currently a manager
+                                  if (isMemberManager) {
+                                    menuItems.add(
+                                      const PopupMenuItem(
+                                        value: 'make_member',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.person, size: 18),
+                                            SizedBox(width: 8),
+                                            Text('Make Member'),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  }
+                                  
+                                  return menuItems;
+                                },
                               )
                             : null,
                       );

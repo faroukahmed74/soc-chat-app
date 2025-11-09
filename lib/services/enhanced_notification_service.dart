@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:socket_io_client/socket_io_client.dart' as IO;
@@ -11,6 +12,7 @@ import 'package:audioplayers/audioplayers.dart';
 import '../config/database_config.dart';
 import 'logger_service.dart';
 import 'local_auth_service.dart';
+import '../main.dart' show navigatorKey;
 import 'web_notification_adapter_stub.dart'
     if (dart.library.html) 'web_notification_adapter.dart' as web_notif;
 
@@ -211,6 +213,9 @@ class EnhancedNotificationService {
       // Listen for broadcast notifications
       _socket!.on('broadcast_notification', (data) {
         Log.i('📢 Received broadcast notification via socket: $data', 'ENHANCED_NOTIF');
+        print('📢 [BROADCAST] Received broadcast_notification event');
+        print('📢 [BROADCAST] Data type: ${data.runtimeType}');
+        print('📢 [BROADCAST] Data: $data');
         _handleBroadcastNotification(data);
       });
       
@@ -286,29 +291,116 @@ class EnhancedNotificationService {
 
   Future<void> _handleBroadcastNotification(dynamic data) async {
     try {
+      print('📢 [BROADCAST] _handleBroadcastNotification called with data: $data');
       if (data is Map<String, dynamic>) {
         final title = data['title'] ?? '📢 Broadcast';
         final body = data['body'] ?? '';
         final senderName = data['senderName'] ?? 'Admin';
         
+        print('📢 [BROADCAST] Processing notification - Title: $title, Body: $body, Sender: $senderName');
+        
         // Play notification sound
-        await _playNotificationSound();
+        try {
+          await _playNotificationSound();
+          print('📢 [BROADCAST] Sound played successfully');
+        } catch (soundError) {
+          print('⚠️ [BROADCAST] Error playing sound: $soundError');
+        }
         
-        // Display local notification
-        await sendLocalNotification(
-          title: title,
-          body: body,
-          payload: json.encode({
-            'type': 'broadcast_message',
-            'senderName': senderName,
-            'timestamp': DateTime.now().toIso8601String(),
-          }),
-          channelId: broadcastChannelId,
-        );
+        // Show in-app dialog if app is in foreground
+        if (navigatorKey.currentState != null) {
+          try {
+            showDialog(
+              context: navigatorKey.currentContext!,
+              barrierDismissible: true,
+              builder: (context) => AlertDialog(
+                title: Row(
+                  children: [
+                    const Icon(Icons.campaign, color: Colors.blue, size: 28),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ],
+                ),
+                content: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (senderName.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Text(
+                            'From: $senderName',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[600],
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      Text(
+                        body,
+                        style: const TextStyle(fontSize: 16),
+                      ),
+                    ],
+                  ),
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    child: const Text('Close'),
+                  ),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.of(context).pop();
+                      navigatorKey.currentState?.pushNamed('/broadcasts');
+                    },
+                    icon: const Icon(Icons.list, size: 18),
+                    label: const Text('View All'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.blue,
+                      foregroundColor: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+            );
+            print('📢 [BROADCAST] In-app dialog displayed');
+          } catch (dialogError) {
+            print('⚠️ [BROADCAST] Error showing dialog: $dialogError');
+          }
+        }
         
-        Log.i('📢 PLAYED broadcast sound and displayed notification: $title - $body', 'ENHANCED_NOTIF');
+        // Display local notification (for when app is in background)
+        try {
+          await sendLocalNotification(
+            title: title,
+            body: body,
+            payload: json.encode({
+              'type': 'broadcast_message',
+              'senderName': senderName,
+              'timestamp': DateTime.now().toIso8601String(),
+            }),
+            channelId: broadcastChannelId,
+          );
+          print('📢 [BROADCAST] Local notification displayed successfully');
+        } catch (notifError) {
+          print('❌ [BROADCAST] Error displaying notification: $notifError');
+        }
+        
+        Log.i('📢 ✅ COMPLETE: broadcast sound and notification - $title - $body', 'ENHANCED_NOTIF');
+        print('📢 [BROADCAST] ✅ Successfully processed broadcast notification');
+      } else {
+        print('⚠️ [BROADCAST] Data is not a Map: ${data.runtimeType}');
+        Log.w('Broadcast notification data is not a Map', 'ENHANCED_NOTIF');
       }
     } catch (e) {
+      print('❌ [BROADCAST] Error in _handleBroadcastNotification: $e');
       Log.e('Error handling broadcast notification', 'ENHANCED_NOTIF', e);
     }
   }
@@ -452,12 +544,25 @@ class EnhancedNotificationService {
       switch (type) {
         case 'chat_message':
           // Navigate to chat screen
+          final chatId = data['chatId'];
+          if (chatId != null && navigatorKey.currentState != null) {
+            navigatorKey.currentState!.pushNamed('/chats');
+            // TODO: Navigate to specific chat if needed
+          }
           break;
         case 'group_message':
           // Navigate to group chat screen
+          final chatId = data['chatId'];
+          if (chatId != null && navigatorKey.currentState != null) {
+            navigatorKey.currentState!.pushNamed('/chats');
+            // TODO: Navigate to specific group chat if needed
+          }
           break;
         case 'broadcast_message':
           // Navigate to broadcast screen
+          if (navigatorKey.currentState != null) {
+            navigatorKey.currentState!.pushNamed('/broadcasts');
+          }
           break;
         default:
           Log.i('Unknown notification type: $type', 'ENHANCED_NOTIF');

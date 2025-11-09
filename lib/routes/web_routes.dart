@@ -19,6 +19,7 @@ import '../screens/update_test_screen.dart';
 import '../screens/app_health_check_screen.dart';
 import '../screens/startup_diagnostics_screen.dart';
 import '../screens/fcm_sound_test_screen.dart';
+import '../screens/broadcast_messages_screen.dart';
 
 import '../services/theme_service.dart';
 
@@ -46,4 +47,5 @@ Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
     onThemeChanged: (bool dark) =>
         themeService.setTheme(dark ? ThemeMode.dark : ThemeMode.light),
   ),
+  '/broadcasts': (_) => const BroadcastMessagesScreen(),
 };

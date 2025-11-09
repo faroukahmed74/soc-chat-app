@@ -707,7 +707,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildInfoRow('Email', _userData?['email'] ?? 'Loading...'),
           _buildInfoRow('Phone Number', (_userData?['phoneNumber'] ?? _userData?['phone'] ?? 'Not provided').toString()),
           _buildInfoRow('User ID', _userData?['_id'] ?? 'Loading...'),
-          _buildInfoRow('Status', _userData?['isActive'] == true ? 'Active' : 'Inactive'),
+          _buildInfoRow('Status', _getUserStatus()),
           _buildInfoRow('Created', _formatDate(_userData?['createdAt'])),
           _buildInfoRow('Role', _userData?['role'] ?? 'Loading...'),
           _buildInfoRow('Last Updated', _formatDate(_userData?['updatedAt'])),
@@ -744,6 +744,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
     );
+  }
+
+  String _getUserStatus() {
+    // Check isOnline first (boolean field)
+    if (_userData?['isOnline'] == true || _userData?['isOnline'] == 'true') {
+      return 'Active';
+    }
+    // Check status field (string: 'online' or 'offline')
+    final status = _userData?['status'];
+    if (status == 'online') {
+      return 'Active';
+    }
+    // Default to inactive if neither field indicates online
+    return 'Inactive';
   }
 
   String _formatDate(dynamic date) {

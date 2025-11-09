@@ -155,6 +155,22 @@ router.post('/login', async (req, res) => {
       return res.status(400).json({ message: 'Invalid credentials' });
     }
     
+    // Check if user is disabled
+    if (user.disabled === true) {
+      return res.status(403).json({ 
+        message: 'Your account has been disabled. Please contact an administrator.' 
+      });
+    }
+    
+    // Check if user is locked
+    if (user.isLocked === true) {
+      const lockReason = user.lockedReason || 'No reason provided';
+      const lockedAt = user.lockedAt ? new Date(user.lockedAt).toLocaleString() : 'Unknown';
+      return res.status(403).json({ 
+        message: `Your account has been locked. Reason: ${lockReason}. Locked at: ${lockedAt}. Please contact an administrator.` 
+      });
+    }
+    
     // Update online status and last seen
     const now = new Date();
     await usersCollection.updateOne(
@@ -245,12 +261,28 @@ router.get('/verify', async (req, res) => {
     // Verify token
     const decoded = jwt.verify(token, JWT_SECRET);
 
-    // Optionally check user existence
+    // Check user existence and status
     const database = await connectDB();
     const usersCollection = database.collection('users');
     const user = await usersCollection.findOne({ _id: new ObjectId(decoded.id) });
     if (!user) {
       return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if user is disabled
+    if (user.disabled === true) {
+      return res.status(403).json({ 
+        valid: false,
+        message: 'Your account has been disabled. Please contact an administrator.' 
+      });
+    }
+    
+    // Check if user is locked
+    if (user.isLocked === true) {
+      return res.status(403).json({ 
+        valid: false,
+        message: 'Your account has been locked. Please contact an administrator.' 
+      });
     }
 
     return res.status(200).json({ valid: true });

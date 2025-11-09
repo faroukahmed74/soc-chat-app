@@ -19,6 +19,7 @@ import '../screens/startup_diagnostics_screen.dart';
 import '../screens/fcm_sound_test_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/notification_test_screen.dart';
+import '../screens/broadcast_messages_screen.dart';
 
 import '../services/theme_service.dart';
 
@@ -42,4 +43,5 @@ Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
   '/update-test': (_) => const UpdateTestScreen(),
   '/notification-test': (_) => const NotificationTestScreen(),
   '/profile': (_) => const ProfileScreen(),
+  '/broadcasts': (_) => const BroadcastMessagesScreen(),
 };

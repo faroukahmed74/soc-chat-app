@@ -485,11 +485,32 @@ const authenticateToken = (req, res, next) => {
     return res.status(401).json({ error: 'Access denied' });
   }
   
-  jwt.verify(token, JWT_SECRET, (err, user) => {
+  jwt.verify(token, JWT_SECRET, async (err, user) => {
     if (err) {
       console.error('[AUTH] ❌ Token verification failed for', req.method, req.path, ':', err.message);
       return res.status(403).json({ error: 'Invalid token' });
     }
+    
+    // Check if user is disabled or locked
+    if (db) {
+      try {
+        const userDoc = await db.collection('users').findOne({ _id: new ObjectId(user.id) });
+        if (userDoc) {
+          if (userDoc.disabled === true) {
+            console.error('[AUTH] ❌ User is disabled:', user.id);
+            return res.status(403).json({ error: 'Your account has been disabled. Please contact an administrator.' });
+          }
+          if (userDoc.isLocked === true) {
+            console.error('[AUTH] ❌ User is locked:', user.id);
+            return res.status(403).json({ error: 'Your account has been locked. Please contact an administrator.' });
+          }
+        }
+      } catch (dbErr) {
+        console.error('[AUTH] Error checking user status:', dbErr);
+        // Continue with authentication if DB check fails (don't block legitimate users)
+      }
+    }
+    
     console.error('[AUTH] ✅ Token verified for user:', user.id);
     req.user = user;
     console.log('[AUTH] Calling next() for', req.method, req.path);
@@ -797,6 +818,22 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(400).json({ error: 'Invalid credentials' });
     }
     
+    // Check if user is disabled
+    if (user.disabled === true) {
+      return res.status(403).json({ 
+        error: 'Your account has been disabled. Please contact an administrator.' 
+      });
+    }
+    
+    // Check if user is locked
+    if (user.isLocked === true) {
+      const lockReason = user.lockedReason || 'No reason provided';
+      const lockedAt = user.lockedAt ? new Date(user.lockedAt).toLocaleString() : 'Unknown';
+      return res.status(403).json({ 
+        error: `Your account has been locked. Reason: ${lockReason}. Locked at: ${lockedAt}. Please contact an administrator.` 
+      });
+    }
+    
     // Update status and online presence
     const now = new Date();
     await db.collection('users').updateOne(
@@ -846,6 +883,26 @@ app.get('/api/auth/verify', async (req, res) => {
     
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
+      
+      // Check if user is disabled or locked
+      if (db) {
+        const user = await db.collection('users').findOne({ _id: new ObjectId(decoded.id) });
+        if (user) {
+          if (user.disabled === true) {
+            return res.status(403).json({ 
+              valid: false,
+              error: 'Your account has been disabled. Please contact an administrator.' 
+            });
+          }
+          if (user.isLocked === true) {
+            return res.status(403).json({ 
+              valid: false,
+              error: 'Your account has been locked. Please contact an administrator.' 
+            });
+          }
+        }
+      }
+      
       res.json({ 
         valid: true, 
         user: {
@@ -1262,12 +1319,27 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
     }
     const finalMemberIds = uniqueMemberIds;
     
+    // CRITICAL: Ensure current user is ALWAYS in finalMemberIds
+    const hasCurrentUserInFinal = finalMemberIds.some(id => id.toString() === currentUserIdStr);
+    if (!hasCurrentUserInFinal) {
+      console.error('[POST /api/chats] ⚠️ WARNING: Current user not in finalMemberIds! Adding now...');
+      finalMemberIds.push(currentUserId);
+    }
+    
     console.log('[POST /api/chats] Final member IDs (unique):', finalMemberIds.map(id => id.toString()));
+    console.log('[POST /api/chats] Current user ID:', currentUserIdStr);
+    console.log('[POST /api/chats] Current user in finalMemberIds:', finalMemberIds.some(id => id.toString() === currentUserIdStr));
     
     // Validate member count after adding current user
     if (finalMemberIds.length === 0) {
       console.log('[POST /api/chats] Validation failed: no valid members');
       return res.status(400).json({ error: 'At least one valid member ID is required' });
+    }
+    
+    // Validate that current user is in the members list
+    if (!finalMemberIds.some(id => id.toString() === currentUserIdStr)) {
+      console.error('[POST /api/chats] ❌ CRITICAL ERROR: Current user not in finalMemberIds after all processing!');
+      return res.status(500).json({ error: 'Failed to add creator to group members' });
     }
     
     // For private chats, ensure exactly 2 members
@@ -1366,13 +1438,28 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
     
     // Create memberRoles object - creator is group admin (not app admin), others are members
     const memberRoles = {};
+    
+    // CRITICAL: Always set creator as admin FIRST
     memberRoles[currentUserIdStr] = 'admin'; // Creator is group admin (group-level, not app-level)
+    console.log('[POST /api/chats] Set creator role:', currentUserIdStr, '-> admin');
+    
+    // Set roles for all other members
     for (const memberId of finalMemberIds) {
       const memberIdStr = memberId.toString();
       if (memberIdStr !== currentUserIdStr) {
         memberRoles[memberIdStr] = 'member'; // Others are members
+        console.log('[POST /api/chats] Set member role:', memberIdStr, '-> member');
       }
     }
+    
+    // Validate that creator role is set
+    if (memberRoles[currentUserIdStr] !== 'admin') {
+      console.error('[POST /api/chats] ❌ CRITICAL ERROR: Creator role not set correctly!');
+      memberRoles[currentUserIdStr] = 'admin'; // Force set it
+    }
+    
+    console.log('[POST /api/chats] Final memberRoles:', JSON.stringify(memberRoles));
+    console.log('[POST /api/chats] Creator role check:', memberRoles[currentUserIdStr] === 'admin' ? '✅ PASS' : '❌ FAIL');
     
     // Create new chat
     const chat = {
@@ -1400,6 +1487,77 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
     if (!createdChat) {
       console.error('[POST /api/chats] Failed to retrieve created chat');
       return res.status(500).json({ error: 'Failed to create chat' });
+    }
+    
+    // FINAL VALIDATION: Ensure current user is in members and has admin role
+    const createdMembers = createdChat.members.map(id => id.toString());
+    const createdMemberRoles = createdChat.memberRoles || {};
+    const creatorInMembers = createdMembers.includes(currentUserIdStr);
+    const creatorIsAdmin = createdMemberRoles[currentUserIdStr] === 'admin';
+    
+    console.log('[POST /api/chats] ✅ Final validation:');
+    console.log('  - Creator in members:', creatorInMembers ? '✅ YES' : '❌ NO');
+    console.log('  - Creator is admin:', creatorIsAdmin ? '✅ YES' : '❌ NO');
+    console.log('  - Members:', createdMembers);
+    console.log('  - Member roles:', JSON.stringify(createdMemberRoles));
+    
+    if (!creatorInMembers) {
+      console.error('[POST /api/chats] ❌ CRITICAL: Creator not in members after creation! Fixing...');
+      // Fix it by updating the chat
+      await db.collection('chats').updateOne(
+        { _id: result.insertedId },
+        { 
+          $addToSet: { members: currentUserId },
+          $set: { [`memberRoles.${currentUserIdStr}`]: 'admin', updatedAt: new Date() }
+        }
+      );
+      // Re-fetch the chat
+      const fixedChat = await db.collection('chats').findOne({ _id: result.insertedId });
+      if (fixedChat) {
+        console.log('[POST /api/chats] ✅ Fixed: Creator added to members');
+        return res.status(201).json({
+          _id: fixedChat._id.toString(),
+          id: fixedChat._id.toString(),
+          name: fixedChat.name,
+          type: fixedChat.type,
+          members: fixedChat.members.map(id => id.toString()),
+          memberRoles: fixedChat.memberRoles || {},
+          createdBy: fixedChat.createdBy.toString(),
+          createdAt: fixedChat.createdAt,
+          updatedAt: fixedChat.updatedAt,
+          lastMessage: fixedChat.lastMessage,
+          lastMessageTime: fixedChat.lastMessageTime
+        });
+      }
+    }
+    
+    if (!creatorIsAdmin) {
+      console.error('[POST /api/chats] ❌ CRITICAL: Creator not admin after creation! Fixing...');
+      // Fix it by updating the chat
+      await db.collection('chats').updateOne(
+        { _id: result.insertedId },
+        { 
+          $set: { [`memberRoles.${currentUserIdStr}`]: 'admin', updatedAt: new Date() }
+        }
+      );
+      // Re-fetch the chat
+      const fixedChat = await db.collection('chats').findOne({ _id: result.insertedId });
+      if (fixedChat) {
+        console.log('[POST /api/chats] ✅ Fixed: Creator set as admin');
+        return res.status(201).json({
+          _id: fixedChat._id.toString(),
+          id: fixedChat._id.toString(),
+          name: fixedChat.name,
+          type: fixedChat.type,
+          members: fixedChat.members.map(id => id.toString()),
+          memberRoles: fixedChat.memberRoles || {},
+          createdBy: fixedChat.createdBy.toString(),
+          createdAt: fixedChat.createdAt,
+          updatedAt: fixedChat.updatedAt,
+          lastMessage: fixedChat.lastMessage,
+          lastMessageTime: fixedChat.lastMessageTime
+        });
+      }
     }
     
     console.log('[POST /api/chats] Chat created successfully:', createdChat._id.toString());
@@ -1613,6 +1771,95 @@ app.put('/api/chats/:chatId/members/:userId/role', authenticateToken, async (req
     res.json({ success: true });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get broadcast messages for current user
+app.get('/api/broadcasts', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const { page = 1, limit = 50 } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    
+    // Get broadcast messages for this user
+    const broadcasts = await db.collection('messages')
+      .find({
+        type: 'broadcast',
+        recipientId: new ObjectId(userId)
+      })
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .toArray();
+    
+    // Get sender names
+    const broadcastsWithSenders = await Promise.all(
+      broadcasts.map(async (broadcast) => {
+        let senderName = 'Admin';
+        if (broadcast.senderId) {
+          try {
+            const sender = await db.collection('users').findOne({ _id: new ObjectId(broadcast.senderId) });
+            if (sender) {
+              senderName = sender.displayName || sender.email || 'Admin';
+            }
+          } catch (e) {
+            console.error('Error getting sender name:', e);
+          }
+        }
+        
+        return {
+          id: broadcast._id.toString(),
+          _id: broadcast._id.toString(),
+          content: broadcast.content,
+          senderId: broadcast.senderId?.toString(),
+          senderName: senderName,
+          createdAt: broadcast.createdAt,
+          read: broadcast.read || false
+        };
+      })
+    );
+    
+    const total = await db.collection('messages').countDocuments({
+      type: 'broadcast',
+      recipientId: new ObjectId(userId)
+    });
+    
+    res.json({
+      broadcasts: broadcastsWithSenders,
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total: total,
+        pages: Math.ceil(total / parseInt(limit))
+      }
+    });
+  } catch (err) {
+    console.error('Error getting broadcasts:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Mark broadcast as read
+app.patch('/api/broadcasts/:id/read', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const broadcastId = req.params.id;
+    
+    await db.collection('messages').updateOne(
+      {
+        _id: new ObjectId(broadcastId),
+        recipientId: new ObjectId(userId),
+        type: 'broadcast'
+      },
+      {
+        $set: { read: true }
+      }
+    );
+    
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Error marking broadcast as read:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -2255,4 +2502,5 @@ app.get('/admin/health', requireCloudflareAccess, (req, res) => {
   res.status(200).json({ status: 'ok', protectedBy: 'Cloudflare Access', user: req.cfAccessIdentity || null });
 });
 
+startServer();
 startServer();
