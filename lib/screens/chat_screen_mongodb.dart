@@ -570,7 +570,6 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
 
   Widget _buildOneToOneStatus(List<dynamic> readBy, String? status, String? recipientId, bool isDark) {
     IconData icon;
-    Color color;
     String? tooltip;
     
     // Check if recipient has read the message
@@ -581,23 +580,19 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     if (isRead || status == 'read') {
       // Read: Double check blue
       icon = Icons.done_all;
-      color = Colors.blue;
       tooltip = 'Read';
     } else if (readBy.isNotEmpty && !isRead) {
       // Delivered: Double check grey (someone read it, but might not be recipient in group context)
       // For one-to-one, if readBy has items but recipient hasn't read, it's delivered
       icon = Icons.done_all;
-      color = isDark ? Colors.grey[400]! : Colors.grey[600]!;
       tooltip = 'Delivered';
     } else if (status == 'delivered') {
       // Explicitly delivered status
       icon = Icons.done_all;
-      color = isDark ? Colors.grey[400]! : Colors.grey[600]!;
       tooltip = 'Delivered';
     } else {
       // Sent: Single check grey
       icon = Icons.done;
-      color = isDark ? Colors.grey[400]! : Colors.grey[600]!;
       tooltip = 'Sent';
     }
     
@@ -1134,6 +1129,259 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     }
   }
 
+  Future<void> _showGroupInfo() async {
+    if (!widget.isGroupChat || _currentUserId == null) return;
+    
+    try {
+      // Fetch chat details to get member roles
+      final chatDetails = await _chatService.getChatDetails(widget.chatId);
+      if (chatDetails == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to load group information')),
+          );
+        }
+        return;
+      }
+      
+      final chat = chatDetails['chat'] ?? chatDetails;
+      final members = chat['members'] as List? ?? [];
+      final memberRoles = chat['memberRoles'] as Map<String, dynamic>? ?? {};
+      final createdBy = chat['createdBy']?.toString();
+      final isCreator = createdBy == _currentUserId;
+      
+      // Get current user's role in the group (group admin is different from app admin)
+      final currentUserRole = memberRoles[_currentUserId] ?? 'member';
+      final isGroupAdmin = currentUserRole == 'admin' || isCreator; // Group admin, not app admin
+      final isGroupManager = currentUserRole == 'manager' || isGroupAdmin;
+      
+      // Fetch all users for adding members
+      final databaseService = await DatabaseConfig.getDatabaseService();
+      final allUsers = await databaseService.getAllUsers();
+      
+      // Filter out users who are already members
+      final memberIds = members.map((m) => m.toString()).toList();
+      final availableUsers = allUsers.where((user) => !memberIds.contains(user.id)).toList();
+      
+      if (!mounted) return;
+      
+      showDialog(
+        context: context,
+        builder: (context) => StatefulBuilder(
+          builder: (context, setDialogState) => AlertDialog(
+            title: Text('Group Info: ${widget.chatName}'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Members list
+                    const Text(
+                      'Members',
+                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                    ),
+                    const SizedBox(height: 8),
+                    ...members.map<Widget>((memberId) {
+                      final memberIdStr = memberId.toString();
+                      final role = memberRoles[memberIdStr] ?? 'member';
+                      final isMemberCreator = memberIdStr == createdBy;
+                      final displayRole = isMemberCreator ? 'Admin (Creator)' : 
+                                        role == 'admin' ? 'Admin' :
+                                        role == 'manager' ? 'Manager' : 'Member';
+                      
+                      // Find user info
+                      final userDoc = allUsers.firstWhere(
+                        (u) => u.id == memberIdStr,
+                        orElse: () => allUsers.first,
+                      );
+                      final userData = userDoc.data();
+                      final userName = userData['displayName'] ?? 
+                                      userData['username'] ?? 
+                                      userData['email'] ?? 
+                                      'Unknown User';
+                      
+                      return ListTile(
+                        dense: true,
+                        leading: CircleAvatar(
+                          backgroundImage: (userData['photoUrl'] as String?)?.isNotEmpty == true
+                              ? NetworkImage(userData['photoUrl'])
+                              : null,
+                          child: (userData['photoUrl'] as String?)?.isEmpty != false
+                              ? const Icon(Icons.person, size: 20)
+                              : null,
+                        ),
+                        title: Text(userName),
+                        subtitle: Text(displayRole),
+                        trailing: isCreator && memberIdStr != _currentUserId
+                            ? PopupMenuButton<String>(
+                                icon: const Icon(Icons.more_vert, size: 18),
+                                onSelected: (value) async {
+                                  if (value == 'make_manager') {
+                                    try {
+                                      await databaseService.updateMemberRole(
+                                        widget.chatId,
+                                        memberIdStr,
+                                        'manager',
+                                      );
+                                      setDialogState(() {});
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Role updated to Manager')),
+                                        );
+                                      }
+                                      // Refresh dialog
+                                      Navigator.pop(context);
+                                      _showGroupInfo();
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error: $e')),
+                                        );
+                                      }
+                                    }
+                                  } else if (value == 'make_member') {
+                                    try {
+                                      await databaseService.updateMemberRole(
+                                        widget.chatId,
+                                        memberIdStr,
+                                        'member',
+                                      );
+                                      setDialogState(() {});
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Role updated to Member')),
+                                        );
+                                      }
+                                      // Refresh dialog
+                                      Navigator.pop(context);
+                                      _showGroupInfo();
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error: $e')),
+                                        );
+                                      }
+                                    }
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  const PopupMenuItem(
+                                    value: 'make_manager',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.admin_panel_settings, size: 18),
+                                        SizedBox(width: 8),
+                                        Text('Make Manager'),
+                                      ],
+                                    ),
+                                  ),
+                                  const PopupMenuItem(
+                                    value: 'make_member',
+                                    child: Row(
+                                      children: [
+                                        Icon(Icons.person, size: 18),
+                                        SizedBox(width: 8),
+                                        Text('Make Member'),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              )
+                            : null,
+                      );
+                    }).toList(),
+                    
+                    // Add members section (for group admins and group managers only)
+                    if (isGroupManager) ...[
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Add Members',
+                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                      ),
+                      const SizedBox(height: 8),
+                      if (availableUsers.isEmpty)
+                        const Padding(
+                          padding: EdgeInsets.all(8.0),
+                          child: Text('No users available to add'),
+                        )
+                      else
+                        SizedBox(
+                          height: 200,
+                          child: ListView.builder(
+                            shrinkWrap: true,
+                            itemCount: availableUsers.length,
+                            itemBuilder: (context, index) {
+                              final user = availableUsers[index];
+                              final userData = user.data();
+                              final userName = userData['displayName'] ?? 
+                                              userData['username'] ?? 
+                                              userData['email'] ?? 
+                                              'Unknown User';
+                              
+                              return ListTile(
+                                dense: true,
+                                leading: CircleAvatar(
+                                  backgroundImage: (userData['photoUrl'] as String?)?.isNotEmpty == true
+                                      ? NetworkImage(userData['photoUrl'])
+                                      : null,
+                                  child: (userData['photoUrl'] as String?)?.isEmpty != false
+                                      ? const Icon(Icons.person, size: 20)
+                                      : null,
+                                ),
+                                title: Text(userName),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.add_circle, color: Colors.green),
+                                  onPressed: () async {
+                                    try {
+                                      await databaseService.addUserToChat(widget.chatId, user.id);
+                                      setDialogState(() {});
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Member added successfully')),
+                                        );
+                                      }
+                                      // Refresh dialog
+                                      Navigator.pop(context);
+                                      _showGroupInfo();
+                                    } catch (e) {
+                                      if (mounted) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(content: Text('Error: $e')),
+                                        );
+                                      }
+                                    }
+                                  },
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('Close'),
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      Log.e('Error showing group info', 'CHAT_SCREEN_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading group info: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     // Responsive layout for web and mobile
@@ -1218,9 +1466,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           if (widget.isGroupChat)
             IconButton(
               icon: const Icon(Icons.group),
-              onPressed: () {
-                // TODO: Show group info
-              },
+              onPressed: () => _showGroupInfo(),
             ),
         ],
       ),

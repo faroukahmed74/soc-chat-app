@@ -25,12 +25,12 @@
 
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:encrypt/encrypt.dart' as encrypt_lib;
 
 import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../config/database_config.dart';
 import '../services/database_service.dart';
+import '../services/physical_auth_service.dart';
 import 'chat_screen_mongodb.dart';
 
 class CreateGroupScreen extends StatefulWidget {
@@ -49,6 +49,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
   List<DocumentSnapshot>? _allUsers;
   List<DocumentSnapshot>? _filteredUsers;
   late ThemeService _themeService;
+  String? _currentUserId;
 
   @override
   void initState() {
@@ -65,6 +66,10 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
   Future<void> _fetchAllUsers() async {
     try {
+      // Get current user ID
+      final authService = PhysicalAuthService();
+      _currentUserId = await authService.getCurrentUserId();
+      
       // Get current user ID from stored token
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
@@ -74,8 +79,11 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       final databaseService = await DatabaseConfig.getDatabaseService();
       final users = await databaseService.getAllUsers();
       
+      // Filter out current user from the list
+      final filteredUsers = users.where((user) => user.id != _currentUserId).toList();
+      
       setState(() {
-        _allUsers = users;
+        _allUsers = filteredUsers;
         _filteredUsers = _allUsers;
       });
     } catch (e) {
@@ -96,6 +104,9 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     } else {
       setState(() {
         _filteredUsers = _allUsers!.where((user) {
+          // Exclude current user from filtered results
+          if (user.id == _currentUserId) return false;
+          
           final data = user.data();
           final username = (data['username'] ?? '').toString().toLowerCase();
           final displayName = (data['displayName'] ?? '').toString().toLowerCase();

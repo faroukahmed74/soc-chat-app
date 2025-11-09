@@ -43,6 +43,7 @@ abstract class DatabaseService {
   Future<DocumentReference> findOrCreateChat(String type, String name, List<String> memberIds);
   Future<void> addUserToChat(String chatId, String userId);
   Future<void> removeUserFromChat(String chatId, String userId);
+  Future<void> updateMemberRole(String chatId, String userId, String role);
 }
 
 /// Physical Server implementation using MongoDB REST API
@@ -307,6 +308,28 @@ class MongoDBService implements DatabaseService {
       
       if (response.statusCode != 200) {
         throw Exception('Failed to remove user from chat: ${response.statusCode}');
+      }
+    } catch (e) {
+      throw Exception('Network error: $e');
+    }
+  }
+  
+  @override
+  Future<void> updateMemberRole(String chatId, String userId, String role) async {
+    try {
+      final response = await http.put(
+        Uri.parse('$baseUrl/api/chats/$chatId/members/$userId/role'),
+        headers: {
+          'Authorization': 'Bearer $authToken',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({'role': role}),
+      );
+      
+      if (response.statusCode != 200) {
+        final errorBody = json.decode(response.body);
+        throw Exception(errorBody['error'] ?? 'Failed to update member role: ${response.statusCode}');
       }
     } catch (e) {
       throw Exception('Network error: $e');

@@ -1353,11 +1353,22 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
       }
     }
     
+    // Create memberRoles object - creator is group admin (not app admin), others are members
+    const memberRoles = {};
+    memberRoles[currentUserIdStr] = 'admin'; // Creator is group admin (group-level, not app-level)
+    for (const memberId of finalMemberIds) {
+      const memberIdStr = memberId.toString();
+      if (memberIdStr !== currentUserIdStr) {
+        memberRoles[memberIdStr] = 'member'; // Others are members
+      }
+    }
+    
     // Create new chat
     const chat = {
       type: type || 'group',
       name: trimmedName,
       members: finalMemberIds,
+      memberRoles: memberRoles, // Store member roles
       createdBy: currentUserId,
       createdAt: new Date(),
       updatedAt: new Date(),
@@ -1388,6 +1399,7 @@ app.post('/api/chats', authenticateToken, async (req, res) => {
       name: createdChat.name,
       type: createdChat.type,
       members: createdChat.members.map(id => id.toString()),
+      memberRoles: createdChat.memberRoles || {},
       createdBy: createdChat.createdBy.toString(),
       createdAt: createdChat.createdAt,
       updatedAt: createdChat.updatedAt,
@@ -1463,18 +1475,129 @@ app.post('/api/chats/find-existing', authenticateToken, async (req, res) => {
 app.put('/api/chats/:chatId/members', authenticateToken, async (req, res) => {
   try {
     const { userId, action } = req.body;
+    const chatId = req.params.chatId;
+    const currentUserIdStr = req.user.id;
+    
+    // Get chat to check permissions
+    const chat = await db.collection('chats').findOne({ _id: new ObjectId(chatId) });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+    
+    // Check if user is a member
+    const isMember = chat.members.some(m => m.toString() === currentUserIdStr);
+    if (!isMember) {
+      return res.status(403).json({ error: 'You are not a member of this group' });
+    }
+    
+    // Get user's role in the group (group admin is different from app admin)
+    const memberRoles = chat.memberRoles || {};
+    const userRole = memberRoles[currentUserIdStr] || 'member';
+    const isCreator = chat.createdBy && chat.createdBy.toString() === currentUserIdStr;
+    const isGroupAdmin = userRole === 'admin' || isCreator; // Group admin, not app admin
+    const isGroupManager = userRole === 'manager' || isGroupAdmin;
     
     if (action === 'add') {
+      // Only group admins and group managers can add members (not app admins)
+      if (!isGroupManager) {
+        return res.status(403).json({ error: 'Only group admins and managers can add members' });
+      }
+      
+      // Check if user is already a member
+      const isAlreadyMember = chat.members.some(m => m.toString() === userId);
+      if (isAlreadyMember) {
+        return res.status(400).json({ error: 'User is already a member' });
+      }
+      
+      // Add member with default 'member' role
       await db.collection('chats').updateOne(
-        { _id: new ObjectId(req.params.chatId) },
-        { $addToSet: { members: new ObjectId(userId) } }
+        { _id: new ObjectId(chatId) },
+        { 
+          $addToSet: { members: new ObjectId(userId) },
+          $set: { 
+            [`memberRoles.${userId}`]: 'member',
+            updatedAt: new Date()
+          }
+        }
       );
+      
+      res.json({ success: true });
     } else if (action === 'remove') {
+      // Only group admins can remove members (not app admins, only group admins)
+      if (!isGroupAdmin) {
+        return res.status(403).json({ error: 'Only group admins can remove members' });
+      }
+      
+      // Creator cannot remove themselves
+      if (isCreator && userId === currentUserIdStr) {
+        return res.status(400).json({ error: 'Group creator cannot remove themselves' });
+      }
+      
       await db.collection('chats').updateOne(
-        { _id: new ObjectId(req.params.chatId) },
-        { $pull: { members: new ObjectId(userId) } }
+        { _id: new ObjectId(chatId) },
+        { 
+          $pull: { members: new ObjectId(userId) },
+          $unset: { [`memberRoles.${userId}`]: '' },
+          $set: { updatedAt: new Date() }
+        }
       );
+      
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ error: 'Invalid action. Use "add" or "remove"' });
     }
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Update member role (only group creator can do this)
+app.put('/api/chats/:chatId/members/:userId/role', authenticateToken, async (req, res) => {
+  try {
+    const chatId = req.params.chatId;
+    const targetUserId = req.params.userId;
+    const { role } = req.body;
+    const currentUserIdStr = req.user.id;
+    
+    // Validate role
+    if (!role || !['member', 'manager'].includes(role)) {
+      return res.status(400).json({ error: 'Invalid role. Must be "member" or "manager"' });
+    }
+    
+    // Get chat
+    const chat = await db.collection('chats').findOne({ _id: new ObjectId(chatId) });
+    if (!chat) {
+      return res.status(404).json({ error: 'Chat not found' });
+    }
+    
+    // Check if current user is the creator
+    const isCreator = chat.createdBy && chat.createdBy.toString() === currentUserIdStr;
+    if (!isCreator) {
+      return res.status(403).json({ error: 'Only the group creator can change member roles' });
+    }
+    
+    // Check if target user is a member
+    const isMember = chat.members.some(m => m.toString() === targetUserId);
+    if (!isMember) {
+      return res.status(400).json({ error: 'User is not a member of this group' });
+    }
+    
+    // Cannot change creator's role
+    if (targetUserId === currentUserIdStr) {
+      return res.status(400).json({ error: 'Cannot change the group creator\'s role' });
+    }
+    
+    // Update role
+    await db.collection('chats').updateOne(
+      { _id: new ObjectId(chatId) },
+      { 
+        $set: { 
+          [`memberRoles.${targetUserId}`]: role,
+          updatedAt: new Date()
+        }
+      }
+    );
     
     res.json({ success: true });
   } catch (err) {

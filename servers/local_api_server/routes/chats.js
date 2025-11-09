@@ -245,11 +245,14 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
         _id: chat._id.toString(),
         id: chat._id.toString(),
         name: chat.name,
+        type: chat.type || 'group',
         members: chat.members.map(id => id.toString()),
+        memberRoles: chat.memberRoles || {},
         createdBy: chat.createdBy.toString(),
         createdAt: chat.createdAt,
         updatedAt: chat.updatedAt,
-        lastMessage: chat.lastMessage
+        lastMessage: chat.lastMessage,
+        lastMessageTime: chat.lastMessageTime
       }
     });
   } catch (error) {
