@@ -636,7 +636,9 @@ app.put('/api/auth/profile', async (req, res) => {
     }
 
     const decoded = jwt.verify(token, JWT_SECRET);
-    const { displayName, email, phone, password } = req.body;
+    // Support both 'phone' and 'phoneNumber' for compatibility
+    const { displayName, email, phone, phoneNumber, password } = req.body;
+    const finalPhoneNumber = phoneNumber || phone || '';
     
     if (!displayName || !email) {
       return res.status(400).json({ message: 'Display name and email are required' });
@@ -654,8 +656,10 @@ app.put('/api/auth/profile', async (req, res) => {
 
     const updateData = {
       displayName: displayName.trim(),
+      name: displayName.trim(), // Also update name for backward compatibility
       email: email.trim(),
-      phone: phone?.trim() || '',
+      phoneNumber: finalPhoneNumber.trim(),
+      phone: finalPhoneNumber.trim(), // Also save as phone for backward compatibility
       updatedAt: new Date()
     };
 
@@ -704,6 +708,7 @@ app.post('/api/auth/register', async (req, res) => {
       }
       if (finalDisplayName && !existingUser.displayName) {
         updateFields.displayName = finalDisplayName;
+        updateFields.name = finalDisplayName; // Also update name for backward compatibility
       }
       
       if (Object.keys(updateFields).length > 0) {
@@ -735,12 +740,13 @@ app.post('/api/auth/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    // Create user
+    // Create user - save as displayName (primary) and name (for backward compatibility)
     const now = new Date();
     const user = {
       email,
       password: hashedPassword,
       displayName: finalDisplayName,
+      name: finalDisplayName, // Also save as name for backward compatibility
       phoneNumber: phoneNumber || '',
       role: 'user',
       createdAt: now,
@@ -805,9 +811,9 @@ app.post('/api/auth/login', async (req, res) => {
       }
     );
     
-    // Generate token
+    // Generate token - ensure id is always a string
     const token = jwt.sign(
-      { id: user._id, email: user.email, displayName: user.displayName, role: user.role || 'user' },
+      { id: user._id.toString(), email: user.email, displayName: user.displayName, role: user.role || 'user' },
       JWT_SECRET,
       { expiresIn: '7d' }
     );
@@ -995,10 +1001,13 @@ app.get('/api/users', authenticateToken, async (req, res) => {
       email: user.email,
       displayName: user.displayName || user.name,
       username: user.username || user.email.split('@')[0],
+      phoneNumber: user.phoneNumber || user.phone || '',
+      phone: user.phoneNumber || user.phone || '', // Also include as phone for backward compatibility
       status: user.status || 'offline',
       role: user.role || 'user',
       createdAt: user.createdAt,
-      profilePicture: user.profilePicture
+      profilePicture: user.profilePicture,
+      photoUrl: user.photoUrl || user.profilePicture || ''
     }));
     
     res.json(transformedUsers);
@@ -1026,6 +1035,8 @@ app.get('/api/users/:userId', authenticateToken, async (req, res) => {
       username: user.username || '',
       displayName: user.displayName || user.username || '',
       email: user.email || '',
+      phoneNumber: user.phoneNumber || user.phone || '',
+      phone: user.phoneNumber || user.phone || '', // Also include as phone for backward compatibility
       role: user.role || 'user',
       status: user.status || 'offline',
       // Ensure isOnline and lastSeen are always present with proper formatting
@@ -1888,22 +1899,33 @@ io.use(async (socket, next) => {
   
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
-    // Handle both uid and id for compatibility
-    socket.userId = decoded.uid || decoded.id;
+    // Handle both uid and id for compatibility, ensure it's always a string
+    const userId = decoded.uid || decoded.id;
+    socket.userId = userId ? userId.toString() : null;
     socket.user = decoded;
     
-    console.log(`Socket authenticated for user: ${socket.userId}`);
+    if (!socket.userId) {
+      return next(new Error('Authentication error: No user ID in token'));
+    }
+    
+    console.log(`Socket authenticated for user: ${socket.userId} (type: ${typeof socket.userId})`);
     
     // Update user's online status
     if (db) {
-      await db.collection('users').updateOne(
-        { _id: new ObjectId(decoded.uid) },
-        { $set: { isOnline: true, lastSeen: new Date() } }
-      );
+      try {
+        await db.collection('users').updateOne(
+          { _id: new ObjectId(socket.userId) },
+          { $set: { isOnline: true, lastSeen: new Date() } }
+        );
+      } catch (updateError) {
+        console.error(`Failed to update online status for user ${socket.userId}:`, updateError);
+        // Don't fail authentication if update fails
+      }
     }
     
     next();
   } catch (error) {
+    console.error('Socket authentication error:', error);
     return next(new Error('Authentication error: Invalid token'));
   }
 });
@@ -1915,9 +1937,26 @@ io.on('connection', async (socket) => {
   console.log(`   User ID type: ${typeof socket.userId}`);
   console.log(`   User ID value: "${socket.userId}"`);
   
-  // Join user to their personal room
+  // Join user to their personal room using socket.userId
   socket.join(socket.userId);
   console.log(`✅ User ${socket.userId} joined personal notification room: "${socket.userId}"`);
+  
+  // Also ensure user is joined to their MongoDB _id room (in case of format mismatch)
+  // This is a safety measure - if socket.userId already matches _id, this is a no-op
+  if (db && socket.userId) {
+    try {
+      const user = await db.collection('users').findOne({ _id: new ObjectId(socket.userId) });
+      if (user) {
+        const mongoId = user._id.toString();
+        if (mongoId !== socket.userId) {
+          socket.join(mongoId);
+          console.log(`✅ User also joined MongoDB _id room: "${mongoId}"`);
+        }
+      }
+    } catch (error) {
+      console.error(`Error joining MongoDB _id room for user ${socket.userId}:`, error);
+    }
+  }
   
   // Debug: List all rooms after join
   setTimeout(() => {

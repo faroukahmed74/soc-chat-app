@@ -82,7 +82,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _userData = data;
           _displayNameController.text = data['displayName'] ?? '';
           _emailController.text = data['email'] ?? '';
-          _phoneController.text = data['phone'] ?? '';
+          // Support both phoneNumber and phone for backward compatibility
+          _phoneController.text = data['phoneNumber'] ?? data['phone'] ?? '';
         });
       } else if (response.statusCode == 404) {
         // Server needs to be restarted - show helpful message
@@ -135,7 +136,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final updateData = {
         'displayName': _displayNameController.text.trim(),
         'email': _emailController.text.trim(),
-        'phone': _phoneController.text.trim(),
+        'phoneNumber': _phoneController.text.trim(),  // Use phoneNumber for consistency
+        'phone': _phoneController.text.trim(),       // Also send as phone for backward compatibility
       };
 
       if (_passwordController.text.isNotEmpty) {
@@ -703,6 +705,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           
           _buildInfoRow('Display Name', _userData?['displayName'] ?? 'Loading...'),
           _buildInfoRow('Email', _userData?['email'] ?? 'Loading...'),
+          _buildInfoRow('Phone Number', (_userData?['phoneNumber'] ?? _userData?['phone'] ?? 'Not provided').toString()),
           _buildInfoRow('User ID', _userData?['_id'] ?? 'Loading...'),
           _buildInfoRow('Status', _userData?['isActive'] == true ? 'Active' : 'Inactive'),
           _buildInfoRow('Created', _formatDate(_userData?['createdAt'])),

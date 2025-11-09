@@ -35,10 +35,13 @@ async function connectDB() {
 // Register a new user
 router.post('/register', async (req, res) => {
   try {
-    const { email, password, name, phoneNumber } = req.body;
+    const { email, password, name, displayName, phoneNumber } = req.body;
+    
+    // Support both 'displayName' and 'name' for compatibility
+    const finalDisplayName = displayName || name;
     
     // Validate input
-    if (!email || !password || !name) {
+    if (!email || !password || !finalDisplayName) {
       return res.status(400).json({ message: 'All fields are required' });
     }
     
@@ -48,13 +51,15 @@ router.post('/register', async (req, res) => {
     // Check if user already exists
     const existingUser = await usersCollection.findOne({ email });
     if (existingUser) {
-      // If user exists but phone number or name is missing, update them
+      // If user exists but phone number or displayName is missing, update them
       const updateFields = {};
       if (phoneNumber && !existingUser.phoneNumber) {
         updateFields.phoneNumber = phoneNumber;
       }
-      if (name && !existingUser.name) {
-        updateFields.name = name;
+      if (finalDisplayName && !existingUser.displayName) {
+        updateFields.displayName = finalDisplayName;
+        // Also update name for backward compatibility
+        updateFields.name = finalDisplayName;
       }
       
       if (Object.keys(updateFields).length > 0) {
@@ -68,7 +73,8 @@ router.post('/register', async (req, res) => {
           user: {
             id: existingUser._id.toString(),
             email: existingUser.email,
-            name: existingUser.name || name,
+            displayName: existingUser.displayName || finalDisplayName,
+            name: existingUser.displayName || existingUser.name || finalDisplayName,
             phoneNumber: existingUser.phoneNumber || phoneNumber || '',
             role: existingUser.role || 'user'
           }
@@ -81,12 +87,13 @@ router.post('/register', async (req, res) => {
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     
-    // Create user
+    // Create user - save as displayName (primary) and name (for backward compatibility)
     const now = new Date();
     const newUser = {
       email,
       password: hashedPassword,
-      name,
+      displayName: finalDisplayName,
+      name: finalDisplayName, // Also save as name for backward compatibility
       phoneNumber: phoneNumber || '',
       role: 'user',
       status: 'active',
@@ -100,7 +107,7 @@ router.post('/register', async (req, res) => {
     
     // Create token
     const token = jwt.sign(
-      { id: result.insertedId.toString(), role: 'user', email },
+      { id: result.insertedId.toString(), role: 'user', email, displayName: finalDisplayName },
       JWT_SECRET,
       { expiresIn: '1d' }
     );
@@ -111,7 +118,8 @@ router.post('/register', async (req, res) => {
       user: {
         id: result.insertedId.toString(),
         email,
-        name,
+        displayName: finalDisplayName,
+        name: finalDisplayName,
         phoneNumber: phoneNumber || '',
         role: 'user'
       }
@@ -173,7 +181,9 @@ router.post('/login', async (req, res) => {
       user: {
         id: user._id.toString(),
         email: user.email,
-        name: user.name,
+        displayName: user.displayName || user.name || '',
+        name: user.displayName || user.name || '',
+        phoneNumber: user.phoneNumber || '',
         role: user.role || 'user'
       }
     });
@@ -208,7 +218,9 @@ router.get('/user', async (req, res) => {
       user: {
         id: user._id.toString(),
         email: user.email,
-        name: user.name,
+        displayName: user.displayName || user.name || '',
+        name: user.displayName || user.name || '',
+        phoneNumber: user.phoneNumber || '',
         role: user.role || 'user'
       }
     });
@@ -292,7 +304,9 @@ router.put('/profile', async (req, res) => {
     const database = await connectDB();
     const usersCollection = database.collection('users');
     
-    const { displayName, email, phone, bio, password } = req.body;
+    // Support both 'phone' and 'phoneNumber' for compatibility
+    const { displayName, email, phone, phoneNumber, bio, password } = req.body;
+    const finalPhoneNumber = phoneNumber || phone || '';
     
     // Validate required fields
     if (!displayName || !email) {
@@ -311,8 +325,10 @@ router.put('/profile', async (req, res) => {
 
     const updateData = {
       displayName: displayName.trim(),
+      name: displayName.trim(), // Also update name for backward compatibility
       email: email.trim(),
-      phone: phone?.trim() || '',
+      phoneNumber: finalPhoneNumber.trim(),
+      phone: finalPhoneNumber.trim(), // Also save as phone for backward compatibility
       bio: bio?.trim() || '',
       updatedAt: new Date()
     };

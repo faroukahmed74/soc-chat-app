@@ -156,6 +156,112 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     return [...matches, ...rest];
   }
 
+  void _showUserProfile(DocumentSnapshot user) {
+    final data = user.data() as Map<String, dynamic>? ?? {};
+    final displayName = (data['displayName'] ?? data['name'] ?? '').toString();
+    final email = (data['email'] ?? '').toString();
+    final phoneNumber = (data['phoneNumber'] ?? data['phone'] ?? '').toString();
+    final photoUrl = (data['photoUrl'] ?? '').toString();
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('User Profile'),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // Profile Picture
+              Center(
+                child: CircleAvatar(
+                  radius: 50,
+                  backgroundImage: photoUrl.isNotEmpty
+                      ? NetworkImage(photoUrl)
+                      : null,
+                  child: photoUrl.isEmpty
+                      ? const Icon(Icons.person, size: 50)
+                      : null,
+                ),
+              ),
+              const SizedBox(height: 20),
+              
+              // Display Name
+              _buildProfileField(
+                icon: Icons.person,
+                label: 'Display Name',
+                value: displayName.isNotEmpty ? displayName : 'Not provided',
+              ),
+              const SizedBox(height: 16),
+              
+              // Email
+              _buildProfileField(
+                icon: Icons.email,
+                label: 'Email',
+                value: email.isNotEmpty ? email : 'Not provided',
+              ),
+              const SizedBox(height: 16),
+              
+              // Phone Number
+              _buildProfileField(
+                icon: Icons.phone,
+                label: 'Phone Number',
+                value: phoneNumber.isNotEmpty ? phoneNumber : 'Not provided',
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Close'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _startChat(user.id);
+            },
+            child: const Text('Start Chat'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildProfileField({required IconData icon, required String label, required String value}) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Icon(icon, size: 20, color: _themeService.isDarkMode ? Colors.white70 : Colors.grey[700]),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  color: _themeService.isDarkMode ? Colors.white70 : Colors.grey[600],
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                value,
+                style: TextStyle(
+                  fontSize: 16,
+                  color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                  fontWeight: FontWeight.w400,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
   Future<void> _startChat(String otherUserId) async {
     try {
       // Validate other user ID
@@ -390,27 +496,60 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                                   : null,
                             ),
                             title: Text(
-                              username.isNotEmpty ? username : (displayName.isNotEmpty ? displayName : 'Unknown User'),
+                              displayName.isNotEmpty ? displayName : (username.isNotEmpty ? username : 'Unknown User'),
                               style: const TextStyle(fontWeight: FontWeight.w500),
                             ),
-                            subtitle: Text(email),
+                            subtitle: Text(
+                              email.isNotEmpty ? email : 'No email provided',
+                              style: TextStyle(
+                                fontSize: 13,
+                                color: _themeService.isDarkMode ? Colors.white70 : Colors.grey[600],
+                              ),
+                            ),
                             trailing: isWideScreen
-                                ? ElevatedButton.icon(
-                                    icon: const Icon(Icons.chat, size: 16),
-                                    label: const Text('Chat'),
-                                    style: ElevatedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                    ),
-                                    onPressed: () => _startChat(userId),
+                                ? Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      ElevatedButton.icon(
+                                        icon: const Icon(Icons.person, size: 16),
+                                        label: const Text('Profile'),
+                                        style: ElevatedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          backgroundColor: Colors.grey[600],
+                                        ),
+                                        onPressed: () => _showUserProfile(user),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      ElevatedButton.icon(
+                                        icon: const Icon(Icons.chat, size: 16),
+                                        label: const Text('Chat'),
+                                        style: ElevatedButton.styleFrom(
+                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                        ),
+                                        onPressed: () => _startChat(userId),
+                                      ),
+                                    ],
                                   )
                                 : PopupMenuButton<String>(
                                     icon: const Icon(Icons.more_vert),
                                     onSelected: (value) {
                                       if (value == 'chat') {
                                         _startChat(userId);
+                                      } else if (value == 'profile') {
+                                        _showUserProfile(user);
                                       }
                                     },
                                     itemBuilder: (context) => [
+                                      const PopupMenuItem(
+                                        value: 'profile',
+                                        child: Row(
+                                          children: [
+                                            Icon(Icons.person, color: Colors.grey),
+                                            SizedBox(width: 8),
+                                            Text('View Profile'),
+                                          ],
+                                        ),
+                                      ),
                                       const PopupMenuItem(
                                         value: 'chat',
                                         child: Row(

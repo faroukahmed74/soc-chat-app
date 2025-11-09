@@ -29,7 +29,8 @@ class LocalAuthService {
           'ngrok-skip-browser-warning': 'true',
         },
         body: json.encode({
-          'name': name,
+          'displayName': name,  // Send as displayName for consistency
+          'name': name,           // Also send as name for backward compatibility
           'email': email,
           'password': password,
           'phoneNumber': phoneNumber,

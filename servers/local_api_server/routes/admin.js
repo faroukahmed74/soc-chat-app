@@ -169,6 +169,8 @@ router.get('/users', verifyAdminToken, async (req, res) => {
         id: user._id,
         email: user.email,
         displayName: user.displayName,
+        phoneNumber: user.phoneNumber || user.phone || '',
+        phone: user.phoneNumber || user.phone || '', // Also include as phone for backward compatibility
         role: user.role,
         status: user.status,
         createdAt: user.createdAt,
@@ -532,36 +534,102 @@ router.post('/broadcast', verifyAdminToken, async (req, res) => {
     }
     
     // 🔥 EMIT REAL-TIME NOTIFICATIONS TO ALL USERS
-    for (const user of users) {
-      const userId = user._id.toString();
-      
-      // Emit notification event
-      io.to(userId).emit('notification', {
-        title: '📢 Broadcast Message',
-        body: message.length > 50 ? message.substring(0, 50) + '...' : message,
-        data: {
-          type: 'broadcast',
-          senderId: req.user.userId,
-          senderName: senderName,
-          message: message,
-          timestamp: new Date(),
-        },
-        timestamp: new Date(),
-      });
-      
-      // Also send broadcast_notification event
-      io.to(userId).emit('broadcast_notification', {
-        title: '📢 Broadcast',
-        body: message,
-        chatId: null,
-        senderId: req.user.userId,
-        senderName: senderName,
-        messageType: type || 'text',
-        timestamp: new Date(),
-      });
+    // Get all connected user IDs from active sockets
+    const connectedUserIds = new Set();
+    const allSockets = await io.fetchSockets();
+    
+    allSockets.forEach(socket => {
+      if (socket.userId) {
+        connectedUserIds.add(socket.userId.toString());
+      }
+    });
+    
+    console.log(`📢 Broadcast: Found ${connectedUserIds.size} connected users out of ${users.length} total users`);
+    if (connectedUserIds.size > 0) {
+      console.log(`📢 Sample connected user IDs: ${Array.from(connectedUserIds).slice(0, 5).join(', ')}${connectedUserIds.size > 5 ? '...' : ''}`);
     }
     
-    console.log(`📢 Broadcast sent to ${users.length} users via Socket.IO`);
+    // Create a map of user._id to user for quick lookup
+    const userMap = new Map();
+    users.forEach(user => {
+      const userId = user._id.toString();
+      userMap.set(userId, user);
+      
+      // Also check if user has uid field that might match socket.userId
+      if (user.uid) {
+        userMap.set(user.uid.toString(), user);
+      }
+    });
+    
+    let connectedCount = 0;
+    let disconnectedCount = 0;
+    
+    // Create notification payload
+    const notificationPayload = {
+      title: '📢 Broadcast Message',
+      body: message.length > 50 ? message.substring(0, 50) + '...' : message,
+      data: {
+        type: 'broadcast',
+        senderId: req.user.userId,
+        senderName: senderName,
+        message: message,
+        timestamp: new Date(),
+      },
+      timestamp: new Date(),
+    };
+    
+    const broadcastPayload = {
+      title: '📢 Broadcast',
+      body: message,
+      chatId: null,
+      senderId: req.user.userId,
+      senderName: senderName,
+      messageType: type || 'text',
+      timestamp: new Date(),
+    };
+    
+    // First, emit to all connected users using their socket.userId
+    for (const connectedUserId of connectedUserIds) {
+      // Find the corresponding MongoDB user
+      const user = userMap.get(connectedUserId);
+      if (user) {
+        const userId = user._id.toString();
+        connectedCount++;
+        console.log(`📤 Emitting broadcast to connected user: ${userId} (socket.userId: ${connectedUserId})`);
+        
+        // Emit to the room using the socket.userId (which is what they joined with)
+        io.to(connectedUserId).emit('notification', notificationPayload);
+        io.to(connectedUserId).emit('broadcast_notification', broadcastPayload);
+      } else {
+        console.log(`⚠️ Connected user ${connectedUserId} not found in database - emitting anyway`);
+        // Still try to emit in case the room exists
+        io.to(connectedUserId).emit('notification', notificationPayload);
+        io.to(connectedUserId).emit('broadcast_notification', broadcastPayload);
+        connectedCount++;
+      }
+    }
+    
+    // Also emit to all users using MongoDB _id format as fallback
+    // This ensures we catch users even if socket.userId format doesn't match
+    for (const user of users) {
+      const userId = user._id.toString();
+      // Only emit if we haven't already emitted to this user via socket.userId
+      if (!connectedUserIds.has(userId) && (!user.uid || !connectedUserIds.has(user.uid.toString()))) {
+        // Try emitting anyway - the room might exist with this format
+        io.to(userId).emit('notification', notificationPayload);
+        io.to(userId).emit('broadcast_notification', broadcastPayload);
+      }
+    }
+    
+    // Count disconnected users
+    for (const user of users) {
+      const userId = user._id.toString();
+      if (!connectedUserIds.has(userId) && (!user.uid || !connectedUserIds.has(user.uid.toString()))) {
+        disconnectedCount++;
+      }
+    }
+    
+    console.log(`📢 Broadcast summary: ${connectedCount} connected users notified, ${disconnectedCount} offline users (message stored)`);
     
     res.json({
       message: 'Broadcast sent successfully',
