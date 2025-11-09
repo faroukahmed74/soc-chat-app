@@ -500,14 +500,24 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           );
           // Update local user data immediately
           final userIndex = _users.indexWhere((u) => (u['_id'] ?? u['id']) == userId);
+          final wasLocked = userIndex != -1 ? (_users[userIndex]['isLocked'] ?? false) : false;
           if (userIndex != -1) {
             _users[userIndex]['isLocked'] = true;
             _users[userIndex]['lockedAt'] = DateTime.now().toIso8601String();
             _users[userIndex]['lockedReason'] = confirmed['reason'];
           }
           setState(() {}); // Force UI update
-          // Also refresh from server to ensure consistency
+          // Also refresh from server to ensure consistency (with a small delay to ensure server has updated)
+          await Future.delayed(const Duration(milliseconds: 500));
           await _loadUsers();
+          // Ensure the locked state is preserved after server refresh
+          final refreshedUserIndex = _users.indexWhere((u) => (u['_id'] ?? u['id']) == userId);
+          if (refreshedUserIndex != -1 && !(_users[refreshedUserIndex]['isLocked'] ?? false)) {
+            _users[refreshedUserIndex]['isLocked'] = true;
+            _users[refreshedUserIndex]['lockedAt'] = DateTime.now().toIso8601String();
+            _users[refreshedUserIndex]['lockedReason'] = confirmed['reason'];
+            setState(() {});
+          }
         }
       } catch (e) {
         Log.e('Error locking user', 'ADMIN_PANEL_MONGODB', e);
@@ -571,8 +581,17 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
             _users[userIndex]['lockedReason'] = null;
           }
           setState(() {}); // Force UI update
-          // Also refresh from server to ensure consistency
+          // Also refresh from server to ensure consistency (with a small delay to ensure server has updated)
+          await Future.delayed(const Duration(milliseconds: 500));
           await _loadUsers();
+          // Ensure the unlocked state is preserved after server refresh
+          final refreshedUserIndex = _users.indexWhere((u) => (u['_id'] ?? u['id']) == userId);
+          if (refreshedUserIndex != -1 && (_users[refreshedUserIndex]['isLocked'] ?? false)) {
+            _users[refreshedUserIndex]['isLocked'] = false;
+            _users[refreshedUserIndex]['lockedAt'] = null;
+            _users[refreshedUserIndex]['lockedReason'] = null;
+            setState(() {});
+          }
         }
       } catch (e) {
         Log.e('Error unlocking user', 'ADMIN_PANEL_MONGODB', e);
@@ -1998,6 +2017,14 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   }
 
   Future<void> _showMobileUserMenu(BuildContext context, String userId, String name, String role, bool disabled, Map<String, dynamic> user) async {
+    // Get the latest user state from _users list to ensure we have current data
+    final currentUser = _users.firstWhere(
+      (u) => (u['_id'] ?? u['id']) == userId,
+      orElse: () => user,
+    );
+    final currentDisabled = currentUser['disabled'] ?? false;
+    final currentIsLocked = currentUser['isLocked'] ?? false;
+    
     final result = await showModalBottomSheet<String>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -2051,15 +2078,15 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
               ),
               ListTile(
                 leading: Icon(
-                  disabled ? Icons.play_circle : Icons.pause_circle,
+                  currentDisabled ? Icons.play_circle : Icons.pause_circle,
                   color: AppDesignSystem.warningColor,
                 ),
-                title: Text(disabled ? 'Enable User' : 'Disable User'),
+                title: Text(currentDisabled ? 'Enable User' : 'Disable User'),
                 onTap: () {
                   Navigator.pop(context, 'toggle_status');
                 },
               ),
-              if (!(user['isLocked'] ?? false))
+              if (!currentIsLocked)
                 ListTile(
                   leading: const Icon(Icons.lock, color: Colors.orange),
                   title: const Text('Lock User'),
@@ -2067,7 +2094,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                     Navigator.pop(context, 'lock');
                   },
                 ),
-              if (user['isLocked'] ?? false)
+              if (currentIsLocked)
                 ListTile(
                   leading: const Icon(Icons.lock_open, color: Colors.green),
                   title: const Text('Unlock User'),
@@ -2104,7 +2131,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           await _updateUserPassword(userId, name);
           break;
         case 'toggle_status':
-          await _toggleUserStatusAction(userId, !disabled);
+          await _toggleUserStatusAction(userId, !currentDisabled);
           break;
         case 'lock':
           await _lockUser(userId);
@@ -2326,8 +2353,15 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
             _users[userIndex]['disabled'] = disabled;
           }
           setState(() {}); // Force UI update
-          // Also refresh from server to ensure consistency
+          // Also refresh from server to ensure consistency (with a small delay to ensure server has updated)
+          await Future.delayed(const Duration(milliseconds: 500));
           await _loadUsers();
+          // Ensure the disabled state is preserved after server refresh
+          final refreshedUserIndex = _users.indexWhere((u) => (u['_id'] ?? u['id']) == userId);
+          if (refreshedUserIndex != -1 && (_users[refreshedUserIndex]['disabled'] ?? false) != disabled) {
+            _users[refreshedUserIndex]['disabled'] = disabled;
+            setState(() {});
+          }
         }
       }
     } catch (e) {
@@ -2974,7 +3008,13 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                     await _updateUserPassword(userId, name);
                                     break;
                                   case 'toggle_status':
-                                    await _toggleUserStatusAction(userId, !disabled);
+                                    // Get current state from _users list
+                                    final currentUser = _users.firstWhere(
+                                      (u) => (u['_id'] ?? u['id']) == userId,
+                                      orElse: () => user,
+                                    );
+                                    final currentDisabled = currentUser['disabled'] ?? false;
+                                    await _toggleUserStatusAction(userId, !currentDisabled);
                                     break;
                                   case 'lock':
                                     await _lockUser(userId);
@@ -2987,7 +3027,16 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                     break;
                                 }
                               },
-                              itemBuilder: (context) => [
+                              itemBuilder: (context) {
+                                // Get current user state from _users list to ensure we have latest data
+                                final currentUser = _users.firstWhere(
+                                  (u) => (u['_id'] ?? u['id']) == userId,
+                                  orElse: () => user,
+                                );
+                                final currentDisabled = currentUser['disabled'] ?? false;
+                                final currentIsLocked = currentUser['isLocked'] ?? false;
+                                
+                                return [
                                   PopupMenuItem(
                                   value: 'change_role',
                                     child: Row(
@@ -3023,15 +3072,15 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                     child: Row(
                                       children: [
                                       Icon(
-                                        disabled ? Icons.play_circle : Icons.pause_circle, 
+                                        currentDisabled ? Icons.play_circle : Icons.pause_circle, 
                                         color: AppDesignSystem.warningColor,
                                       ),
                                         const SizedBox(width: 8),
-                                      Text(disabled ? 'Enable User' : 'Disable User'),
+                                      Text(currentDisabled ? 'Enable User' : 'Disable User'),
                                       ],
                                     ),
                                   ),
-                                if (!(user['isLocked'] ?? false))
+                                if (!currentIsLocked)
                                 PopupMenuItem(
                                     value: 'lock',
                                   child: Row(
@@ -3042,7 +3091,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                       ],
                                     ),
                                   ),
-                                if (user['isLocked'] ?? false)
+                                if (currentIsLocked)
                                   PopupMenuItem(
                                     value: 'unlock',
                                     child: Row(
@@ -3063,7 +3112,8 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                     ],
                                   ),
                                 ),
-                              ],
+                                ];
+                              },
                             ),
                           ),
                         );

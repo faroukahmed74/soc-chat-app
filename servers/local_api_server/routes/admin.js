@@ -167,12 +167,17 @@ router.get('/users', verifyAdminToken, async (req, res) => {
     res.json({
       users: users.map(user => ({
         id: user._id,
+        _id: user._id,
         email: user.email,
         displayName: user.displayName,
         phoneNumber: user.phoneNumber || user.phone || '',
         phone: user.phoneNumber || user.phone || '', // Also include as phone for backward compatibility
         role: user.role,
         status: user.status,
+        disabled: user.disabled || false,
+        isLocked: user.isLocked || false,
+        lockedAt: user.lockedAt || null,
+        lockedReason: user.lockedReason || null,
         createdAt: user.createdAt,
         lastLoginAt: user.lastLoginAt,
         profilePicture: user.profilePicture
