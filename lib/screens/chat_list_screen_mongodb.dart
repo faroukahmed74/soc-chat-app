@@ -16,6 +16,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
+import 'dart:io';
 import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/physical_auth_service.dart';
@@ -857,9 +858,30 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                 onPressed: () async {
                   Navigator.pop(ctx);
                   if (url.isNotEmpty) {
-                    final uri = Uri.parse(url);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    try {
+                      final uri = Uri.parse(url);
+                      // Try external application first (browser)
+                      if (await canLaunchUrl(uri)) {
+                        // On Android 13+, use platformDefault for better compatibility
+                        final launchMode = Platform.isAndroid 
+                            ? LaunchMode.platformDefault 
+                            : LaunchMode.externalApplication;
+                        final launched = await launchUrl(uri, mode: launchMode);
+                        if (!launched && mounted) {
+                          // Fallback: try external browser
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+                      } else if (mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Cannot open download URL')),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(content: Text('Error opening download: $e')),
+                        );
+                      }
                     }
                   }
                 },
@@ -929,9 +951,30 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                 onPressed: () async {
                   Navigator.pop(ctx);
                   if (url.isNotEmpty) {
-                    final uri = Uri.parse(url);
-                    if (await canLaunchUrl(uri)) {
-                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    try {
+                      final uri = Uri.parse(url);
+                      // Try external application first (browser)
+                      if (await canLaunchUrl(uri)) {
+                        // On Android 13+, use platformDefault for better compatibility
+                        final launchMode = Platform.isAndroid 
+                            ? LaunchMode.platformDefault 
+                            : LaunchMode.externalApplication;
+                        final launched = await launchUrl(uri, mode: launchMode);
+                        if (!launched && mounted) {
+                          // Fallback: try external browser
+                          await launchUrl(uri, mode: LaunchMode.externalApplication);
+                        }
+                      } else if (mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Cannot open download URL')),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(content: Text('Error opening download: $e')),
+                        );
+                      }
                     }
                   }
                 },
