@@ -196,6 +196,23 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     }
   }
   
+  /// Helper to parse members from group data (handles ObjectIds, Maps, and Strings)
+  List<String> _parseMemberIds(dynamic membersData) {
+    if (membersData == null) return [];
+    if (membersData is! List) return [];
+    
+    return membersData.map((member) {
+      if (member is String) {
+        return member;
+      } else if (member is Map) {
+        // Handle ObjectId as Map (e.g., {'$oid': '...'} or {'_id': '...'})
+        return member['\$oid'] ?? member['_id'] ?? member['id'] ?? member.toString();
+      } else {
+        return member.toString();
+      }
+    }).where((id) => id.isNotEmpty && id != 'null').toList().cast<String>();
+  }
+  
   /// Helper to get current admin ID for logging
   Future<String?> _getCurrentAdminId() async {
     try {
@@ -839,13 +856,14 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     try {
       final role = await _authService.getCurrentUserRole();
       setState(() {
-        _isAdmin = role == 'admin';
+        _isAdmin = role != null && role == 'admin';
         _roleLoaded = true;
       });
       if (_isAdmin) {
         await _loadInitialData();
       }
     } catch (e) {
+      Log.e('Error checking admin access', 'ADMIN_PANEL_MONGODB', e);
       setState(() {
         _roleLoaded = true;
         _isAdmin = false;
@@ -4478,7 +4496,10 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                     final group = _groups[index];
                     final groupId = group['_id'] ?? group['id'] ?? '';
                     final name = group['name'] ?? 'Unnamed Group';
-                    final memberIds = List<String>.from(group['members'] ?? group['memberIds'] ?? []);
+                    
+                    // Handle members field - it might be a list of strings, ObjectIds (maps), or null
+                    final memberIds = _parseMemberIds(group['members'] ?? group['memberIds']);
+                    
                     final memberCount = memberIds.length;
                     final createdAt = group['createdAt'] ?? group['created_at'];
                     final createdBy = group['createdBy'] ?? group['created_by'];
@@ -4740,7 +4761,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     }
 
     final groupData = details ?? group;
-    final memberIds = List<String>.from(groupData['members'] ?? groupData['memberIds'] ?? []);
+    final memberIds = _parseMemberIds(groupData['members'] ?? groupData['memberIds']);
 
     if (mounted) {
       showDialog(
@@ -4885,7 +4906,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
       orElse: () => group,
     );
     
-    final memberIds = List<String>.from(updatedGroup['members'] ?? updatedGroup['memberIds'] ?? []);
+    final memberIds = _parseMemberIds(updatedGroup['members'] ?? updatedGroup['memberIds']);
     final availableUsers = _users.where((u) {
       final userId = (u['_id'] ?? u['id']).toString();
       return !memberIds.contains(userId);
@@ -5049,7 +5070,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
             (g) => (g['_id'] ?? g['id']).toString() == groupId,
             orElse: () => {},
           );
-          final memberIds = List<String>.from(group['members'] ?? group['memberIds'] ?? []);
+          final memberIds = _parseMemberIds(group['members'] ?? group['memberIds']);
           
           showDialog(
             context: context,

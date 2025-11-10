@@ -150,6 +150,20 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
     });
     
     try {
+      // Get current user ID
+      if (_currentUserId == null) {
+        final authService = PhysicalAuthService();
+        _currentUserId = await authService.getCurrentUserId();
+      }
+      
+      if (_currentUserId == null) {
+        setState(() {
+          _error = 'Unable to get current user ID. Please try again.';
+          _isLoading = false;
+        });
+        return;
+      }
+      
       // Get current user ID from stored token
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
@@ -158,8 +172,14 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
       // Use physical server (MongoDB)
       final databaseService = await DatabaseConfig.getDatabaseService();
       
+      // Ensure current user is included in members list (server should add it, but we add it here too for consistency)
+      final memberIdsWithCreator = List<String>.from(_selectedUserIds);
+      if (!memberIdsWithCreator.contains(_currentUserId!)) {
+        memberIdsWithCreator.add(_currentUserId!);
+      }
+      
       // Create group chat
-      final chatRef = await databaseService.createChat('group', _groupNameController.text.trim(), _selectedUserIds);
+      final chatRef = await databaseService.createChat('group', _groupNameController.text.trim(), memberIdsWithCreator);
       final chatId = chatRef.id;
       
       Log.i('Group created: $chatId', 'CREATE_GROUP');
@@ -172,7 +192,7 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
               chatId: chatId,
               chatName: _groupNameController.text.trim(),
               isGroupChat: true,
-              userIds: _selectedUserIds,
+              userIds: memberIdsWithCreator, // Include current user in userIds
             ),
           ),
         );
