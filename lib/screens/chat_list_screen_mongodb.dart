@@ -128,9 +128,11 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     try {
       final chats = await _chatService.getUserChats();
       if (mounted) {
+        // Sort chats by newest message first
+        final sortedChats = _sortChatsByNewestMessage(chats);
         setState(() {
-          _chats = chats;
-          _filteredChats = chats;
+          _chats = sortedChats;
+          _filteredChats = sortedChats;
         });
       }
     } catch (e) {
@@ -182,9 +184,12 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
           // Check for new messages and play sound
           _checkForNewMessages(chats);
           
+          // Sort chats by newest message first
+          final sortedChats = _sortChatsByNewestMessage(chats);
+          
           setState(() {
-            _chats = chats;
-            _filteredChats = chats;
+            _chats = sortedChats;
+            _filteredChats = sortedChats;
           });
         }
       },
@@ -272,6 +277,61 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     }
   }
 
+  List<Map<String, dynamic>> _sortChatsByNewestMessage(List<Map<String, dynamic>> chats) {
+    // Sort chats by lastMessageTime descending (newest first)
+    final sorted = List<Map<String, dynamic>>.from(chats);
+    sorted.sort((a, b) {
+      DateTime? timeA = _getLastMessageTime(a);
+      DateTime? timeB = _getLastMessageTime(b);
+      
+      // Chats with messages come first
+      if (timeA == null && timeB == null) return 0;
+      if (timeA == null) return 1; // No message goes to end
+      if (timeB == null) return -1; // Has message goes to front
+      
+      // Sort by newest first (descending)
+      return timeB.compareTo(timeA);
+    });
+    return sorted;
+  }
+
+  DateTime? _getLastMessageTime(Map<String, dynamic> chat) {
+    // Try lastMessageTime first
+    final lastMessageTime = chat['lastMessageTime'];
+    if (lastMessageTime != null) {
+      if (lastMessageTime is DateTime) {
+        return lastMessageTime;
+      } else if (lastMessageTime is String) {
+        return DateTime.tryParse(lastMessageTime);
+      }
+    }
+    
+    // Fallback to updatedAt
+    final updatedAt = chat['updatedAt'];
+    if (updatedAt != null) {
+      if (updatedAt is DateTime) {
+        return updatedAt;
+      } else if (updatedAt is String) {
+        return DateTime.tryParse(updatedAt);
+      }
+    }
+    
+    // Fallback to lastMessage.timestamp
+    final lastMsgObj = chat['lastMessage'];
+    if (lastMsgObj is Map<String, dynamic>) {
+      final timestamp = lastMsgObj['timestamp'] ?? lastMsgObj['createdAt'];
+      if (timestamp != null) {
+        if (timestamp is DateTime) {
+          return timestamp;
+        } else if (timestamp is String) {
+          return DateTime.tryParse(timestamp);
+        }
+      }
+    }
+    
+    return null;
+  }
+
   void _onSearchChanged() {
     final query = _searchController.text.toLowerCase();
     setState(() {
@@ -279,11 +339,13 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
       if (query.isEmpty) {
         _filteredChats = _chats;
       } else {
-        _filteredChats = _chats.where((chat) {
+        final filtered = _chats.where((chat) {
           final name = (chat['name'] ?? '').toString().toLowerCase();
           final lastMessage = (chat['lastMessage'] ?? '').toString().toLowerCase();
           return name.contains(query) || lastMessage.contains(query);
         }).toList();
+        // Maintain sort order for filtered results
+        _filteredChats = _sortChatsByNewestMessage(filtered);
       }
     });
   }
@@ -397,19 +459,83 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     
     // Get unread count for current user (supports both old format and new per-user format)
     int unreadCount = 0;
+    bool unreadCountFieldExists = false;
     final unreadCountObj = chat['unreadCount'];
-    if (unreadCountObj is Map<String, dynamic>) {
-      // New format: unreadCount.USER_ID
-      // Try both string and ObjectId format
-      final userIdStr = _currentUserId?.toString() ?? '';
-      unreadCount = (unreadCountObj[userIdStr] ?? unreadCountObj[_currentUserId] ?? 0) as int;
-      // Also try as int (if server stored it as number)
-      if (unreadCount == 0 && unreadCountObj[_currentUserId] is num) {
-        unreadCount = (unreadCountObj[_currentUserId] as num).toInt();
+    
+    if (unreadCountObj != null) {
+      unreadCountFieldExists = true;
+      if (unreadCountObj is Map<String, dynamic>) {
+        // New format: unreadCount.USER_ID
+        // Try multiple formats to ensure we find the value
+        final userIdStr = _currentUserId?.toString() ?? '';
+        dynamic countValue;
+        
+        // Try string format first
+        if (userIdStr.isNotEmpty) {
+          countValue = unreadCountObj[userIdStr];
+        }
+        
+        // Try ObjectId format if string format didn't work
+        if (countValue == null && _currentUserId != null) {
+          countValue = unreadCountObj[_currentUserId];
+        }
+        
+        // Try all keys to find a match (in case of format mismatch)
+        if (countValue == null) {
+          for (final key in unreadCountObj.keys) {
+            if (key.toString() == userIdStr || key.toString() == _currentUserId?.toString()) {
+              countValue = unreadCountObj[key];
+              break;
+            }
+          }
+        }
+        
+        if (countValue != null) {
+          if (countValue is int) {
+            unreadCount = countValue;
+          } else if (countValue is num) {
+            unreadCount = countValue.toInt();
+          }
+        } else {
+          // Map exists but user's entry is missing - means 0 unread (was reset)
+          unreadCount = 0;
+        }
+      } else if (unreadCountObj is int || unreadCountObj is num) {
+        // Old format: just a number
+        unreadCount = unreadCountObj is int ? unreadCountObj : unreadCountObj.toInt();
       }
-    } else if (unreadCountObj is int || unreadCountObj is num) {
-      // Old format: just a number
-      unreadCount = unreadCountObj is int ? unreadCountObj : unreadCountObj.toInt();
+    }
+    
+    // Determine if there are unread messages
+    // Primary strategy: Use unreadCount if the field exists
+    // If unreadCount field exists, trust it (0 = no unread, >0 = has unread)
+    // Fallback: Only check last message if unreadCount field doesn't exist at all
+    bool hasUnreadMessage = false;
+    
+    if (unreadCountFieldExists) {
+      // If unreadCount field exists, use it as the primary indicator
+      // unreadCount of 0 means no unread messages (chat was read)
+      // unreadCount > 0 means there are unread messages
+      // This will be false when user opens the chat and unreadCount is reset to 0
+      hasUnreadMessage = unreadCount > 0;
+    } else if (_currentUserId != null) {
+      // Fallback: Only use this if unreadCount field doesn't exist at all
+      // Check if last message is from someone else and not read
+      final lastMsgObj = chat['lastMessage'];
+      if (lastMsgObj is Map<String, dynamic>) {
+        final senderId = lastMsgObj['senderId']?.toString();
+        // Only consider unread if message is from someone else
+        if (senderId != null && senderId != _currentUserId.toString()) {
+          // Check if message was read by checking readBy array
+          final readBy = lastMsgObj['readBy'] ?? [];
+          final readByList = readBy is List 
+              ? readBy.map((e) => e?.toString()).where((e) => e != null && e.isNotEmpty).cast<String>().toList() 
+              : <String>[];
+          final currentUserIdStr = _currentUserId.toString();
+          // Message is unread if current user is not in readBy list
+          hasUnreadMessage = !readByList.any((id) => id == currentUserIdStr);
+        }
+      }
     }
 
     // Responsive margins for web and mobile
@@ -423,16 +549,71 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
       ),
       child: ListTile(
         contentPadding: const EdgeInsets.all(16),
-        leading: CircleAvatar(
-          radius: 24,
-          backgroundColor: Theme.of(context).colorScheme.primary,
-          child: Text(
-            name.isNotEmpty ? name[0].toUpperCase() : 'C',
-            style: AppDesignSystem.titleMedium.copyWith(
-              color: Theme.of(context).colorScheme.onPrimary,
-              fontWeight: FontWeight.bold,
+        leading: Stack(
+          clipBehavior: Clip.none,
+          children: [
+            CircleAvatar(
+              radius: 24,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              child: Text(
+                name.isNotEmpty ? name[0].toUpperCase() : 'C',
+                style: AppDesignSystem.titleMedium.copyWith(
+                  color: Theme.of(context).colorScheme.onPrimary,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
             ),
-          ),
+            // Unread indicator dot on avatar
+            if (hasUnreadMessage)
+              Positioned(
+                right: -2,
+                top: -2,
+                child: Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: AppDesignSystem.errorColor,
+                    shape: BoxShape.circle,
+                    border: Border.all(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      width: 2,
+                    ),
+                  ),
+                ),
+              ),
+            // Unread count badge beside the red dot
+            if (hasUnreadMessage && unreadCount > 0)
+              Positioned(
+                right: 8, // Position to the right of the red dot
+                top: -6,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: AppDesignSystem.errorColor,
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: Theme.of(context).scaffoldBackgroundColor,
+                      width: 1.5,
+                    ),
+                  ),
+                  constraints: const BoxConstraints(
+                    minWidth: 18,
+                    minHeight: 18,
+                  ),
+                  child: Center(
+                    child: Text(
+                      unreadCount > 99 ? '99+' : unreadCount.toString(),
+                      style: AppDesignSystem.labelSmall.copyWith(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 10,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ),
+                ),
+              ),
+          ],
         ),
         title: Row(
           children: [
@@ -440,17 +621,28 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
               child: Text(
                 name,
                 style: AppDesignSystem.titleMedium.copyWith(
-                  fontWeight: FontWeight.w600,
+                  fontWeight: hasUnreadMessage ? FontWeight.bold : FontWeight.w600,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
-            if (isGroup)
+            // Unread icon indicator
+            if (hasUnreadMessage) ...[
+              SizedBox(width: 4),
+              Icon(
+                Icons.circle,
+                size: 8,
+                color: AppDesignSystem.errorColor,
+              ),
+            ],
+            if (isGroup) ...[
+              SizedBox(width: 4),
               Icon(
                 Icons.group,
                 size: 16,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
+            ],
           ],
         ),
         subtitle: Text(
@@ -458,6 +650,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
           overflow: TextOverflow.ellipsis,
           style: AppDesignSystem.bodyMedium.copyWith(
             color: Theme.of(context).colorScheme.onSurfaceVariant,
+            fontWeight: hasUnreadMessage ? FontWeight.bold : FontWeight.normal,
           ),
           maxLines: 1,
         ),
@@ -473,28 +666,12 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                   fontSize: 11,
                 ),
               ),
-            if (unreadCount > 0) ...[
-              SizedBox(height: 4),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: AppDesignSystem.errorColor,
-                  borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
-                ),
-                child: Text(
-                  unreadCount > 99 ? '99+' : unreadCount.toString(),
-                  style: AppDesignSystem.labelSmall.copyWith(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                ),
-              ),
-            ],
+            // Unread count is now shown beside the red dot on avatar, not here
           ],
         ),
-        onTap: () {
-          Navigator.push(
+        onTap: () async {
+          // Navigate to chat screen and wait for return
+          await Navigator.push(
             context,
             MaterialPageRoute(
               builder: (context) => ChatScreenMongoDB(
@@ -507,6 +684,23 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                   ),
             ),
           );
+          // Refresh chat list when returning from chat screen
+          // The stream should handle this automatically, but this ensures immediate update
+          // Add a longer delay to allow server to update unread count
+          if (mounted) {
+            await Future.delayed(const Duration(milliseconds: 500));
+            await _loadChats();
+            // Force a rebuild to ensure UI updates
+            if (mounted) {
+              setState(() {});
+              // Additional rebuild after a short delay to catch any late updates
+              Future.delayed(const Duration(milliseconds: 200), () {
+                if (mounted) {
+                  setState(() {});
+                }
+              });
+            }
+          }
         },
       ),
     );

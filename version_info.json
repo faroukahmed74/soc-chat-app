@@ -1,10 +1,10 @@
 {
-  "version": "1.0.15",
-  "build_number": "15",
+  "version": "1.0.16",
+  "build_number": "16",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.15 - Notification System Improvements:\n- Fixed Android 13+ foreground service notification visibility\n- Enhanced notification permission handling for all Android versions\n- Improved iOS notification permissions and background handling\n- Added iOS notification service with app lifecycle management\n- Better socket reconnection on iOS when app resumes\n- Improved notification initialization with retry logic\n- Enhanced error handling and logging for notifications\n- Fixed notification channel importance for Android 13+\n- Better battery optimization handling\n- Comprehensive notification troubleshooting guides added",
+  "release_notes": "SOC Chat App v1.0.16 - Reply, React & Enhanced Features:\n- ✨ NEW: Reply to messages in individual and group chats\n- ✨ NEW: React to messages with emoji reactions\n- ✨ NEW: Full offline support for reactions on local network web\n- ✨ NEW: Device tracking for all platforms (Android, iOS, Web)\n- ✨ NEW: Admin panel device statistics and management\n- ✨ NEW: IPv4 address tracking for web devices\n- 🎨 Enhanced light and dark mode UI across all screens\n- 📱 Fully responsive design for all screens and admin panel\n- 🔔 Unread message count badge beside red dot indicator\n- 🔔 FCM push notifications for all platforms (iOS, Android, Web)\n- 🔔 FCM notifications sent to offline users automatically\n- ✅ Improved unread count reset when opening chats\n- ✅ Enhanced chat list refresh after returning from chat\n- ✅ Better unread message detection and display\n- ✅ Platform-specific routing (Web -> Local Network, Mobile -> Ngrok)\n- ✅ Improved message marking as read functionality\n- ✅ Real-time reaction updates via Socket.IO with polling fallback\n- ✅ Reactions work fully offline on local network web",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": false,
-  "last_updated": "2025-11-10T20:30:00Z"
+  "last_updated": "2025-01-27T12:00:00Z"
 }

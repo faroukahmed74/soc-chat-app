@@ -62,25 +62,31 @@ class _InAppVideoPlayerState extends State<InAppVideoPlayer> {
   }
 
   Future<void> _initializeVideoPlayerIOS() async {
+    final videoUrl = _resolveWebSameOriginUrl(widget.videoUrl);
+    
+    // Build headers with ngrok support
+    final headers = <String, String>{};
+    if (videoUrl.contains('ngrok') || 
+        videoUrl.contains('ngrok-free.app') || 
+        videoUrl.contains('ngrok.app')) {
+      headers['ngrok-skip-browser-warning'] = 'true';
+    }
+    headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1';
+    
     try {
-      // First try with standard network URL
+      // First try with headers
       _videoPlayerController = VideoPlayerController.networkUrl(
-        Uri.parse(_resolveWebSameOriginUrl(widget.videoUrl)),
+        Uri.parse(videoUrl),
+        httpHeaders: headers,
       );
       await _videoPlayerController!.initialize();
     } catch (e) {
-      // If standard fails, try with additional headers for iOS
+      // If that fails, try downloading first
       try {
-        _videoPlayerController = VideoPlayerController.networkUrl(
-          Uri.parse(_resolveWebSameOriginUrl(widget.videoUrl)),
-          httpHeaders: {
-            'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/14.0 Mobile/15E148 Safari/604.1',
-          },
-        );
-        await _videoPlayerController!.initialize();
-      } catch (e2) {
-        // If still fails, try downloading first
         await _initializeVideoPlayerWithDownload();
+      } catch (e2) {
+        // Re-throw if download also fails
+        rethrow;
       }
     }
 
@@ -88,8 +94,23 @@ class _InAppVideoPlayerState extends State<InAppVideoPlayer> {
   }
 
   Future<void> _initializeVideoPlayerStandard() async {
+    // Add headers for Android, especially for ngrok URLs
+    final headers = <String, String>{};
+    final videoUrl = _resolveWebSameOriginUrl(widget.videoUrl);
+    
+    // Add ngrok header if URL contains ngrok (required for Android 10+)
+    if (videoUrl.contains('ngrok') || 
+        videoUrl.contains('ngrok-free.app') || 
+        videoUrl.contains('ngrok.app')) {
+      headers['ngrok-skip-browser-warning'] = 'true';
+    }
+    
+    // Add User-Agent for Android
+    headers['User-Agent'] = 'Mozilla/5.0 (Linux; Android 10) Mobile';
+    
     _videoPlayerController = VideoPlayerController.networkUrl(
-      Uri.parse(_resolveWebSameOriginUrl(widget.videoUrl)),
+      Uri.parse(videoUrl),
+      httpHeaders: headers,
     );
     await _videoPlayerController!.initialize();
     _createChewieController();
@@ -101,7 +122,20 @@ class _InAppVideoPlayerState extends State<InAppVideoPlayer> {
       final tempDir = await getTemporaryDirectory();
       final tempFile = File('${tempDir.path}/temp_video_${DateTime.now().millisecondsSinceEpoch}.mp4');
       
-      final response = await http.get(Uri.parse(_resolveWebSameOriginUrl(widget.videoUrl)));
+      final videoUrl = _resolveWebSameOriginUrl(widget.videoUrl);
+      
+      // Add headers for ngrok URLs (required for Android 10+)
+      final headers = <String, String>{};
+      if (videoUrl.contains('ngrok') || 
+          videoUrl.contains('ngrok-free.app') || 
+          videoUrl.contains('ngrok.app')) {
+        headers['ngrok-skip-browser-warning'] = 'true';
+      }
+      headers['User-Agent'] = Platform.isIOS
+          ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'
+          : 'Mozilla/5.0 (Linux; Android 10) Mobile';
+      
+      final response = await http.get(Uri.parse(videoUrl), headers: headers);
       await tempFile.writeAsBytes(response.bodyBytes);
       
       _videoPlayerController = VideoPlayerController.file(tempFile);

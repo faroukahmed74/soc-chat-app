@@ -32,6 +32,8 @@ import '../services/logger_service.dart';
 import '../config/database_config.dart';
 import '../services/database_service.dart';
 import '../services/mongodb_chat_service.dart';
+import '../utils/responsive_utils.dart';
+import '../theme/app_design_system.dart';
 
 class UserSearchScreen extends StatefulWidget {
   const UserSearchScreen({Key? key}) : super(key: key);
@@ -422,14 +424,23 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isWideScreen = MediaQuery.of(context).size.width > 600;
+    final isMobile = ResponsiveUtils.isMobile(context);
+    final isTablet = ResponsiveUtils.isTablet(context);
+    final isDesktop = ResponsiveUtils.isDesktop(context);
+    final padding = ResponsiveUtils.getResponsivePadding(context);
     final currentUser = null; // We'll get this from token if needed
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Search Users'),
-        backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
+        title: Text(
+          'Search Users',
+          style: AppDesignSystem.titleLarge.copyWith(
+            color: Colors.white,
+          ),
+        ),
+        backgroundColor: Theme.of(context).colorScheme.primary,
         foregroundColor: Colors.white,
+        elevation: 0,
         actions: [
           IconButton(
             icon: Icon(_themeService.isDarkMode ? Icons.light_mode : Icons.dark_mode),
@@ -444,14 +455,19 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.all(16.0),
+              padding: padding,
               child: TextField(
                 controller: _searchController,
-                decoration: const InputDecoration(
+                decoration: InputDecoration(
                   labelText: 'Search users by username or email',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    size: ResponsiveUtils.getResponsiveIconSize(context),
+                  ),
+                  border: const OutlineInputBorder(),
+                  filled: true,
                 ),
+                style: ResponsiveUtils.getResponsiveBodyStyle(context),
               ),
             ),
             if (_isLoading)
@@ -485,53 +501,134 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                         email = data['email'] ?? '';
                         
                         return Card(
-                          margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          margin: EdgeInsets.symmetric(
+                            horizontal: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 12.0,
+                              tablet: 16.0,
+                              desktop: 20.0,
+                            ),
+                            vertical: 4,
+                          ),
+                          elevation: 1,
                           child: ListTile(
+                            contentPadding: EdgeInsets.symmetric(
+                              horizontal: ResponsiveUtils.getResponsiveValue(
+                                context,
+                                mobile: 12.0,
+                                tablet: 16.0,
+                                desktop: 20.0,
+                              ),
+                              vertical: 8,
+                            ),
                             leading: CircleAvatar(
+                              radius: ResponsiveUtils.getResponsiveAvatarRadius(context) / 2,
                               backgroundImage: photoUrl.isNotEmpty
                                   ? NetworkImage(photoUrl)
                                   : null,
                               child: photoUrl.isEmpty
-                                  ? const Icon(Icons.person)
+                                  ? Icon(
+                                      Icons.person,
+                                      size: ResponsiveUtils.getResponsiveIconSize(context),
+                                    )
                                   : null,
                             ),
                             title: Text(
                               displayName.isNotEmpty ? displayName : (username.isNotEmpty ? username : 'Unknown User'),
-                              style: const TextStyle(fontWeight: FontWeight.w500),
+                              style: ResponsiveUtils.getResponsiveBodyStyle(
+                                context,
+                                weight: FontWeight.w600,
+                              ),
                             ),
                             subtitle: Text(
                               email.isNotEmpty ? email : 'No email provided',
-                              style: TextStyle(
-                                fontSize: 13,
-                                color: _themeService.isDarkMode ? Colors.white70 : Colors.grey[600],
+                              style: ResponsiveUtils.getResponsiveCaptionStyle(
+                                context,
+                                color: _themeService.isDarkMode 
+                                    ? AppDesignSystem.neutral400 
+                                    : AppDesignSystem.neutral600,
                               ),
                             ),
-                            trailing: isWideScreen
+                            trailing: !isMobile
                                 ? Row(
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       ElevatedButton.icon(
-                                        icon: const Icon(Icons.person, size: 16),
-                                        label: const Text('Profile'),
+                                        icon: Icon(
+                                          Icons.person,
+                                          size: ResponsiveUtils.getResponsiveValue(
+                                            context,
+                                            mobile: 14.0,
+                                            tablet: 16.0,
+                                            desktop: 18.0,
+                                          ),
+                                        ),
+                                        label: Text(
+                                          'Profile',
+                                          style: ResponsiveUtils.getResponsiveCaptionStyle(context),
+                                        ),
                                         style: ElevatedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          backgroundColor: Colors.grey[600],
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: ResponsiveUtils.getResponsiveValue(
+                                              context,
+                                              mobile: 10.0,
+                                              tablet: 12.0,
+                                              desktop: 14.0,
+                                            ),
+                                            vertical: ResponsiveUtils.getResponsiveValue(
+                                              context,
+                                              mobile: 6.0,
+                                              tablet: 8.0,
+                                              desktop: 10.0,
+                                            ),
+                                          ),
+                                          backgroundColor: AppDesignSystem.neutral600,
+                                          foregroundColor: Colors.white,
                                         ),
                                         onPressed: () => _showUserProfile(user),
                                       ),
-                                      const SizedBox(width: 8),
+                                      SizedBox(
+                                        width: ResponsiveUtils.getResponsiveSpacing(context) / 2,
+                                      ),
                                       ElevatedButton.icon(
-                                        icon: const Icon(Icons.chat, size: 16),
-                                        label: const Text('Chat'),
+                                        icon: Icon(
+                                          Icons.chat,
+                                          size: ResponsiveUtils.getResponsiveValue(
+                                            context,
+                                            mobile: 14.0,
+                                            tablet: 16.0,
+                                            desktop: 18.0,
+                                          ),
+                                        ),
+                                        label: Text(
+                                          'Chat',
+                                          style: ResponsiveUtils.getResponsiveCaptionStyle(context),
+                                        ),
                                         style: ElevatedButton.styleFrom(
-                                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          padding: EdgeInsets.symmetric(
+                                            horizontal: ResponsiveUtils.getResponsiveValue(
+                                              context,
+                                              mobile: 10.0,
+                                              tablet: 12.0,
+                                              desktop: 14.0,
+                                            ),
+                                            vertical: ResponsiveUtils.getResponsiveValue(
+                                              context,
+                                              mobile: 6.0,
+                                              tablet: 8.0,
+                                              desktop: 10.0,
+                                            ),
+                                          ),
                                         ),
                                         onPressed: () => _startChat(userId),
                                       ),
                                     ],
                                   )
                                 : PopupMenuButton<String>(
-                                    icon: const Icon(Icons.more_vert),
+                                    icon: Icon(
+                                      Icons.more_vert,
+                                      size: ResponsiveUtils.getResponsiveIconSize(context),
+                                    ),
                                     onSelected: (value) {
                                       if (value == 'chat') {
                                         _startChat(userId);
@@ -540,23 +637,41 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                                       }
                                     },
                                     itemBuilder: (context) => [
-                                      const PopupMenuItem(
+                                      PopupMenuItem(
                                         value: 'profile',
                                         child: Row(
                                           children: [
-                                            Icon(Icons.person, color: Colors.grey),
-                                            SizedBox(width: 8),
-                                            Text('View Profile'),
+                                            Icon(
+                                              Icons.person,
+                                              color: AppDesignSystem.neutral600,
+                                              size: ResponsiveUtils.getResponsiveIconSize(context),
+                                            ),
+                                            SizedBox(
+                                              width: ResponsiveUtils.getResponsiveSpacing(context) / 2,
+                                            ),
+                                            Text(
+                                              'View Profile',
+                                              style: ResponsiveUtils.getResponsiveBodyStyle(context),
+                                            ),
                                           ],
                                         ),
                                       ),
-                                      const PopupMenuItem(
+                                      PopupMenuItem(
                                         value: 'chat',
                                         child: Row(
                                           children: [
-                                            Icon(Icons.chat, color: Colors.blue),
-                                            SizedBox(width: 8),
-                                            Text('Start Chat'),
+                                            Icon(
+                                              Icons.chat,
+                                              color: AppDesignSystem.primaryColor,
+                                              size: ResponsiveUtils.getResponsiveIconSize(context),
+                                            ),
+                                            SizedBox(
+                                              width: ResponsiveUtils.getResponsiveSpacing(context) / 2,
+                                            ),
+                                            Text(
+                                              'Start Chat',
+                                              style: ResponsiveUtils.getResponsiveBodyStyle(context),
+                                            ),
                                           ],
                                         ),
                                       ),

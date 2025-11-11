@@ -253,7 +253,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                 ? Colors.white
                 : (isDark ? Colors.white : Colors.black87),
             fontSize: 16,
-            fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
+            fontFamily: kIsWeb ? ResponsiveUtils.getEmojiFontFamily() : null,
             fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
           ),
         );
@@ -278,7 +278,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                 ? Colors.white
                 : (isDark ? Colors.white : Colors.black87),
             fontSize: 16,
-            fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
+            fontFamily: kIsWeb ? ResponsiveUtils.getEmojiFontFamily() : null,
             fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
           ),
         );
@@ -346,7 +346,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                     ? Colors.white
                     : (isDark ? Colors.white : Colors.black87),
                 fontSize: 16,
-                fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
+                fontFamily: kIsWeb ? ResponsiveUtils.getEmojiFontFamily() : null,
                 fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
               ),
             ),
@@ -416,7 +416,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
                     ? Colors.white
                     : (isDark ? Colors.white : Colors.black87),
                 fontSize: 16,
-                fontFamily: kIsWeb ? 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", sans-serif' : null,
+                fontFamily: kIsWeb ? ResponsiveUtils.getEmojiFontFamily() : null,
                 fontFeatures: kIsWeb ? [const FontFeature.enable('liga')] : null,
               ),
             ),

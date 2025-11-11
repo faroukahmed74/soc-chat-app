@@ -6,6 +6,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:io';
 import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -112,7 +113,30 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
 
   Future<void> _initializeVideo() async {
     try {
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(_resolveWebSameOriginUrl(widget.mediaUrl)));
+      final videoUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
+      
+      // Add headers for Android, especially for ngrok URLs
+      final headers = <String, String>{};
+      if (!kIsWeb) {
+        // Add ngrok header if URL contains ngrok (required for Android 10+)
+        if (videoUrl.contains('ngrok') || 
+            videoUrl.contains('ngrok-free.app') || 
+            videoUrl.contains('ngrok.app')) {
+          headers['ngrok-skip-browser-warning'] = 'true';
+        }
+        
+        // Add platform-specific User-Agent
+        if (Platform.isIOS) {
+          headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15';
+        } else if (Platform.isAndroid) {
+          headers['User-Agent'] = 'Mozilla/5.0 (Linux; Android 10) Mobile';
+        }
+      }
+      
+      _videoController = VideoPlayerController.networkUrl(
+        Uri.parse(videoUrl),
+        httpHeaders: headers,
+      );
       await _videoController!.initialize();
       
       if (mounted) {
@@ -775,7 +799,30 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
 
   Future<void> _initializeVideo() async {
     try {
-      _videoController = VideoPlayerController.networkUrl(Uri.parse(_resolveWebSameOriginUrl(widget.mediaUrl)));
+      final videoUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
+      
+      // Add headers for Android, especially for ngrok URLs
+      final headers = <String, String>{};
+      if (!kIsWeb) {
+        // Add ngrok header if URL contains ngrok (required for Android 10+)
+        if (videoUrl.contains('ngrok') || 
+            videoUrl.contains('ngrok-free.app') || 
+            videoUrl.contains('ngrok.app')) {
+          headers['ngrok-skip-browser-warning'] = 'true';
+        }
+        
+        // Add platform-specific User-Agent
+        if (Platform.isIOS) {
+          headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15';
+        } else if (Platform.isAndroid) {
+          headers['User-Agent'] = 'Mozilla/5.0 (Linux; Android 10) Mobile';
+        }
+      }
+      
+      _videoController = VideoPlayerController.networkUrl(
+        Uri.parse(videoUrl),
+        httpHeaders: headers,
+      );
       await _videoController!.initialize();
       
       if (mounted) {

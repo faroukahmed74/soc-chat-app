@@ -18,6 +18,15 @@ const http = require('http');
 const socketIo = require('socket.io');
 const { jwtVerify, createRemoteJWKSet } = require('jose');
 
+// Firebase Admin SDK for FCM notifications
+let admin;
+try {
+  admin = require('firebase-admin');
+} catch (e) {
+  console.warn('firebase-admin not available, FCM notifications will be disabled:', e.message);
+  admin = null;
+}
+
 // Initialize Express app
 const app = express();
 const server = http.createServer(app);
@@ -364,6 +373,69 @@ async function connectToMongo(retryCount = 0) {
     await db.admin().ping();
     console.log('✅ MongoDB ping successful');
     
+    // Initialize Firebase Admin SDK for FCM notifications
+    if (admin && !admin.apps.length) {
+      try {
+        const NODE_ENV = process.env.NODE_ENV || 'development';
+        let serviceAccount;
+        
+        if (NODE_ENV === 'production') {
+          // In production, use environment variables
+          serviceAccount = {
+            type: process.env.FIREBASE_TYPE,
+            project_id: process.env.FIREBASE_PROJECT_ID,
+            private_key_id: process.env.FIREBASE_PRIVATE_KEY_ID,
+            private_key: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+            client_email: process.env.FIREBASE_CLIENT_EMAIL,
+            client_id: process.env.FIREBASE_CLIENT_ID,
+            auth_uri: process.env.FIREBASE_AUTH_URI,
+            token_uri: process.env.FIREBASE_TOKEN_URI,
+            auth_provider_x509_cert_url: process.env.FIREBASE_AUTH_PROVIDER_X509_CERT_URL,
+            client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL,
+          };
+        } else {
+          // In development, try to load service account file
+          try {
+            // Try different possible paths
+            const possiblePaths = [
+              path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json'),
+              path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-bc21fed17ba4.json'),
+              path.join(__dirname, 'assets', 'service-account', 'soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json'),
+              path.join(__dirname, 'assets', 'service-account', 'soc-chat-app-ca57e-bc21fed17ba4.json'),
+            ];
+            
+            let serviceAccountPath = null;
+            for (const p of possiblePaths) {
+              if (fs.existsSync(p)) {
+                serviceAccountPath = p;
+                break;
+              }
+            }
+            
+            if (serviceAccountPath) {
+              serviceAccount = require(serviceAccountPath);
+            } else {
+              console.warn('⚠️ Firebase service account file not found. FCM notifications will be disabled.');
+              console.warn('   Searched paths:', possiblePaths);
+            }
+          } catch (e) {
+            console.warn('⚠️ Could not load Firebase service account:', e.message);
+          }
+        }
+        
+        if (serviceAccount) {
+          admin.initializeApp({
+            credential: admin.credential.cert(serviceAccount),
+            projectId: process.env.FIREBASE_PROJECT_ID || serviceAccount.project_id || 'soc-chat-app-ca57e',
+          });
+          console.log('✅ Firebase Admin SDK initialized successfully');
+        }
+      } catch (firebaseErr) {
+        console.warn('⚠️ Failed to initialize Firebase Admin SDK:', firebaseErr.message);
+        console.warn('   FCM notifications will be disabled');
+      }
+    }
+    
   } catch (err) {
     connectionStatus = 'failed';
     console.error(`❌ Failed to connect to MongoDB (attempt ${retryCount + 1}/${maxRetries}):`, err.message);
@@ -556,6 +628,105 @@ app.get('/health', async (req, res) => {
     });
   }
 });
+
+// Helper function to send FCM notification to a user
+async function sendFCMNotification(userId, title, body, data = {}) {
+  if (!admin || !admin.apps.length) {
+    console.warn('⚠️ FCM not available, skipping notification for user:', userId);
+    return false;
+  }
+  
+  if (!db) {
+    console.warn('⚠️ Database not available, skipping FCM notification');
+    return false;
+  }
+  
+  try {
+    // Get user's FCM token from database
+    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    if (!user || !user.fcmToken || !user.fcmToken.trim()) {
+      console.log(`📱 No FCM token found for user ${userId}, skipping notification`);
+      return false;
+    }
+    
+    const fcmToken = user.fcmToken;
+    const platform = user.fcmPlatform || 'unknown';
+    
+    // Prepare FCM message
+    const message = {
+      token: fcmToken,
+      notification: {
+        title: title,
+        body: body,
+      },
+      data: {
+        ...data,
+        click_action: 'FLUTTER_NOTIFICATION_CLICK',
+        sound: 'default',
+      },
+      android: {
+        priority: 'high',
+        notification: {
+          channelId: 'chat_notifications',
+          priority: 'high',
+          defaultSound: true,
+          icon: '@mipmap/ic_launcher',
+          color: '#2196F3',
+        },
+      },
+      apns: {
+        payload: {
+          aps: {
+            sound: process.env.APNS_SOUND || 'default',
+            badge: 1,
+            category: data?.category || 'default',
+          },
+        },
+        headers: {
+          'apns-priority': '10',
+        },
+      },
+      webpush: {
+        headers: {
+          'Urgency': 'high',
+        },
+        notification: {
+          icon: '/icon-192x192.png',
+          badge: '/badge-72x72.png',
+        },
+      },
+    };
+    
+    // Send notification
+    const response = await admin.messaging().send(message);
+    console.log(`✅ FCM notification sent to user ${userId} (platform: ${platform}):`, response);
+    return true;
+  } catch (error) {
+    // Handle invalid token errors gracefully
+    if (error.code === 'messaging/invalid-registration-token' || 
+        error.code === 'messaging/registration-token-not-registered') {
+      console.warn(`⚠️ Invalid FCM token for user ${userId}, removing from database`);
+      // Remove invalid token from database
+      try {
+        await db.collection('users').updateOne(
+          { _id: new ObjectId(userId) },
+          { 
+            $set: { 
+              fcmToken: '',
+              fcmPlatform: '',
+              fcmTokenUpdatedAt: new Date(),
+            }
+          }
+        );
+      } catch (dbErr) {
+        console.error('Error removing invalid FCM token:', dbErr);
+      }
+    } else {
+      console.error(`❌ Error sending FCM notification to user ${userId}:`, error.message);
+    }
+    return false;
+  }
+}
 
 // Alias for clients expecting /api/health
 app.get('/api/health', async (req, res) => {
@@ -1248,6 +1419,325 @@ app.delete('/api/users/fcm-token', authenticateToken, async (req, res) => {
   } catch (err) {
     console.error('Error deleting FCM token:', err);
     res.status(500).json({ error: 'Server error while deleting FCM token' });
+  }
+});
+
+// Helper function to get client IP address
+function getClientIp(req) {
+  // Check X-Forwarded-For header (for proxies like ngrok)
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    // X-Forwarded-For can contain multiple IPs, take the first one
+    const ips = forwarded.split(',');
+    const clientIp = ips[0].trim();
+    // Validate IPv4 format
+    if (/^(\d{1,3}\.){3}\d{1,3}$/.test(clientIp)) {
+      return clientIp;
+    }
+  }
+  
+  // Check X-Real-IP header (some proxies use this)
+  const realIp = req.headers['x-real-ip'];
+  if (realIp && /^(\d{1,3}\.){3}\d{1,3}$/.test(realIp)) {
+    return realIp;
+  }
+  
+  // Fallback to req.ip (works with trust proxy enabled)
+  if (req.ip && /^(\d{1,3}\.){3}\d{1,3}$/.test(req.ip)) {
+    return req.ip;
+  }
+  
+  // Last resort: try req.connection.remoteAddress
+  const remoteAddress = req.connection?.remoteAddress || req.socket?.remoteAddress;
+  if (remoteAddress && /^(\d{1,3}\.){3}\d{1,3}$/.test(remoteAddress)) {
+    return remoteAddress;
+  }
+  
+  return null;
+}
+
+// Device Tracking Routes
+// Track device login/usage
+app.post('/api/devices/track', authenticateToken, async (req, res) => {
+  try {
+    const { userId, deviceInfo } = req.body;
+    const authenticatedUserId = req.user.id;
+    
+    // Validate required fields
+    if (!userId || !deviceInfo) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: userId and deviceInfo are required' 
+      });
+    }
+    
+    // Verify the userId matches the authenticated user
+    if (userId.toString() !== authenticatedUserId.toString()) {
+      return res.status(403).json({ 
+        error: 'Forbidden: Cannot track device for another user' 
+      });
+    }
+    
+    // Validate userId format
+    if (!ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Invalid userId format' });
+    }
+    
+    const deviceId = deviceInfo.deviceId || deviceInfo.device_id || 'unknown';
+    const platform = deviceInfo.platform || 'unknown';
+    
+    // Get client IP address (especially important for web devices)
+    const clientIp = getClientIp(req);
+    
+    // Create or update device record
+    const deviceRecord = {
+      userId: new ObjectId(userId),
+      deviceId: deviceId,
+      platform: platform,
+      deviceModel: deviceInfo.deviceModel || deviceInfo.device_model || 'Unknown',
+      deviceName: deviceInfo.deviceName || deviceInfo.device_name || 'Unknown',
+      osVersion: deviceInfo.osVersion || deviceInfo.os_version || 'Unknown',
+      appVersion: deviceInfo.appVersion || deviceInfo.app_version || '1.0.16',
+      manufacturer: deviceInfo.manufacturer || '',
+      brand: deviceInfo.brand || '',
+      androidVersion: deviceInfo.androidVersion || deviceInfo.android_version || '',
+      sdkInt: deviceInfo.sdkInt || deviceInfo.sdk_int || null,
+      iosVersion: deviceInfo.iosVersion || deviceInfo.ios_version || '',
+      systemName: deviceInfo.systemName || deviceInfo.system_name || '',
+      // Web-specific fields
+      browserName: deviceInfo.browserName || '',
+      browserVersion: deviceInfo.browserVersion || '',
+      userAgent: deviceInfo.userAgent || '',
+      language: deviceInfo.language || '',
+      // IP address (captured from server for web, can be set by client for mobile)
+      ipAddress: clientIp || deviceInfo.ipAddress || deviceInfo.ip_address || '',
+      lastLoginAt: new Date(),
+      firstSeenAt: new Date(), // Will be set only on first insert
+      loginCount: 1, // Will be incremented
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    };
+    
+    // Check if device already exists for this user
+    const existingDevice = await db.collection('devices').findOne({
+      userId: new ObjectId(userId),
+      deviceId: deviceId,
+    });
+    
+    if (existingDevice) {
+      // Update existing device
+      await db.collection('devices').updateOne(
+        { _id: existingDevice._id },
+        {
+          $set: {
+            ...deviceRecord,
+            firstSeenAt: existingDevice.firstSeenAt || new Date(), // Keep original firstSeenAt
+          },
+          $inc: { loginCount: 1 },
+        }
+      );
+    } else {
+      // Insert new device
+      await db.collection('devices').insertOne(deviceRecord);
+    }
+    
+    console.log(`✅ Device tracked for user ${userId} (${platform} - ${deviceRecord.deviceModel})`);
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'Device tracked successfully',
+      deviceId: deviceId,
+      platform: platform,
+    });
+  } catch (err) {
+    console.error('Error tracking device:', err);
+    res.status(500).json({ error: 'Server error while tracking device' });
+  }
+});
+
+// Get device statistics (Admin only)
+app.get('/api/admin/devices/stats', authenticateToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    const user = await db.collection('users').findOne({ _id: new ObjectId(req.user.id) });
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    }
+    
+    // Get total device count
+    const totalDevices = await db.collection('devices').countDocuments();
+    
+    // Get devices by platform
+    const androidDevices = await db.collection('devices').countDocuments({ platform: 'android' });
+    const iosDevices = await db.collection('devices').countDocuments({ platform: 'ios' });
+    const webDevices = await db.collection('devices').countDocuments({ platform: 'web' });
+    
+    // Get unique users with devices
+    const uniqueUsers = await db.collection('devices').distinct('userId');
+    
+    // Get devices with multiple logins (same account on multiple devices)
+    const devicesByUser = await db.collection('devices').aggregate([
+      {
+        $group: {
+          _id: '$userId',
+          deviceCount: { $sum: 1 },
+          devices: { $push: '$$ROOT' }
+        }
+      },
+      {
+        $match: { deviceCount: { $gt: 1 } }
+      }
+    ]).toArray();
+    
+    const multiDeviceUsers = devicesByUser.length;
+    const totalMultiDeviceCount = devicesByUser.reduce((sum, user) => sum + user.deviceCount, 0);
+    
+    // Get recent device logins (last 24 hours)
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    const recentLogins = await db.collection('devices').countDocuments({
+      lastLoginAt: { $gte: oneDayAgo }
+    });
+    
+    res.status(200).json({
+      totalDevices,
+      platformBreakdown: {
+        android: androidDevices,
+        ios: iosDevices,
+        web: webDevices,
+        other: totalDevices - androidDevices - iosDevices - webDevices,
+      },
+      uniqueUsers: uniqueUsers.length,
+      multiDeviceUsers,
+      totalMultiDeviceCount,
+      recentLogins24h: recentLogins,
+    });
+  } catch (err) {
+    console.error('Error getting device statistics:', err);
+    res.status(500).json({ error: 'Server error while getting device statistics' });
+  }
+});
+
+// Get devices for a specific user (Admin only)
+app.get('/api/admin/devices/user/:userId', authenticateToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    const user = await db.collection('users').findOne({ _id: new ObjectId(req.user.id) });
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    }
+    
+    const targetUserId = req.params.userId;
+    
+    if (!ObjectId.isValid(targetUserId)) {
+      return res.status(400).json({ error: 'Invalid userId format' });
+    }
+    
+    const devices = await db.collection('devices')
+      .find({ userId: new ObjectId(targetUserId) })
+      .sort({ lastLoginAt: -1 })
+      .toArray();
+    
+    const formattedDevices = devices.map(device => ({
+      _id: device._id.toString(),
+      deviceId: device.deviceId,
+      platform: device.platform,
+      deviceModel: device.deviceModel,
+      deviceName: device.deviceName,
+      osVersion: device.osVersion,
+      appVersion: device.appVersion,
+      manufacturer: device.manufacturer || '',
+      brand: device.brand || '',
+      androidVersion: device.androidVersion || '',
+      iosVersion: device.iosVersion || '',
+      browserName: device.browserName || '',
+      browserVersion: device.browserVersion || '',
+      userAgent: device.userAgent || '',
+      language: device.language || '',
+      ipAddress: device.ipAddress || '',
+      loginCount: device.loginCount || 1,
+      firstSeenAt: device.firstSeenAt ? device.firstSeenAt.toISOString() : null,
+      lastLoginAt: device.lastLoginAt ? device.lastLoginAt.toISOString() : null,
+      createdAt: device.createdAt ? device.createdAt.toISOString() : null,
+    }));
+    
+    res.status(200).json({
+      userId: targetUserId,
+      deviceCount: formattedDevices.length,
+      devices: formattedDevices,
+    });
+  } catch (err) {
+    console.error('Error getting user devices:', err);
+    res.status(500).json({ error: 'Server error while getting user devices' });
+  }
+});
+
+// Get all devices with user info (Admin only)
+app.get('/api/admin/devices', authenticateToken, async (req, res) => {
+  try {
+    // Check if user is admin
+    const user = await db.collection('users').findOne({ _id: new ObjectId(req.user.id) });
+    if (!user || user.role !== 'admin') {
+      return res.status(403).json({ error: 'Forbidden: Admin access required' });
+    }
+    
+    const limit = parseInt(req.query.limit) || 100;
+    const skip = parseInt(req.query.skip) || 0;
+    const platform = req.query.platform; // Optional filter
+    
+    const query = platform ? { platform: platform } : {};
+    
+    const devices = await db.collection('devices')
+      .find(query)
+      .sort({ lastLoginAt: -1 })
+      .skip(skip)
+      .limit(limit)
+      .toArray();
+    
+    // Get user info for each device
+    const devicesWithUsers = await Promise.all(devices.map(async (device) => {
+      const deviceUser = await db.collection('users').findOne(
+        { _id: device.userId },
+        { projection: { password: 0 } }
+      );
+      
+      return {
+        _id: device._id.toString(),
+        deviceId: device.deviceId,
+        platform: device.platform,
+        deviceModel: device.deviceModel,
+        deviceName: device.deviceName,
+        osVersion: device.osVersion,
+        appVersion: device.appVersion,
+        manufacturer: device.manufacturer || '',
+        brand: device.brand || '',
+        browserName: device.browserName || '',
+        browserVersion: device.browserVersion || '',
+        userAgent: device.userAgent || '',
+        language: device.language || '',
+        ipAddress: device.ipAddress || '',
+        loginCount: device.loginCount || 1,
+        firstSeenAt: device.firstSeenAt ? device.firstSeenAt.toISOString() : null,
+        lastLoginAt: device.lastLoginAt ? device.lastLoginAt.toISOString() : null,
+        user: deviceUser ? {
+          _id: deviceUser._id.toString(),
+          email: deviceUser.email,
+          displayName: deviceUser.displayName || deviceUser.username || '',
+          username: deviceUser.username || '',
+        } : null,
+      };
+    }));
+    
+    const total = await db.collection('devices').countDocuments(query);
+    
+    res.status(200).json({
+      devices: devicesWithUsers,
+      total,
+      limit,
+      skip,
+      hasMore: skip + limit < total,
+    });
+  } catch (err) {
+    console.error('Error getting all devices:', err);
+    res.status(500).json({ error: 'Server error while getting devices' });
   }
 });
 
@@ -2035,7 +2525,7 @@ app.get('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
 
 app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
   try {
-    const { content, messageType, mediaUrl } = req.body;
+    const { content, messageType, mediaUrl, replyTo } = req.body;
     const userId = req.user.id;
     const chatId = req.params.chatId;
     
@@ -2052,12 +2542,26 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     const sender = await db.collection('users').findOne({ _id: new ObjectId(userId) });
     const senderName = sender?.displayName || sender?.username || 'Someone';
     
+    // If replyTo is provided, verify the message exists in this chat
+    let replyToMessage = null;
+    if (replyTo) {
+      replyToMessage = await db.collection('messages').findOne({
+        _id: new ObjectId(replyTo),
+        chatId: chatId,
+      });
+      if (!replyToMessage) {
+        return res.status(400).json({ error: 'Reply message not found' });
+      }
+    }
+    
     const message = {
       chatId,
       senderId: userId,
       content,
       messageType: messageType || 'text',
       mediaUrl,
+      replyTo: replyTo || null,
+      reactions: {}, // Initialize empty reactions map
       createdAt: new Date(),
       readBy: [], // Initialize empty readBy array
       status: 'sent' // Initialize status as 'sent'
@@ -2115,6 +2619,8 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
           content: message.content,
           messageType: message.messageType,
           mediaUrl: mediaUrlForThisSocket,
+          replyTo: message.replyTo || null,
+          reactions: message.reactions || {},
           createdAt: message.createdAt,
           readBy: [], // Include readBy array (empty for new messages)
           status: 'sent' // Include status (sent for new messages)
@@ -2131,6 +2637,19 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     // Get all connected socket IDs for debugging
     const allRooms = io.sockets.adapter.rooms;
     console.log(`   Total Socket.IO rooms: ${allRooms.size}`);
+    
+    // Get list of online users (connected via Socket.IO)
+    const onlineUsers = new Set();
+    try {
+      const sockets = await io.fetchSockets();
+      for (const socket of sockets) {
+        if (socket.userId) {
+          onlineUsers.add(socket.userId.toString());
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching online users:', e?.message || e);
+    }
     
     for (const memberId of otherMembers) {
       // Determine title based on chat type
@@ -2150,12 +2669,38 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
         messageType: messageType || 'text',
         timestamp: new Date(),
       });
+      
+      // Send FCM push notification if user is offline
+      const isOnline = onlineUsers.has(memberId);
+      if (!isOnline) {
+        console.log(`📱 User ${memberId} is offline, sending FCM notification`);
+        // Send FCM notification asynchronously (don't block response)
+        sendFCMNotification(
+          memberId,
+          title,
+          body,
+          {
+            chatId: chatId.toString(),
+            senderId: userId.toString(),
+            senderName: senderName,
+            messageType: messageType || 'text',
+            messageId: result.insertedId.toString(),
+            type: 'chat_message',
+          }
+        ).catch(err => {
+          console.error(`Error sending FCM to user ${memberId}:`, err.message);
+        });
+      } else {
+        console.log(`✅ User ${memberId} is online, skipping FCM notification`);
+      }
     }
     
     // Return created message (with media URL rewritten for web clients)
     const mediaUrlForWeb = rewriteMediaUrlIfNeeded(message.mediaUrl, req.headers || {});
     res.status(201).json({
       id: result.insertedId.toString(),
+      replyTo: message.replyTo || null,
+      reactions: message.reactions || {},
       _id: result.insertedId.toString(),
       chatId: chatId.toString(),
       senderId: userId.toString(),
@@ -2168,6 +2713,92 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     });
   } catch (err) {
     console.error(err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Add or remove reaction to a message
+app.post('/api/messages/:messageId/reactions', authenticateToken, async (req, res) => {
+  try {
+    const { emoji } = req.body;
+    const userId = req.user.id;
+    const messageId = req.params.messageId;
+    
+    if (!emoji || typeof emoji !== 'string') {
+      return res.status(400).json({ error: 'Emoji is required' });
+    }
+    
+    // Get the message
+    const message = await db.collection('messages').findOne({
+      _id: new ObjectId(messageId),
+    });
+    
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+    
+    // Verify user is a member of the chat
+    const chat = await db.collection('chats').findOne({
+      _id: new ObjectId(message.chatId),
+      members: new ObjectId(userId),
+    });
+    
+    if (!chat) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+    
+    // Initialize reactions if not exists
+    const reactions = message.reactions || {};
+    const userIdStr = userId.toString();
+    
+    // Initialize emoji array if not exists
+    if (!reactions[emoji]) {
+      reactions[emoji] = [];
+    }
+    
+    // Toggle reaction: remove if exists, add if not
+    const emojiReactions = reactions[emoji];
+    const userIndex = emojiReactions.indexOf(userIdStr);
+    
+    if (userIndex >= 0) {
+      // Remove reaction
+      emojiReactions.splice(userIndex, 1);
+      if (emojiReactions.length === 0) {
+        delete reactions[emoji];
+      }
+    } else {
+      // Add reaction
+      emojiReactions.push(userIdStr);
+    }
+    
+    // Update message
+    await db.collection('messages').updateOne(
+      { _id: new ObjectId(messageId) },
+      { $set: { reactions: reactions } }
+    );
+    
+    // Emit to socket room (works offline - if Socket.IO fails, reactions still saved to DB)
+    try {
+      io.to(message.chatId.toString()).emit('message_reaction', {
+        messageId: messageId,
+        emoji: emoji,
+        userId: userIdStr,
+        reactions: reactions,
+        action: userIndex >= 0 ? 'removed' : 'added',
+      });
+    } catch (socketError) {
+      // Socket.IO failure is non-critical - reactions are saved to MongoDB
+      // Clients will sync reactions via polling (every 2 seconds)
+      console.warn('Socket.IO emit failed for reaction (offline mode):', socketError);
+    }
+    
+    res.status(200).json({
+      success: true,
+      reactions: reactions,
+      action: userIndex >= 0 ? 'removed' : 'added',
+    });
+  } catch (err) {
+    console.error('Error updating reaction:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -2234,16 +2865,24 @@ app.patch('/api/chats/:chatId/read', authenticateToken, async (req, res) => {
     }
     
     // Reset unread count for this user
+    // Ensure we use string format for consistency
+    const userIdStr = userId.toString();
+    
     await db.collection('chats').updateOne(
       { _id: new ObjectId(chatId) },
-      { $set: { [`unreadCount.${userId}`]: 0 } }
+      { 
+        $set: { 
+          [`unreadCount.${userIdStr}`]: 0,
+        } 
+      }
     );
     
-    console.log(`Reset unread count for user ${userId} in chat ${chatId}`);
+    console.log(`✅ Reset unread count for user ${userIdStr} in chat ${chatId}`);
     
     res.status(200).json({
       message: 'Unread count reset',
       chatId: chatId,
+      userId: userIdStr,
     });
   } catch (err) {
     console.error(err);

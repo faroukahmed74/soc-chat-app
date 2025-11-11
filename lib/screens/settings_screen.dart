@@ -28,6 +28,7 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import '../utils/responsive_utils.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 
@@ -327,9 +328,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isSmallScreen = screenWidth < 600;
-    final isMediumScreen = screenWidth >= 600 && screenWidth < 1200;
+    final isMobile = ResponsiveUtils.isMobile(context);
+    final isTablet = ResponsiveUtils.isTablet(context);
+    final padding = ResponsiveUtils.getResponsivePadding(context);
     
     return Scaffold(
       appBar: AppBar(
@@ -345,10 +346,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
         centerTitle: false,
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.all(isSmallScreen ? 16.0 : 24.0),
+        padding: padding,
         child: ConstrainedBox(
           constraints: BoxConstraints(
-            maxWidth: isMediumScreen ? 800 : 1200,
+            maxWidth: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: double.infinity,
+              tablet: 800.0,
+              desktop: 1200.0,
+            ),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,

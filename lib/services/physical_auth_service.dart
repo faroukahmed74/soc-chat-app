@@ -10,6 +10,7 @@ import 'dart:convert';
 import '../config/database_config.dart';
 import 'logger_service.dart';
 import 'fcm_service.dart';
+import 'device_tracking_service.dart';
 
 class PhysicalAuthService {
   static final PhysicalAuthService _instance = PhysicalAuthService._internal();
@@ -59,6 +60,16 @@ class PhysicalAuthService {
           } catch (e) {
             Log.e('Failed to update FCM user ID', 'PHYSICAL_AUTH', e);
             // Continue even if FCM update fails
+          }
+          
+          // Track device login (for mobile platforms)
+          try {
+            final deviceTracking = DeviceTrackingService();
+            await deviceTracking.trackDeviceLogin(userId.toString());
+            Log.i('Device tracked after login', 'PHYSICAL_AUTH');
+          } catch (e) {
+            Log.e('Failed to track device', 'PHYSICAL_AUTH', e);
+            // Continue even if device tracking fails
           }
         }
 

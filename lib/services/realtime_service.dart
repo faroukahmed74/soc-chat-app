@@ -5,6 +5,7 @@ import '../config/database_config.dart';
 import 'logger_service.dart';
 
 typedef MessageCallback = void Function(Map<String, dynamic> message);
+typedef ReactionCallback = void Function(Map<String, dynamic> reaction);
 
 class RealtimeService {
   static final RealtimeService instance = RealtimeService._internal();
@@ -91,6 +92,21 @@ class RealtimeService {
         }
       } catch (e) {
         Log.e('Realtime message parse error', 'REALTIME', e);
+      }
+    });
+  }
+
+  void onMessageReaction(ReactionCallback handler) {
+    _socket?.off('message_reaction');
+    _socket?.on('message_reaction', (data) {
+      try {
+        if (data is Map) {
+          handler(Map<String, dynamic>.from(data));
+        } else if (data is Map<dynamic, dynamic>) {
+          handler(Map<String, dynamic>.from(data));
+        }
+      } catch (e) {
+        Log.e('Realtime reaction parse error', 'REALTIME', e);
       }
     });
   }

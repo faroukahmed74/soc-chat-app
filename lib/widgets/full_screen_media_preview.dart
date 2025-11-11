@@ -9,6 +9,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:html' if (dart.library.io) '../widgets/html_stub.dart' as html;
 import '../services/logger_service.dart';
 import '../utils/responsive_utils.dart';
 
@@ -106,17 +107,25 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
       final path = uri.path.toLowerCase();
       final isHls = path.contains('.m3u8') || uri.queryParameters.containsKey('format') && uri.queryParameters['format'] == 'hls';
       
-      // Initialize video controller
+      // Initialize video controller with proper headers for Android and ngrok URLs
+      final headers = <String, String>{};
+      if (!kIsWeb) {
+        // Add ngrok header if URL contains ngrok (required for Android 10+)
+        if (videoUrl.contains('ngrok') || 
+            videoUrl.contains('ngrok-free.app') || 
+            videoUrl.contains('ngrok.app')) {
+          headers['ngrok-skip-browser-warning'] = 'true';
+        }
+        
+        // Add platform-specific User-Agent
+        headers['User-Agent'] = Platform.isIOS
+            ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'
+            : 'Mozilla/5.0 (Linux; Android 10) Mobile';
+      }
+      
       _videoController = VideoPlayerController.networkUrl(
         Uri.parse(videoUrl),
-        // Add HTTP headers for better compatibility, especially on iOS
-        httpHeaders: kIsWeb 
-          ? <String, String>{}
-          : {
-              'User-Agent': Platform.isIOS
-                  ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'
-                  : 'Mozilla/5.0 (Linux; Android 10) Mobile',
-            },
+        httpHeaders: headers,
       );
       
       await _videoController!.initialize();
@@ -172,7 +181,19 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
       if (kIsWeb) return; // Skip on web
       
       final videoUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
-      final response = await http.get(Uri.parse(videoUrl));
+      
+      // Add headers for ngrok URLs (required for Android 10+)
+      final headers = <String, String>{};
+      if (videoUrl.contains('ngrok') || 
+          videoUrl.contains('ngrok-free.app') || 
+          videoUrl.contains('ngrok.app')) {
+        headers['ngrok-skip-browser-warning'] = 'true';
+      }
+      headers['User-Agent'] = Platform.isIOS
+          ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'
+          : 'Mozilla/5.0 (Linux; Android 10) Mobile';
+      
+      final response = await http.get(Uri.parse(videoUrl), headers: headers);
       
       if (response.statusCode != 200) {
         throw Exception('Download failed: HTTP ${response.statusCode}');
@@ -336,8 +357,33 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
       final uri = Uri.parse(mediaUrl);
       
       if (kIsWeb) {
-        // Web: Open in new tab for download
-        await launchUrl(uri, mode: LaunchMode.platformDefault);
+        // Web: Create download link and trigger download
+        try {
+          final fileName = widget.fileName ?? _getFileNameFromUrl(mediaUrl);
+          final anchor = html.AnchorElement(
+            href: mediaUrl,
+          )
+            ..setAttribute('download', fileName)
+            ..target = '_blank';
+          
+          if (html.document.body != null) {
+            html.document.body!.append(anchor);
+          }
+          anchor.click();
+          
+          // Clean up after a short delay
+          Future.delayed(const Duration(milliseconds: 100), () {
+            anchor.remove();
+          });
+        } catch (e) {
+          Log.e('Error downloading on web', 'FULL_SCREEN_MEDIA_PREVIEW', e);
+          // Fallback to opening URL
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.platformDefault);
+          } else {
+            throw Exception('Cannot download media');
+          }
+        }
       } else {
         // Mobile: Download file using path_provider
         await _downloadMediaMobile(mediaUrl);
@@ -417,6 +463,42 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
     } catch (e) {
       Log.e('Error in mobile download', 'FULL_SCREEN_MEDIA_PREVIEW', e);
       rethrow;
+    }
+  }
+
+  String _getFileNameFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isNotEmpty) {
+        final lastSegment = pathSegments.last;
+        if (lastSegment.contains('.')) {
+          return lastSegment;
+        }
+      }
+      // Fallback: generate filename based on media type
+      final extension = widget.mediaType == 'video' 
+          ? '.mp4' 
+          : widget.mediaType == 'image' 
+              ? '.jpg' 
+              : widget.mediaType == 'audio' || widget.mediaType == 'voice'
+                  ? '.mp3'
+                  : widget.mediaType == 'document'
+                      ? '.pdf'
+                      : '.bin';
+      return 'download${DateTime.now().millisecondsSinceEpoch}$extension';
+    } catch (e) {
+      // Fallback filename
+      final extension = widget.mediaType == 'video' 
+          ? '.mp4' 
+          : widget.mediaType == 'image' 
+              ? '.jpg' 
+              : widget.mediaType == 'audio' || widget.mediaType == 'voice'
+                  ? '.mp3'
+                  : widget.mediaType == 'document'
+                      ? '.pdf'
+                      : '.bin';
+      return 'download${DateTime.now().millisecondsSinceEpoch}$extension';
     }
   }
 

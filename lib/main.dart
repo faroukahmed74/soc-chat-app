@@ -406,7 +406,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     super.didChangeAppLifecycleState(state);
     
     // Handle iOS background/foreground transitions
-    if (!kIsWeb && io.Platform.isIOS) {
+    if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
       final iosService = IOSNotificationService();
       if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
         iosService.onAppPaused();
@@ -623,7 +623,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           await Future.delayed(const Duration(seconds: 3));
           
           // Platform-specific background services
-          if (!kIsWeb && io.Platform.isAndroid) {
+          if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android) {
             // Android: Start foreground service with retry logic
             bool started = false;
             for (int attempt = 1; attempt <= 3; attempt++) {
@@ -652,7 +652,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
             } else {
               Log.w('⚠️ Foreground service may not be running', 'MAIN_APP');
             }
-          } else if (!kIsWeb && io.Platform.isIOS) {
+          } else if (!kIsWeb && defaultTargetPlatform == TargetPlatform.iOS) {
             // iOS: Initialize iOS notification service
             Log.i('Initializing iOS notification service...', 'MAIN_APP');
             try {

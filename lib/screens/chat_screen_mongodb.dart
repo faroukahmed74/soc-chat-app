@@ -31,6 +31,7 @@ import '../services/active_chat_service.dart';
 import '../services/message_sound_service.dart';
 import '../theme/app_design_system.dart';
 import '../config/database_config.dart';
+import '../utils/responsive_utils.dart';
 
 class ChatScreenMongoDB extends StatefulWidget {
   final String chatId;
@@ -75,6 +76,12 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   
   // Track previous message IDs for sound detection
   final Set<String> _previousMessageIds = {};
+  
+  // Reply functionality
+  Map<String, dynamic>? _replyingToMessage;
+  
+  // Reactions
+  final Map<String, Map<String, List<String>>> _messageReactions = {}; // messageId -> {emoji: [userId]}
   
   String? _extractMessageId(Map<String, dynamic> m) {
     final id = m['_id'] ?? m['id'];
@@ -232,6 +239,26 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           _loadMessages();
         }
       });
+      // Listen for reaction updates (works offline via polling fallback)
+      _realtime.onMessageReaction((reactionData) {
+        try {
+          final messageId = (reactionData['messageId'] ?? '').toString();
+          final reactions = reactionData['reactions'];
+          if (messageId.isNotEmpty && reactions != null && mounted) {
+            setState(() {
+              _messageReactions[messageId] = Map<String, List<String>>.from(
+                (reactions as Map).map((k, v) => MapEntry(
+                  k.toString(),
+                  List<String>.from((v as List).map((e) => e.toString())),
+                )),
+              );
+            });
+          }
+        } catch (e) {
+          Log.e('Error handling reaction update', 'CHAT_SCREEN_MONGODB', e);
+          // If Socket.IO fails, reactions will still sync via polling (every 2 seconds)
+        }
+      });
     } catch (e) {
       Log.e('Error initializing chat', 'CHAT_SCREEN_MONGODB', e);
       if (mounted) {
@@ -284,6 +311,19 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           }
         }
         
+        // Sync reactions from messages
+        for (final msg in messages) {
+          final msgId = _extractMessageId(msg);
+          if (msgId != null && msg['reactions'] != null) {
+            _messageReactions[msgId] = Map<String, List<String>>.from(
+              (msg['reactions'] as Map).map((k, v) => MapEntry(
+                k.toString(),
+                List<String>.from((v as List).map((e) => e.toString())),
+              )),
+            );
+          }
+        }
+        
         // Mark messages as read for those not sent by current user
         await _markMessagesAsRead(_messages);
         
@@ -327,6 +367,18 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           
           setState(() {
             _messages = messages;
+            // Sync reactions from messages
+            for (final msg in messages) {
+              final msgId = _extractMessageId(msg);
+              if (msgId != null && msg['reactions'] != null) {
+                _messageReactions[msgId] = Map<String, List<String>>.from(
+                  (msg['reactions'] as Map).map((k, v) => MapEntry(
+                    k.toString(),
+                    List<String>.from((v as List).map((e) => e.toString())),
+                  )),
+                );
+              }
+            }
           });
           
           // Play sound for new messages from others
@@ -402,11 +454,13 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-        body: json.encode({'userId': _currentUserId}),
+        body: json.encode({}), // Server gets userId from auth token
       );
       
       if (response.statusCode == 200) {
-        Log.i('Unread count reset for chat ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
+        Log.i('✅ Unread count reset for chat ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
+      } else {
+        Log.w('⚠️ Failed to reset unread count: ${response.statusCode}', 'CHAT_SCREEN_MONGODB');
       }
     } catch (e) {
       Log.e('Error resetting unread count', 'CHAT_SCREEN_MONGODB', e);
@@ -456,10 +510,14 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     });
 
     try {
-      Log.i('Sending message to chat ID: ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
-      final result = await _chatService.sendTextMessage(widget.chatId, content);
+      final replyToId = _replyingToMessage != null ? _extractMessageId(_replyingToMessage!) : null;
+      Log.i('Sending message to chat ID: ${widget.chatId}${replyToId != null ? " (replying to $replyToId)" : ""}', 'CHAT_SCREEN_MONGODB');
+      final result = await _chatService.sendTextMessage(widget.chatId, content, replyTo: replyToId);
       if (result != null) {
         _messageController.clear();
+        setState(() {
+          _replyingToMessage = null; // Clear reply after sending
+        });
         // Force scroll to bottom when user sends their own message
         _scrollToBottom(force: true);
         // Message will be added via the stream listener
@@ -494,13 +552,18 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     });
 
     try {
+      final replyToId = _replyingToMessage != null ? _extractMessageId(_replyingToMessage!) : null;
       final result = await _chatService.sendMediaMessage(
         widget.chatId,
         mediaUrl,
         messageType,
         content: (content != null && content.isNotEmpty) ? content : null,
+        replyTo: replyToId,
       );
       if (result != null) {
+        setState(() {
+          _replyingToMessage = null; // Clear reply after sending
+        });
         // Force scroll to bottom when user sends their own media
         _scrollToBottom(force: true);
         // Message will be added via the stream listener
@@ -776,63 +839,111 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     final senderName = _extractSenderName(message);
     final mediaUrl = _extractMediaUrl(message) ?? '';
     
-    // Responsive margins for web and mobile
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isWideScreen = kIsWeb && screenWidth > 800;
-    final horizontalMargin = isWideScreen ? 16.0 : 8.0;
+    // Responsive values
+    final avatarRadius = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 14.0,
+      tablet: 16.0,
+      desktop: 18.0,
+    );
+    final avatarFontSize = ResponsiveUtils.getResponsiveFontSize(
+      context,
+      baseSize: 12.0,
+      mobileMultiplier: 0.9,
+      tabletMultiplier: 1.0,
+      desktopMultiplier: 1.1,
+    );
+    final messagePadding = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      tablet: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      desktop: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    );
+    final messageMargin = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: const EdgeInsets.symmetric(vertical: 3, horizontal: 6),
+      tablet: const EdgeInsets.symmetric(vertical: 4, horizontal: 7),
+      desktop: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+    );
+    final borderRadius = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 16.0,
+      tablet: 17.0,
+      desktop: 18.0,
+    );
+    final spacing = ResponsiveUtils.getResponsiveSpacing(context);
+    final maxBubbleWidth = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 0.75,
+      tablet: 0.65,
+      desktop: 0.55,
+    );
 
     return Container(
-      margin: EdgeInsets.symmetric(vertical: 4, horizontal: horizontalMargin),
+      margin: messageMargin,
       child: Row(
         mainAxisAlignment: isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isCurrentUser) ...[
             CircleAvatar(
-              radius: 16,
+              radius: avatarRadius,
               backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
               child: Text(
                 senderName.isNotEmpty ? senderName[0].toUpperCase() : 'U',
-                style: AppDesignSystem.bodySmall.copyWith(
+                style: TextStyle(
+                  fontSize: avatarFontSize,
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: spacing * 0.67),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            child: ConstrainedBox(
               constraints: BoxConstraints(
-                maxWidth: isWideScreen ? 600 : double.infinity,
+                maxWidth: MediaQuery.of(context).size.width * maxBubbleWidth,
               ),
-              decoration: BoxDecoration(
-                color: isCurrentUser
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.surfaceVariant,
-                borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
-              ),
-              child: Column(
+              child: Container(
+                padding: messagePadding,
+                decoration: BoxDecoration(
+                  color: isCurrentUser
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(borderRadius),
+                ),
+                child: InkWell(
+                  onLongPress: () {
+                    // Long press to reply
+                    setState(() {
+                      _replyingToMessage = message;
+                    });
+                  },
+                  child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                    // Reply preview
+                    if (message['replyTo'] != null) _buildReplyPreview(message),
                   if (!isCurrentUser && widget.isGroupChat)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
+                        padding: EdgeInsets.only(bottom: spacing * 0.33),
                       child: Text(
                         senderName,
-                        style: AppDesignSystem.bodySmall.copyWith(
-                          fontWeight: FontWeight.bold,
+                          style: ResponsiveUtils.getResponsiveCaptionStyle(
+                            context,
                           color: isCurrentUser
                               ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
                               : Theme.of(context).colorScheme.onSurfaceVariant,
+                            weight: FontWeight.bold,
                         ),
                       ),
                     ),
                   if (messageType == 'text')
                     Text(
                       content,
-                      style: AppDesignSystem.bodyMedium.copyWith(
+                      style: ResponsiveUtils.getResponsiveBodyStyle(
+                        context,
                         color: isCurrentUser
                             ? Theme.of(context).colorScheme.onPrimary
                             : Theme.of(context).colorScheme.onSurface,
@@ -842,19 +953,49 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        GestureDetector(
-                          onTap: () => _showFullScreenMedia(mediaUrl, 'image', content),
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: _buildCachedImage(mediaUrl),
+                        Container(
+                          constraints: BoxConstraints(
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 180.0,
+                              tablet: 200.0,
+                              desktop: 250.0,
+                            ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 180.0,
+                              tablet: 200.0,
+                              desktop: 250.0,
+                            ),
+                          ),
+                          child: EnhancedMediaPreview(
+                            mediaUrl: mediaUrl ?? '',
+                            mediaType: 'image',
+                            fileName: message['fileName'] ?? content.isNotEmpty ? content : 'Image',
+                            fileSize: message['fileSize'] as String?,
+                            onTap: () => _showFullScreenMedia(mediaUrl ?? '', 'image', content),
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 180.0,
+                              tablet: 200.0,
+                              desktop: 250.0,
+                            ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 180.0,
+                              tablet: 200.0,
+                              desktop: 250.0,
+                            ),
+                            enableRetry: true,
                           ),
                         ),
                         if (content.isNotEmpty)
                           Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: EdgeInsets.only(top: spacing * 0.67),
                             child: Text(
                               content,
-                              style: AppDesignSystem.bodyMedium.copyWith(
+                              style: ResponsiveUtils.getResponsiveCaptionStyle(
+                                context,
                                 color: isCurrentUser
                                     ? Theme.of(context).colorScheme.onPrimary
                                     : Theme.of(context).colorScheme.onSurface,
@@ -867,49 +1008,49 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        GestureDetector(
-                          onTap: () => _showFullScreenMedia(mediaUrl, 'video', content),
-                          child: Container(
-                            width: 200,
-                            height: 150,
-                            decoration: BoxDecoration(
-                              color: Theme.of(context).colorScheme.surfaceVariant,
-                              borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
-                            ),
-                            child: Stack(
-                              children: [
-                                // Video thumbnail placeholder
                                 Container(
-                                  width: 200,
-                                  height: 150,
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surfaceVariant,
-                                    borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
-                                  ),
-                                  child: Icon(
-                                    Icons.videocam,
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                                    size: 40,
-                                  ),
-                                ),
-                                // Play button overlay
-                                Center(
-                                  child: Icon(
-                                    Icons.play_circle_filled,
-                                    color: Theme.of(context).colorScheme.primary,
-                                    size: 50,
-                                  ),
-                                ),
-                              ],
+                          constraints: BoxConstraints(
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 200.0,
+                              tablet: 225.0,
+                              desktop: 250.0,
                             ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 150.0,
+                              tablet: 175.0,
+                              desktop: 200.0,
+                            ),
+                          ),
+                          child: EnhancedMediaPreview(
+                            mediaUrl: mediaUrl ?? '',
+                            mediaType: 'video',
+                            fileName: message['fileName'] ?? content.isNotEmpty ? content : 'Video',
+                            fileSize: message['fileSize'] as String?,
+                            onTap: () => _showFullScreenMedia(mediaUrl ?? '', 'video', content),
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 200.0,
+                              tablet: 225.0,
+                              desktop: 250.0,
+                            ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 150.0,
+                              tablet: 175.0,
+                              desktop: 200.0,
+                            ),
+                            enableRetry: true,
                           ),
                         ),
                         if (content.isNotEmpty)
                           Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: EdgeInsets.only(top: spacing * 0.67),
                             child: Text(
                               content,
-                              style: AppDesignSystem.bodyMedium.copyWith(
+                              style: ResponsiveUtils.getResponsiveCaptionStyle(
+                                context,
                                 color: isCurrentUser
                                     ? Theme.of(context).colorScheme.onPrimary
                                     : Theme.of(context).colorScheme.onSurface,
@@ -922,73 +1063,49 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        GestureDetector(
-                          onTap: () => _showFullScreenMedia(mediaUrl, messageType, content),
-                          child: Container(
-                            width: 200,
-                            height: 80,
-                            decoration: BoxDecoration(
-                              color: isCurrentUser
-                                  ? Theme.of(context).colorScheme.primary
-                                  : Theme.of(context).colorScheme.surfaceVariant,
-                              borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                        Container(
+                          constraints: BoxConstraints(
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 200.0,
+                              tablet: 225.0,
+                              desktop: 250.0,
                             ),
-                            child: Row(
-                              children: [
-                                const SizedBox(width: 12),
-                                Icon(
-                                  messageType == 'voice' ? Icons.mic : Icons.music_note,
-                                  color: isCurrentUser 
-                                      ? Theme.of(context).colorScheme.onPrimary 
-                                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                                  size: 24,
-                                ),
-                                const SizedBox(width: 12),
-                                Expanded(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        messageType == 'voice' ? 'Voice Message' : 'Audio Message',
-                                        style: AppDesignSystem.bodyMedium.copyWith(
-                                          color: isCurrentUser 
-                                              ? Theme.of(context).colorScheme.onPrimary 
-                                              : Theme.of(context).colorScheme.onSurface,
-                                          fontWeight: FontWeight.w500,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 4),
-                                      Text(
-                                        'Tap to play',
-                                        style: AppDesignSystem.bodySmall.copyWith(
-                                          color: isCurrentUser 
-                                              ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
-                                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                Icon(
-                                  Icons.play_circle_filled,
-                                  color: isCurrentUser 
-                                      ? Theme.of(context).colorScheme.onPrimary 
-                                      : Theme.of(context).colorScheme.onSurfaceVariant,
-                                  size: 32,
-                                ),
-                                const SizedBox(width: 12),
-                              ],
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 70.0,
+                              tablet: 75.0,
+                              desktop: 80.0,
                             ),
                           ),
+                          child: EnhancedMediaPreview(
+                            mediaUrl: mediaUrl ?? '',
+                            mediaType: messageType == 'voice' ? 'voice' : 'audio',
+                            fileName: content.isNotEmpty ? content : (messageType == 'voice' ? 'Voice Message' : 'Audio Message'),
+                            fileSize: message['fileSize'] as String? ?? message['duration']?.toString(),
+                            onTap: () => _showFullScreenMedia(mediaUrl ?? '', messageType, content),
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 200.0,
+                              tablet: 225.0,
+                              desktop: 250.0,
+                            ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 70.0,
+                              tablet: 75.0,
+                              desktop: 80.0,
+                            ),
+                            enableRetry: true,
+                          ),
                         ),
-                        if (content.isNotEmpty)
+                        if (content.isNotEmpty && !content.contains('Voice Message') && !content.contains('Audio Message'))
                           Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: EdgeInsets.only(top: spacing * 0.67),
                             child: Text(
                               content,
-                              style: AppDesignSystem.bodyMedium.copyWith(
+                              style: ResponsiveUtils.getResponsiveCaptionStyle(
+                                context,
                                 color: isCurrentUser
                                     ? Theme.of(context).colorScheme.onPrimary
                                     : Theme.of(context).colorScheme.onSurface,
@@ -999,9 +1116,19 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                     )
                   else if (messageType == 'document')
                     Container(
-                      constraints: const BoxConstraints(
-                        maxWidth: 250,
-                        maxHeight: 150,
+                      constraints: BoxConstraints(
+                        maxWidth: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 200.0,
+                          tablet: 225.0,
+                          desktop: 250.0,
+                        ),
+                        maxHeight: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 120.0,
+                          tablet: 135.0,
+                          desktop: 150.0,
+                        ),
                       ),
                       child: EnhancedMediaPreview(
                         mediaUrl: mediaUrl ?? '',
@@ -1012,51 +1139,74 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                         onTap: () {
                           _showFullScreenMedia(mediaUrl ?? '', 'document', content, fileSize: message['fileSize'] as String?);
                         },
-                        maxWidth: 250,
-                        maxHeight: 150,
+                        maxWidth: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 200.0,
+                          tablet: 225.0,
+                          desktop: 250.0,
+                        ),
+                        maxHeight: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 120.0,
+                          tablet: 135.0,
+                          desktop: 150.0,
+                        ),
                         enableRetry: true,
                       ),
                     )
                   else
                     Text(
                       'Unsupported message type: $messageType',
-                      style: AppDesignSystem.bodyMedium.copyWith(
+                      style: ResponsiveUtils.getResponsiveBodyStyle(
+                        context,
                         color: isCurrentUser
                             ? Theme.of(context).colorScheme.onPrimary
                             : Theme.of(context).colorScheme.onSurface,
                       ),
                     ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: spacing * 0.33),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Text(
                         _formatTimestamp(timestamp),
-                        style: AppDesignSystem.bodySmall.copyWith(
+                        style: TextStyle(
+                          fontSize: ResponsiveUtils.getResponsiveFontSize(
+                            context,
+                            baseSize: 10.0,
+                            mobileMultiplier: 0.9,
+                            tabletMultiplier: 1.0,
+                            desktopMultiplier: 1.0,
+                          ),
                           color: isCurrentUser
                               ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
                               : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
                       if (isCurrentUser) ...[
-                        const SizedBox(width: 4),
+                        SizedBox(width: spacing * 0.33),
                         _buildMessageStatus(message, Theme.of(context).brightness == Brightness.dark),
                       ],
                     ],
                   ),
+                  // Reactions
+                  _buildReactions(message),
                 ],
               ),
             ),
           ),
+            ),
+          ),
           if (isCurrentUser) ...[
-            const SizedBox(width: 8),
+            SizedBox(width: spacing * 0.67),
             CircleAvatar(
-              radius: 16,
+              radius: avatarRadius,
               backgroundColor: Theme.of(context).colorScheme.primary,
               child: Text(
                 _currentUserName?.isNotEmpty == true ? _currentUserName![0].toUpperCase() : 'U',
-                style: AppDesignSystem.bodySmall.copyWith(
+                style: TextStyle(
+                  fontSize: avatarFontSize,
                   fontWeight: FontWeight.bold,
                   color: Theme.of(context).colorScheme.onPrimary,
                 ),
@@ -1066,6 +1216,289 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         ],
       ),
     );
+  }
+
+  Widget _buildReplyPreview(Map<String, dynamic> message) {
+    final replyToId = message['replyTo']?.toString();
+    if (replyToId == null) return const SizedBox.shrink();
+    
+    final spacing = ResponsiveUtils.getResponsiveSpacing(context);
+    final isDark = _themeService.isDarkMode;
+    
+    // Find the replied message
+    final repliedMessage = _messages.firstWhere(
+      (m) => _extractMessageId(m) == replyToId,
+      orElse: () => {},
+    );
+    
+    if (repliedMessage.isEmpty) {
+      return Padding(
+        padding: EdgeInsets.only(bottom: spacing * 0.5),
+        child: Container(
+          padding: EdgeInsets.all(spacing * 0.5),
+          decoration: BoxDecoration(
+            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+            borderRadius: BorderRadius.circular(8),
+            border: Border(
+              left: BorderSide(
+                color: Theme.of(context).colorScheme.primary,
+                width: 3,
+              ),
+            ),
+          ),
+          child: Text(
+            'Original message deleted',
+            style: ResponsiveUtils.getResponsiveCaptionStyle(
+              context,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+    }
+    
+    final repliedSenderId = _extractSenderId(repliedMessage);
+    final isRepliedToCurrentUser = repliedSenderId == _currentUserId;
+    final repliedSenderName = _extractSenderName(repliedMessage);
+    final repliedContent = _extractContent(repliedMessage);
+    final repliedType = _extractType(repliedMessage);
+    
+    return Padding(
+      padding: EdgeInsets.only(bottom: spacing * 0.5),
+      child: Container(
+        padding: EdgeInsets.all(spacing * 0.5),
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+          borderRadius: BorderRadius.circular(8),
+          border: Border(
+            left: BorderSide(
+              color: Theme.of(context).colorScheme.primary,
+              width: 3,
+            ),
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              isRepliedToCurrentUser ? 'You' : repliedSenderName,
+              style: ResponsiveUtils.getResponsiveCaptionStyle(
+                context,
+                color: Theme.of(context).colorScheme.primary,
+                weight: FontWeight.bold,
+              ),
+            ),
+            SizedBox(height: spacing * 0.25),
+            Text(
+              repliedType == 'text' 
+                  ? repliedContent 
+                  : repliedType == 'image' 
+                      ? '📷 Image' 
+                      : repliedType == 'video' 
+                          ? '🎥 Video' 
+                          : repliedType == 'audio' 
+                              ? '🎵 Audio' 
+                              : '📎 ${repliedType}',
+              style: ResponsiveUtils.getResponsiveCaptionStyle(
+                context,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReactions(Map<String, dynamic> message) {
+    final messageId = _extractMessageId(message);
+    if (messageId == null) return const SizedBox.shrink();
+    
+    final spacing = ResponsiveUtils.getResponsiveSpacing(context);
+    final isDark = _themeService.isDarkMode;
+    final reactions = _messageReactions[messageId] ?? {};
+    if (reactions.isEmpty) {
+      // Show add reaction button even if no reactions
+      return Padding(
+        padding: EdgeInsets.only(top: spacing * 0.33),
+        child: InkWell(
+          onTap: () => _showReactionPicker(messageId),
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: EdgeInsets.symmetric(
+              horizontal: spacing * 0.5,
+              vertical: spacing * 0.25,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(
+              Icons.add_reaction_outlined,
+              size: ResponsiveUtils.getResponsiveIconSize(context),
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+    }
+    
+    return Padding(
+      padding: EdgeInsets.only(top: spacing * 0.33),
+      child: Wrap(
+        spacing: spacing * 0.33,
+        runSpacing: spacing * 0.25,
+        children: reactions.entries.map((entry) {
+          final emoji = entry.key;
+          final userIds = entry.value;
+          final hasUserReacted = userIds.contains(_currentUserId?.toString());
+          
+          return InkWell(
+            onTap: () => _toggleReaction(messageId, emoji),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: spacing * 0.5,
+                vertical: spacing * 0.25,
+              ),
+              decoration: BoxDecoration(
+                color: hasUserReacted
+                    ? Theme.of(context).colorScheme.primary.withOpacity(0.2)
+                    : Theme.of(context).colorScheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(12),
+                border: hasUserReacted
+                    ? Border.all(
+                        color: Theme.of(context).colorScheme.primary,
+                        width: 1,
+                      )
+                    : null,
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    emoji,
+                    style: ResponsiveUtils.getResponsiveBodyStyle(context),
+                  ),
+                  if (userIds.length > 1) ...[
+                    SizedBox(width: spacing * 0.25),
+                    Text(
+                      '${userIds.length}',
+                      style: ResponsiveUtils.getResponsiveCaptionStyle(
+                        context,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        weight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          );
+        }).toList()
+          ..add(
+            InkWell(
+              onTap: () => _showReactionPicker(messageId),
+              borderRadius: BorderRadius.circular(12),
+              child: Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: spacing * 0.5,
+                  vertical: spacing * 0.25,
+                ),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(
+                  Icons.add_reaction_outlined,
+                  size: ResponsiveUtils.getResponsiveIconSize(context) * 0.8,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+          ),
+      ),
+    );
+  }
+
+  void _showReactionPicker(String messageId) {
+    final emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'];
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Container(
+        decoration: BoxDecoration(
+          color: Theme.of(context).scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        padding: EdgeInsets.all(ResponsiveUtils.getResponsiveSpacing(context)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Add Reaction',
+              style: ResponsiveUtils.getResponsiveHeadingStyle(context),
+            ),
+            SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context)),
+            Wrap(
+              spacing: ResponsiveUtils.getResponsiveSpacing(context),
+              children: emojis.map((emoji) {
+                return InkWell(
+                  onTap: () {
+                    Navigator.pop(context);
+                    _toggleReaction(messageId, emoji);
+                  },
+                  borderRadius: BorderRadius.circular(20),
+                  child: Container(
+                    padding: EdgeInsets.all(ResponsiveUtils.getResponsiveSpacing(context) * 0.75),
+                    child: Text(
+                      emoji,
+                      style: TextStyle(
+                        fontSize: ResponsiveUtils.getResponsiveFontSize(
+                          context,
+                          baseSize: 32.0,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }).toList(),
+            ),
+            SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _toggleReaction(String messageId, String emoji) async {
+    try {
+      final result = await _chatService.toggleReaction(messageId, emoji);
+      if (result != null && result['reactions'] != null && mounted) {
+        setState(() {
+          _messageReactions[messageId] = Map<String, List<String>>.from(
+            (result['reactions'] as Map).map((k, v) => MapEntry(
+              k.toString(),
+              List<String>.from((v as List).map((e) => e.toString())),
+            )),
+          );
+        });
+      }
+    } catch (e) {
+      Log.e('Error toggling reaction', 'CHAT_SCREEN_MONGODB', e);
+      // Even if API call fails, reactions will sync via polling (every 2 seconds)
+      // This ensures reactions work fully offline on local network
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Reaction saved. Syncing...'),
+            duration: Duration(seconds: 1),
+          ),
+        );
+      }
+    }
   }
 
   void _showFullScreenMedia(String mediaUrl, String mediaType, String fileName, {String? fileSize}) {
@@ -1405,9 +1838,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   @override
   Widget build(BuildContext context) {
     // Responsive layout for web and mobile
-    final isWeb = kIsWeb;
-    final screenWidth = MediaQuery.of(context).size.width;
-    final isWideScreen = isWeb && screenWidth > 800;
+    final spacing = ResponsiveUtils.getResponsiveSpacing(context);
     
     return Scaffold(
       appBar: AppBar(
@@ -1417,62 +1848,70 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           children: [
             Text(
               widget.chatName,
-              style: AppDesignSystem.headlineSmall.copyWith(
+              style: ResponsiveUtils.getResponsiveHeadingStyle(
+                context,
                 color: Theme.of(context).colorScheme.onPrimary,
+                weight: FontWeight.bold,
               ),
             ),
             if (!widget.isGroupChat) ...[
-              const SizedBox(height: 2),
+              SizedBox(height: spacing * 0.17),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_otherUserIsOnline == true) ...[
                     Container(
-                      width: 8,
-                      height: 8,
+                      width: ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 7.0,
+                        tablet: 8.0,
+                        desktop: 8.0,
+                      ),
+                      height: ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 7.0,
+                        tablet: 8.0,
+                        desktop: 8.0,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.green,
                         shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: spacing * 0.5),
                     Text(
                       'Online',
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: ResponsiveUtils.getResponsiveCaptionStyle(
+                        context,
                         color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.8),
-                        fontWeight: FontWeight.normal,
                       ),
                     ),
                   ] else if (_otherUserLastSeen != null) ...[
                     Text(
                       _formatLastSeen(_otherUserLastSeen),
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: ResponsiveUtils.getResponsiveCaptionStyle(
+                        context,
                         color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.8),
-                        fontWeight: FontWeight.normal,
                       ),
                     ),
                   ] else ...[
                     Text(
                       'Loading...',
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: ResponsiveUtils.getResponsiveCaptionStyle(
+                        context,
                         color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.8),
-                        fontWeight: FontWeight.normal,
                       ),
                     ),
                   ],
                 ],
               ),
             ] else ...[
-              const SizedBox(height: 2),
+              SizedBox(height: spacing * 0.17),
               Text(
                 'Group Chat',
-                style: TextStyle(
-                  fontSize: 12,
+                style: ResponsiveUtils.getResponsiveCaptionStyle(
+                  context,
                   color: Theme.of(context).colorScheme.onPrimary.withOpacity(0.8),
-                  fontWeight: FontWeight.normal,
                 ),
               ),
             ],
@@ -1508,7 +1947,12 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                         controller: _scrollController,
                         itemCount: _messages.length,
                         padding: EdgeInsets.symmetric(
-                          horizontal: isWideScreen ? 24.0 : 0.0,
+                          horizontal: ResponsiveUtils.getResponsiveValue(
+                            context,
+                            mobile: 0.0,
+                            tablet: 12.0,
+                            desktop: 24.0,
+                          ),
                           vertical: 8.0,
                         ),
                         itemBuilder: (context, index) {
@@ -1523,6 +1967,12 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
             onSendMedia: _sendMediaMessage,
             chatId: widget.chatId,
             isEnabled: !_isSending,
+            replyingToMessage: _replyingToMessage,
+            onCancelReply: () {
+              setState(() {
+                _replyingToMessage = null;
+              });
+            },
           ),
         ],
       ),

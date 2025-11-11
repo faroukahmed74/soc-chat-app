@@ -267,6 +267,8 @@ class ResponsiveUtils {
       fontSize: fontSize,
       fontWeight: weight ?? FontWeight.bold,
       color: color,
+      // Add emoji font support for web offline mode
+      fontFamily: kIsWeb ? _getEmojiFontFamily() : null,
     );
   }
   
@@ -288,8 +290,22 @@ class ResponsiveUtils {
       fontSize: fontSize,
       fontWeight: weight ?? FontWeight.normal,
       color: color,
+      // Add emoji font support for web offline mode
+      fontFamily: kIsWeb ? _getEmojiFontFamily() : null,
     );
   }
+  
+  /// Gets emoji font family stack for web to support offline emoji rendering
+  /// This font stack includes system emoji fonts that are typically pre-installed
+  /// and work offline without requiring internet connection
+  static String getEmojiFontFamily() {
+    // Font stack that includes system emoji fonts available on most systems
+    // These fonts are typically pre-installed and work offline
+    return 'Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", "EmojiOne Mozilla", "Twemoji Mozilla", "Segoe UI Historic", sans-serif';
+  }
+  
+  /// Private helper for internal use
+  static String _getEmojiFontFamily() => getEmojiFontFamily();
   
   /// Gets responsive text style for captions
   static TextStyle getResponsiveCaptionStyle(
@@ -309,6 +325,8 @@ class ResponsiveUtils {
       fontSize: fontSize,
       fontWeight: weight ?? FontWeight.normal,
       color: color,
+      // Add emoji font support for web offline mode
+      fontFamily: kIsWeb ? _getEmojiFontFamily() : null,
     );
   }
 }

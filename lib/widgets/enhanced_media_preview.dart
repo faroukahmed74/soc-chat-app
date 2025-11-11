@@ -18,6 +18,7 @@ import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../services/media_cache_service.dart';
 import '../utils/responsive_utils.dart';
+import 'dart:html' if (dart.library.io) '../widgets/html_stub.dart' as html;
 
 /// Enhanced media preview widget for chat screens
 class EnhancedMediaPreview extends StatefulWidget {
@@ -267,8 +268,10 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   }
 
   Widget _buildVideoWidget() {
+    // Resolve URL for web (convert ngrok to local network), preserve for mobile
+    final resolvedUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
     return _VideoThumbnailBuilder(
-      mediaUrl: widget.mediaUrl,
+      mediaUrl: resolvedUrl,
       fileName: widget.fileName,
       fileSize: widget.fileSize,
       onTap: widget.onTap,
@@ -873,9 +876,25 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
       final uri = Uri.parse(mediaUrl);
       
       if (kIsWeb) {
-        // Web: Open in new tab for download
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.platformDefault);
+        // Web: Create download link and trigger download
+        try {
+          final fileName = widget.fileName ?? _getFileNameFromUrl(mediaUrl);
+          final anchor = html.AnchorElement(
+            href: mediaUrl,
+          )
+            ..setAttribute('download', fileName)
+            ..target = '_blank';
+          
+          if (html.document.body != null) {
+            html.document.body!.append(anchor);
+          }
+          anchor.click();
+          
+          // Clean up after a short delay
+          Future.delayed(const Duration(milliseconds: 100), () {
+            anchor.remove();
+          });
+          
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
@@ -884,8 +903,14 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
               ),
             );
           }
-        } else {
-          _showSnackBar('Cannot open media URL');
+        } catch (e) {
+          Log.e('Error downloading on web', 'ENHANCED_MEDIA_PREVIEW', e);
+          // Fallback to opening URL
+          if (await canLaunchUrl(uri)) {
+            await launchUrl(uri, mode: LaunchMode.platformDefault);
+          } else {
+            _showSnackBar('Cannot download media');
+          }
         }
       } else {
         // Mobile: Download file to device
@@ -959,6 +984,42 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
     }
   }
 
+  String _getFileNameFromUrl(String url) {
+    try {
+      final uri = Uri.parse(url);
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isNotEmpty) {
+        final lastSegment = pathSegments.last;
+        if (lastSegment.contains('.')) {
+          return lastSegment;
+        }
+      }
+      // Fallback: generate filename based on media type
+      final extension = widget.mediaType == 'video' 
+          ? '.mp4' 
+          : widget.mediaType == 'image' 
+              ? '.jpg' 
+              : widget.mediaType == 'audio' || widget.mediaType == 'voice'
+                  ? '.mp3'
+                  : widget.mediaType == 'document'
+                      ? '.pdf'
+                      : '.bin';
+      return 'download${DateTime.now().millisecondsSinceEpoch}$extension';
+    } catch (e) {
+      // Fallback filename
+      final extension = widget.mediaType == 'video' 
+          ? '.mp4' 
+          : widget.mediaType == 'image' 
+              ? '.jpg' 
+              : widget.mediaType == 'audio' || widget.mediaType == 'voice'
+                  ? '.mp3'
+                  : widget.mediaType == 'document'
+                      ? '.pdf'
+                      : '.bin';
+      return 'download${DateTime.now().millisecondsSinceEpoch}$extension';
+    }
+  }
+
   void _showSnackBar(String message) {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
@@ -1026,17 +1087,11 @@ class _VideoThumbnailBuilderState extends State<_VideoThumbnailBuilder> {
     // If no server thumbnail found, extract first frame from video
     if (!_isLoadingThumbnail && _thumbnailUrl == null && mounted) {
       try {
+        // Get appropriate headers for video loading (includes ngrok support)
+        final headers = _getVideoHeaders();
         _previewVideoController = VideoPlayerController.networkUrl(
           Uri.parse(widget.mediaUrl),
-          httpHeaders: kIsWeb 
-              ? <String, String>{}
-              : (!kIsWeb && Platform.isIOS
-                  ? {
-                      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'
-                    }
-                  : {
-                      'User-Agent': 'Mozilla/5.0 (Linux; Android 10) Mobile'
-                    }),
+          httpHeaders: headers,
         );
         
         await _previewVideoController!.initialize();
@@ -1066,7 +1121,12 @@ class _VideoThumbnailBuilderState extends State<_VideoThumbnailBuilder> {
   Future<void> _initializeVideoPreview() async {
     try {
       if (_previewVideoController == null) {
-        _previewVideoController = VideoPlayerController.networkUrl(Uri.parse(widget.mediaUrl));
+        // Add headers for Android, especially for ngrok URLs
+        final headers = _getVideoHeaders();
+        _previewVideoController = VideoPlayerController.networkUrl(
+          Uri.parse(widget.mediaUrl),
+          httpHeaders: headers,
+        );
         await _previewVideoController!.initialize();
       }
       _previewVideoController!.setLooping(true);
@@ -1076,6 +1136,31 @@ class _VideoThumbnailBuilderState extends State<_VideoThumbnailBuilder> {
       Log.e('Error initializing video preview', 'VIDEO_THUMBNAIL_BUILDER', e);
       // Fallback to thumbnail if preview fails
     }
+  }
+  
+  /// Get appropriate HTTP headers for video loading based on platform and URL
+  Map<String, String> _getVideoHeaders() {
+    if (kIsWeb) {
+      return <String, String>{};
+    }
+    
+    final headers = <String, String>{};
+    
+    // Add ngrok header if URL contains ngrok
+    if (widget.mediaUrl.contains('ngrok') || 
+        widget.mediaUrl.contains('ngrok-free.app') || 
+        widget.mediaUrl.contains('ngrok.app')) {
+      headers['ngrok-skip-browser-warning'] = 'true';
+    }
+    
+    // Add platform-specific User-Agent
+    if (Platform.isIOS) {
+      headers['User-Agent'] = 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15';
+    } else if (Platform.isAndroid) {
+      headers['User-Agent'] = 'Mozilla/5.0 (Linux; Android 10) Mobile';
+    }
+    
+    return headers;
   }
 
   void _togglePreviewPlayPause() {

@@ -92,11 +92,6 @@
             </intent-filter>
         </service>
 
-        <!-- FCM Default Notification Channel -->
-        <meta-data
-            android:name="com.google.firebase.messaging.default_notification_channel_id"
-            android:value="fcm_default_channel" />
-
         <!-- Flutter tooling -->
         <meta-data android:name="flutterEmbedding" android:value="2" />
     </application>

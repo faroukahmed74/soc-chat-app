@@ -20,6 +20,7 @@ import '../services/media_cache_service.dart';
 import '../widgets/enhanced_chat_input.dart';
 import '../widgets/enhanced_media_preview.dart';
 import '../widgets/enhanced_responsive_media_preview.dart';
+import '../utils/responsive_utils.dart';
 
 class ChatScreenWebMongoDB extends StatefulWidget {
   final String chatId;
@@ -616,53 +617,101 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
         : DateTime.now();
     final senderName = message['senderName'] ?? 'Unknown';
 
+    // Responsive values
+    final avatarRadius = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 14.0,
+      tablet: 16.0,
+      desktop: 18.0,
+    );
+    final avatarFontSize = ResponsiveUtils.getResponsiveFontSize(
+      context,
+      baseSize: 12.0,
+      mobileMultiplier: 0.9,
+      tabletMultiplier: 1.0,
+      desktopMultiplier: 1.1,
+    );
+    final messagePadding = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      tablet: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+      desktop: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+    );
+    final messageMargin = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: const EdgeInsets.symmetric(vertical: 3, horizontal: 6),
+      tablet: const EdgeInsets.symmetric(vertical: 4, horizontal: 7),
+      desktop: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+    );
+    final borderRadius = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 16.0,
+      tablet: 17.0,
+      desktop: 18.0,
+    );
+    final spacing = ResponsiveUtils.getResponsiveSpacing(context);
+    final maxBubbleWidth = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 0.75,
+      tablet: 0.65,
+      desktop: 0.55,
+    );
+
     return Container(
-      margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+      margin: messageMargin,
       child: Row(
         mainAxisAlignment: isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           if (!isCurrentUser) ...[
             CircleAvatar(
-              radius: 16,
+              radius: avatarRadius,
               backgroundColor: _themeService.isDarkMode ? Colors.grey[700] : Colors.grey[300],
               child: Text(
                 senderName.isNotEmpty ? senderName[0].toUpperCase() : 'U',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
+                style: TextStyle(
+                  fontSize: avatarFontSize,
+                  fontWeight: FontWeight.bold,
+                ),
               ),
             ),
-            const SizedBox(width: 8),
+            SizedBox(width: spacing * 0.67),
           ],
           Flexible(
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-              decoration: BoxDecoration(
-                color: isCurrentUser
-                    ? (_themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500])
-                    : (_themeService.isDarkMode ? Colors.grey[800] : Colors.grey[200]),
-                borderRadius: BorderRadius.circular(18),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxWidth: MediaQuery.of(context).size.width * maxBubbleWidth,
               ),
+              child: Container(
+                padding: messagePadding,
+                decoration: BoxDecoration(
+                  color: isCurrentUser
+                      ? (_themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500])
+                      : (_themeService.isDarkMode ? Colors.grey[800] : Colors.grey[200]),
+                  borderRadius: BorderRadius.circular(borderRadius),
+                ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   if (!isCurrentUser && widget.isGroupChat)
                     Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
+                      padding: EdgeInsets.only(bottom: spacing * 0.33),
                       child: Text(
                         senderName,
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
+                        style: ResponsiveUtils.getResponsiveCaptionStyle(
+                          context,
                           color: isCurrentUser
                               ? Colors.white70
                               : (_themeService.isDarkMode ? Colors.white70 : Colors.black54),
+                          weight: FontWeight.bold,
                         ),
                       ),
                     ),
                   if (messageType == 'text')
                     Text(
                       content,
-                      style: TextStyle(
+                      style: ResponsiveUtils.getResponsiveBodyStyle(
+                        context,
                         color: isCurrentUser
                             ? Colors.white
                             : (_themeService.isDarkMode ? Colors.white : Colors.black87),
@@ -675,27 +724,48 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
                         GestureDetector(
                           onTap: () => _showFullScreenMedia(message['mediaUrl'] ?? '', 'image', content),
                           child: Container(
-                            constraints: const BoxConstraints(
-                              maxWidth: 200,
-                              maxHeight: 200,
+                            constraints: BoxConstraints(
+                              maxWidth: ResponsiveUtils.getResponsiveValue(
+                                context,
+                                mobile: 180.0,
+                                tablet: 200.0,
+                                desktop: 250.0,
+                              ),
+                              maxHeight: ResponsiveUtils.getResponsiveValue(
+                                context,
+                                mobile: 180.0,
+                                tablet: 200.0,
+                                desktop: 250.0,
+                              ),
                             ),
                             child: EnhancedMediaPreview(
                               mediaUrl: message['mediaUrl'] ?? '',
                               mediaType: 'image',
                               fileName: content,
                               onTap: () => _showFullScreenMedia(message['mediaUrl'] ?? '', 'image', content),
-                              maxWidth: 200,
-                              maxHeight: 200,
+                              maxWidth: ResponsiveUtils.getResponsiveValue(
+                                context,
+                                mobile: 180.0,
+                                tablet: 200.0,
+                                desktop: 250.0,
+                              ),
+                              maxHeight: ResponsiveUtils.getResponsiveValue(
+                                context,
+                                mobile: 180.0,
+                                tablet: 200.0,
+                                desktop: 250.0,
+                              ),
                               enableRetry: true,
                             ),
                           ),
                         ),
                         if (content.isNotEmpty)
                           Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: EdgeInsets.only(top: spacing * 0.67),
                             child: Text(
                               content,
-                              style: TextStyle(
+                              style: ResponsiveUtils.getResponsiveCaptionStyle(
+                                context,
                                 color: isCurrentUser
                                     ? Colors.white
                                     : (_themeService.isDarkMode ? Colors.white : Colors.black87),
@@ -709,57 +779,158 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          constraints: const BoxConstraints(
-                            maxWidth: 200,
-                            maxHeight: 150,
-                          ),
-                          child: GestureDetector(
-                            onTap: () => _tryPlayVideo(message['mediaUrl'] ?? '', content),
-                            child: Stack(
-                              children: [
-                                // Video thumbnail/background
-                                Container(
-                                  width: 200,
-                                  height: 150,
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context).colorScheme.surfaceVariant,
-                                    borderRadius: BorderRadius.circular(8),
-                                  ),
-                                  child: Center(
-                                    child: Icon(
-                                      Icons.play_circle_filled,
-                                      size: 48,
-                                      color: Theme.of(context).colorScheme.primary,
-                                    ),
-                                  ),
-                                ),
-                                // Play button overlay
-                                Positioned(
-                                  bottom: 8,
-                                  right: 8,
-                                  child: Container(
-                                    padding: const EdgeInsets.all(6),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withOpacity(0.7),
-                                      borderRadius: BorderRadius.circular(4),
-                                    ),
-                                    child: const Icon(
-                                      Icons.play_arrow,
-                                      color: Colors.white,
-                                      size: 20,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                          constraints: BoxConstraints(
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 200.0,
+                              tablet: 225.0,
+                              desktop: 250.0,
                             ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 150.0,
+                              tablet: 175.0,
+                              desktop: 200.0,
+                            ),
+                          ),
+                          child: EnhancedMediaPreview(
+                            mediaUrl: message['mediaUrl'] ?? '',
+                            mediaType: 'video',
+                            fileName: message['fileName'] ?? content.isNotEmpty ? content : 'Video',
+                            fileSize: message['fileSize'],
+                            onTap: () => _showFullScreenMedia(message['mediaUrl'] ?? '', 'video', content),
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 200.0,
+                              tablet: 225.0,
+                              desktop: 250.0,
+                            ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 150.0,
+                              tablet: 175.0,
+                              desktop: 200.0,
+                            ),
+                            enableRetry: true,
                           ),
                         ),
                         if (content.isNotEmpty)
                           Padding(
-                            padding: const EdgeInsets.only(top: 8),
+                            padding: EdgeInsets.only(top: spacing * 0.67),
                             child: Text(
                               content,
-                              style: TextStyle(
+                              style: ResponsiveUtils.getResponsiveCaptionStyle(
+                                context,
+                                color: isCurrentUser
+                                    ? Colors.white
+                                    : (_themeService.isDarkMode ? Colors.white : Colors.black87),
+                              ),
+                            ),
+                          ),
+                      ],
+                    )
+                  else if (messageType == 'audio' || messageType == 'voice')
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          constraints: BoxConstraints(
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 200.0,
+                              tablet: 225.0,
+                              desktop: 250.0,
+                            ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 70.0,
+                              tablet: 75.0,
+                              desktop: 80.0,
+                            ),
+                          ),
+                          child: EnhancedMediaPreview(
+                            mediaUrl: message['mediaUrl'] ?? '',
+                            mediaType: messageType == 'voice' ? 'voice' : 'audio',
+                            fileName: content.isNotEmpty ? content : (messageType == 'voice' ? 'Voice Message' : 'Audio Message'),
+                            fileSize: message['fileSize'] ?? message['duration']?.toString(),
+                            onTap: () => _showFullScreenMedia(message['mediaUrl'] ?? '', messageType, content),
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 200.0,
+                              tablet: 225.0,
+                              desktop: 250.0,
+                            ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 70.0,
+                              tablet: 75.0,
+                              desktop: 80.0,
+                            ),
+                            enableRetry: true,
+                          ),
+                        ),
+                        if (content.isNotEmpty && !content.contains('Voice Message') && !content.contains('Audio Message'))
+                          Padding(
+                            padding: EdgeInsets.only(top: spacing * 0.67),
+                            child: Text(
+                              content,
+                              style: ResponsiveUtils.getResponsiveCaptionStyle(
+                                context,
+                                color: isCurrentUser
+                                    ? Colors.white
+                                    : (_themeService.isDarkMode ? Colors.white : Colors.black87),
+                              ),
+                            ),
+                          ),
+                      ],
+                    )
+                  else if (messageType == 'document')
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          constraints: BoxConstraints(
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 200.0,
+                              tablet: 225.0,
+                              desktop: 250.0,
+                            ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 90.0,
+                              tablet: 95.0,
+                              desktop: 100.0,
+                            ),
+                          ),
+                          child: EnhancedMediaPreview(
+                            mediaUrl: message['mediaUrl'] ?? '',
+                            mediaType: 'document',
+                            fileName: message['fileName'] ?? content.isNotEmpty ? content : 'Document',
+                            fileSize: message['fileSize'],
+                            onTap: () => _showFullScreenMedia(message['mediaUrl'] ?? '', 'document', message['fileName'] ?? content),
+                            maxWidth: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 200.0,
+                              tablet: 225.0,
+                              desktop: 250.0,
+                            ),
+                            maxHeight: ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 90.0,
+                              tablet: 95.0,
+                              desktop: 100.0,
+                            ),
+                            enableRetry: true,
+                          ),
+                        ),
+                        if (content.isNotEmpty && !content.contains('Document'))
+                          Padding(
+                            padding: EdgeInsets.only(top: spacing * 0.67),
+                            child: Text(
+                              content,
+                              style: ResponsiveUtils.getResponsiveCaptionStyle(
+                                context,
                                 color: isCurrentUser
                                     ? Colors.white
                                     : (_themeService.isDarkMode ? Colors.white : Colors.black87),
@@ -777,7 +948,7 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
                             : (_themeService.isDarkMode ? Colors.white : Colors.black87),
                       ),
                     ),
-                  const SizedBox(height: 4),
+                  SizedBox(height: spacing * 0.33),
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.center,
@@ -785,14 +956,20 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
                       Text(
                         _formatTimestamp(timestamp),
                         style: TextStyle(
-                          fontSize: 10,
+                          fontSize: ResponsiveUtils.getResponsiveFontSize(
+                            context,
+                            baseSize: 10.0,
+                            mobileMultiplier: 0.9,
+                            tabletMultiplier: 1.0,
+                            desktopMultiplier: 1.0,
+                          ),
                           color: isCurrentUser
                               ? Colors.white70
                               : (_themeService.isDarkMode ? Colors.white54 : Colors.black54),
                         ),
                       ),
                       if (isCurrentUser) ...[
-                        const SizedBox(width: 4),
+                        SizedBox(width: spacing * 0.33),
                         _buildMessageStatus(message),
                       ],
                     ],
@@ -802,13 +979,17 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
             ),
           ),
           if (isCurrentUser) ...[
-            const SizedBox(width: 8),
+            SizedBox(width: spacing * 0.67),
             CircleAvatar(
-              radius: 16,
+              radius: avatarRadius,
               backgroundColor: _themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500],
               child: Text(
                 _currentUserName?.isNotEmpty == true ? _currentUserName![0].toUpperCase() : 'U',
-                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.white),
+                style: TextStyle(
+                  fontSize: avatarFontSize,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                ),
               ),
             ),
           ],
@@ -895,59 +1076,72 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(widget.chatName),
+            Text(
+              widget.chatName,
+              style: ResponsiveUtils.getResponsiveHeadingStyle(
+                context,
+                color: Colors.white,
+                weight: FontWeight.bold,
+              ),
+            ),
             if (!widget.isGroupChat) ...[
-              const SizedBox(height: 2),
+              SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context) * 0.17),
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_otherUserIsOnline == true) ...[
                     Container(
-                      width: 8,
-                      height: 8,
+                      width: ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 7.0,
+                        tablet: 8.0,
+                        desktop: 8.0,
+                      ),
+                      height: ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 7.0,
+                        tablet: 8.0,
+                        desktop: 8.0,
+                      ),
                       decoration: BoxDecoration(
                         color: Colors.green,
                         shape: BoxShape.circle,
                       ),
                     ),
-                    const SizedBox(width: 6),
+                    SizedBox(width: ResponsiveUtils.getResponsiveSpacing(context) * 0.5),
                     Text(
                       'Online',
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: ResponsiveUtils.getResponsiveCaptionStyle(
+                        context,
                         color: Colors.white.withOpacity(0.8),
-                        fontWeight: FontWeight.normal,
                       ),
                     ),
                   ] else if (_otherUserLastSeen != null) ...[
                     Text(
                       _formatLastSeen(_otherUserLastSeen),
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: ResponsiveUtils.getResponsiveCaptionStyle(
+                        context,
                         color: Colors.white.withOpacity(0.8),
-                        fontWeight: FontWeight.normal,
                       ),
                     ),
                   ] else ...[
                     Text(
                       'Loading...',
-                      style: TextStyle(
-                        fontSize: 12,
+                      style: ResponsiveUtils.getResponsiveCaptionStyle(
+                        context,
                         color: Colors.white.withOpacity(0.8),
-                        fontWeight: FontWeight.normal,
                       ),
                     ),
                   ],
                 ],
               ),
             ] else ...[
-              const SizedBox(height: 2),
+              SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context) * 0.17),
               Text(
                 'Group Chat',
-                style: TextStyle(
-                  fontSize: 12,
+                style: ResponsiveUtils.getResponsiveCaptionStyle(
+                  context,
                   color: Colors.white.withOpacity(0.8),
-                  fontWeight: FontWeight.normal,
                 ),
               ),
             ],
@@ -958,7 +1152,10 @@ class _ChatScreenWebMongoDBState extends State<ChatScreenWebMongoDB> {
         actions: [
           if (widget.isGroupChat)
             IconButton(
-              icon: const Icon(Icons.group),
+              icon: Icon(
+                Icons.group,
+                size: ResponsiveUtils.getResponsiveIconSize(context),
+              ),
               onPressed: () {
                 // TODO: Show group info
               },
