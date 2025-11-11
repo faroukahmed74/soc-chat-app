@@ -3247,7 +3247,20 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                     _buildStatRow('Status', _systemHealth!['status']?.toString() ?? 'unknown'),
                     ..._systemHealth!.entries
                         .where((e) => e.key != 'status')
-                        .map((e) => _buildStatRow(e.key, e.value?.toString() ?? ''))
+                        .map((e) {
+                          // Format complex values (objects/arrays) as JSON for better display
+                          String displayValue;
+                          if (e.value is Map || e.value is List) {
+                            try {
+                              displayValue = const JsonEncoder.withIndent('  ').convert(e.value);
+                            } catch (_) {
+                              displayValue = e.value?.toString() ?? '';
+                            }
+                          } else {
+                            displayValue = e.value?.toString() ?? '';
+                          }
+                          return _buildStatRow(e.key, displayValue);
+                        })
                         .toList(),
                   ],
                 ],
@@ -4011,22 +4024,57 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   }
   
   Widget _buildStatRow(String label, String value) {
+    final isMobile = ResponsiveUtils.isMobile(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: EdgeInsets.symmetric(
+        vertical: ResponsiveUtils.getResponsiveValue(
+          context,
+          mobile: 4.0,
+          tablet: 6.0,
+          desktop: 8.0,
+        ),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            label,
-            style: AppDesignSystem.bodyMedium.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
+          Expanded(
+            flex: isMobile ? 2 : 3,
+            child: Text(
+              label,
+              style: AppDesignSystem.bodyMedium.copyWith(
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                fontSize: ResponsiveUtils.getResponsiveFontSize(
+                  context,
+                  baseSize: 14,
+                  mobileMultiplier: 0.9,
+                ),
+              ),
             ),
           ),
-          Text(
-            value,
-            style: AppDesignSystem.bodyMedium.copyWith(
-              fontWeight: FontWeight.bold,
-              color: Theme.of(context).colorScheme.onSurface,
+          SizedBox(
+            width: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 8.0,
+              tablet: 12.0,
+              desktop: 16.0,
+            ),
+          ),
+          Expanded(
+            flex: isMobile ? 3 : 4,
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              maxLines: 3,
+              overflow: TextOverflow.ellipsis,
+              style: AppDesignSystem.bodyMedium.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurface,
+                fontSize: ResponsiveUtils.getResponsiveFontSize(
+                  context,
+                  baseSize: 14,
+                  mobileMultiplier: 0.85,
+                ),
+              ),
             ),
           ),
         ],

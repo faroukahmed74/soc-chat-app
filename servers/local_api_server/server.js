@@ -1136,6 +1136,121 @@ app.put('/api/users/:userId/status', authenticateToken, async (req, res) => {
   }
 });
 
+// FCM Token Management Routes
+// Store or update FCM token for a user
+app.post('/api/users/fcm-token', authenticateToken, async (req, res) => {
+  try {
+    const { userId, fcmToken, platform, timestamp } = req.body;
+    
+    // Validate required fields
+    if (!userId || !fcmToken) {
+      return res.status(400).json({ 
+        error: 'Missing required fields: userId and fcmToken are required' 
+      });
+    }
+    
+    // Verify the userId matches the authenticated user
+    const authenticatedUserId = req.user.id;
+    if (userId !== authenticatedUserId) {
+      return res.status(403).json({ 
+        error: 'Forbidden: Cannot update FCM token for another user' 
+      });
+    }
+    
+    // Validate userId format (MongoDB ObjectId)
+    if (!ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Invalid userId format' });
+    }
+    
+    // Update or insert FCM token in users collection
+    const updateResult = await db.collection('users').updateOne(
+      { _id: new ObjectId(userId) },
+      { 
+        $set: { 
+          fcmToken: fcmToken,
+          fcmPlatform: platform || 'unknown',
+          fcmTokenUpdatedAt: timestamp ? new Date(timestamp) : new Date(),
+          updatedAt: new Date()
+        }
+      },
+      { upsert: false } // Don't create user if doesn't exist
+    );
+    
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    console.log(`FCM token updated for user ${userId} (platform: ${platform || 'unknown'})`);
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'FCM token stored successfully',
+      userId: userId,
+      platform: platform || 'unknown'
+    });
+  } catch (err) {
+    console.error('Error storing FCM token:', err);
+    res.status(500).json({ error: 'Server error while storing FCM token' });
+  }
+});
+
+// Delete FCM token for a user (on logout)
+app.delete('/api/users/fcm-token', authenticateToken, async (req, res) => {
+  try {
+    const { userId } = req.body;
+    
+    // Validate required fields
+    if (!userId) {
+      return res.status(400).json({ 
+        error: 'Missing required field: userId is required' 
+      });
+    }
+    
+    // Verify the userId matches the authenticated user
+    const authenticatedUserId = req.user.id;
+    if (userId !== authenticatedUserId) {
+      return res.status(403).json({ 
+        error: 'Forbidden: Cannot delete FCM token for another user' 
+      });
+    }
+    
+    // Validate userId format (MongoDB ObjectId)
+    if (!ObjectId.isValid(userId)) {
+      return res.status(400).json({ error: 'Invalid userId format' });
+    }
+    
+    // Remove FCM token from users collection
+    const updateResult = await db.collection('users').updateOne(
+      { _id: new ObjectId(userId) },
+      { 
+        $unset: { 
+          fcmToken: "",
+          fcmPlatform: "",
+          fcmTokenUpdatedAt: ""
+        },
+        $set: {
+          updatedAt: new Date()
+        }
+      }
+    );
+    
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+    
+    console.log(`FCM token deleted for user ${userId}`);
+    
+    res.status(200).json({ 
+      success: true, 
+      message: 'FCM token deleted successfully',
+      userId: userId
+    });
+  } catch (err) {
+    console.error('Error deleting FCM token:', err);
+    res.status(500).json({ error: 'Server error while deleting FCM token' });
+  }
+});
+
 // Chat Routes
 app.get('/api/chats', authenticateToken, async (req, res) => {
   try {

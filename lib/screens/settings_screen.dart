@@ -28,6 +28,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+import 'dart:convert';
 
 // Firebase imports removed - using MongoDB/ngrok API only
 import '../services/local_auth_service.dart';
@@ -239,6 +241,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       // Trigger rebuild to refresh cache stats
     });
+  }
+
+  /// Get version info from version_info.json
+  Future<Map<String, dynamic>> _getVersionInfo() async {
+    try {
+      final String jsonString = await rootBundle.loadString('version_info.json');
+      return json.decode(jsonString);
+    } catch (e) {
+      Log.e('Error loading version info', 'SETTINGS_SCREEN', e);
+      return {
+        'version': '1.0.15',
+        'build_number': '15',
+        'last_updated': '',
+      };
+    }
+  }
+
+  /// Format date string for display
+  String _formatDate(String dateString) {
+    if (dateString.isEmpty) return 'N/A';
+    try {
+      final date = DateTime.parse(dateString);
+      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+    } catch (e) {
+      return dateString;
+    }
   }
 
   Future<void> _showClearCacheDialog() async {
@@ -701,10 +729,39 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 icon: Icons.info,
                 iconColor: Colors.teal,
                 children: [
-                  ListTile(
-                    leading: const Icon(Icons.info_outline),
-                    title: const Text('Version'),
-                    subtitle: const Text('1.0.0 (Build 1)'),
+                  FutureBuilder<Map<String, dynamic>>(
+                    future: _getVersionInfo(),
+                    builder: (context, snapshot) {
+                      if (snapshot.connectionState == ConnectionState.waiting) {
+                        return const ListTile(
+                          leading: Icon(Icons.info_outline),
+                          title: Text('Version'),
+                          subtitle: Text('Loading...'),
+                        );
+                      }
+                      
+                      final versionInfo = snapshot.data ?? {};
+                      final version = versionInfo['version'] ?? '1.0.15';
+                      final buildNumber = versionInfo['build_number'] ?? '15';
+                      final lastUpdated = versionInfo['last_updated'] ?? '';
+                      
+                      return Column(
+                        children: [
+                          ListTile(
+                            leading: const Icon(Icons.info_outline),
+                            title: const Text('Version'),
+                            subtitle: Text('$version (Build $buildNumber)'),
+                          ),
+                          if (lastUpdated.isNotEmpty)
+                            ListTile(
+                              leading: const Icon(Icons.calendar_today, size: 20),
+                              title: const Text('Last Updated'),
+                              subtitle: Text(_formatDate(lastUpdated)),
+                              dense: true,
+                            ),
+                        ],
+                      );
+                    },
                   ),
                   if (!kIsWeb && defaultTargetPlatform == TargetPlatform.android)
                     ListTile(

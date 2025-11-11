@@ -9,6 +9,7 @@ import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../config/database_config.dart';
 import 'logger_service.dart';
+import 'fcm_service.dart';
 
 class PhysicalAuthService {
   static final PhysicalAuthService _instance = PhysicalAuthService._internal();
@@ -44,6 +45,22 @@ class PhysicalAuthService {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_tokenKey, token);
         await prefs.setString(_userKey, json.encode(user));
+        
+        // Extract and store user_id separately for FCM
+        final userId = user['_id'] ?? user['id'] ?? '';
+        if (userId.isNotEmpty) {
+          await prefs.setString('user_id', userId.toString());
+          
+          // Update FCM service with user ID
+          try {
+            final fcmService = FCMService();
+            await fcmService.updateUserId(userId.toString());
+            Log.i('FCM user ID updated after login', 'PHYSICAL_AUTH');
+          } catch (e) {
+            Log.e('Failed to update FCM user ID', 'PHYSICAL_AUTH', e);
+            // Continue even if FCM update fails
+          }
+        }
 
         Log.i('Login successful', 'PHYSICAL_AUTH');
         return {
@@ -101,6 +118,22 @@ class PhysicalAuthService {
         final prefs = await SharedPreferences.getInstance();
         await prefs.setString(_tokenKey, token);
         await prefs.setString(_userKey, json.encode(user));
+        
+        // Extract and store user_id separately for FCM
+        final userId = user['_id'] ?? user['id'] ?? '';
+        if (userId.isNotEmpty) {
+          await prefs.setString('user_id', userId.toString());
+          
+          // Update FCM service with user ID
+          try {
+            final fcmService = FCMService();
+            await fcmService.updateUserId(userId.toString());
+            Log.i('FCM user ID updated after registration', 'PHYSICAL_AUTH');
+          } catch (e) {
+            Log.e('Failed to update FCM user ID', 'PHYSICAL_AUTH', e);
+            // Continue even if FCM update fails
+          }
+        }
 
         Log.i('Registration successful', 'PHYSICAL_AUTH');
         return {
@@ -169,9 +202,21 @@ class PhysicalAuthService {
   /// Logout user
   Future<void> logout() async {
     try {
+      // Delete FCM token from server before clearing local data
+      try {
+        final fcmService = FCMService();
+        await fcmService.deleteToken();
+        await fcmService.updateUserId(null);
+        Log.i('FCM token deleted on logout', 'PHYSICAL_AUTH');
+      } catch (e) {
+        Log.e('Failed to delete FCM token on logout', 'PHYSICAL_AUTH', e);
+        // Continue with logout even if FCM deletion fails
+      }
+      
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_tokenKey);
       await prefs.remove(_userKey);
+      await prefs.remove('user_id');
       Log.i('Logout successful', 'PHYSICAL_AUTH');
     } catch (e) {
       Log.e('Error during logout', 'PHYSICAL_AUTH', e);

@@ -38,6 +38,7 @@ import 'services/active_chat_service.dart';
 import 'services/message_sound_service.dart';
 import 'services/background_service_manager.dart';
 import 'services/ios_notification_service.dart';
+import 'services/fcm_service.dart';
 import 'dart:io' if (dart.library.html) 'dart:html' as io;
 
 // =============================================================================
@@ -590,6 +591,25 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         }
       } catch (e) {
         Log.e('Enhanced notification service failed', 'MAIN_APP', e);
+      }
+
+      // Step 3.5: Initialize FCM service (Firebase Cloud Messaging)
+      try {
+        Log.i('Initializing FCM service...', 'MAIN_APP');
+        final fcmService = FCMService();
+        await fcmService.initialize();
+        Log.i('✅ FCM service initialized', 'MAIN_APP');
+        
+        // Update user ID in FCM service if user is logged in
+        final prefs = await SharedPreferences.getInstance();
+        final userId = prefs.getString('user_id');
+        if (userId != null) {
+          await fcmService.updateUserId(userId);
+          Log.i('✅ FCM user ID updated', 'MAIN_APP');
+        }
+      } catch (e) {
+        Log.e('FCM service initialization failed', 'MAIN_APP', e);
+        // Continue without FCM if it fails
       }
 
       // Step 4: Start background services if user is logged in

@@ -83,6 +83,20 @@
             android:foregroundServiceType="dataSync"
             android:exported="false" />
 
+        <!-- FCM Firebase Messaging Service -->
+        <service
+            android:name="com.google.firebase.messaging.FirebaseMessagingService"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="com.google.firebase.MESSAGING_EVENT" />
+            </intent-filter>
+        </service>
+
+        <!-- FCM Default Notification Channel -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="fcm_default_channel" />
+
         <!-- Flutter tooling -->
         <meta-data android:name="flutterEmbedding" android:value="2" />
     </application>

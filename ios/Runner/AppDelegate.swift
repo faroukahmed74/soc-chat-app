@@ -45,4 +45,15 @@ class AppDelegate: FlutterAppDelegate, MessagingDelegate {
     // You may POST token to backend here if you prefer native side; we do it in Dart too.
     print("FCM token: \(String(describing: fcmToken))")
   }
+
+  // Handle background FCM messages
+  override func application(_ application: UIApplication,
+                           didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                           fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+    // Handle background notification
+    if let aps = userInfo["aps"] as? [String: Any] {
+      print("Background FCM notification received: \(aps)")
+    }
+    completionHandler(.newData)
+  }
 }
