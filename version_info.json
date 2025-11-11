@@ -1,10 +1,10 @@
 {
-  "version": "1.0.14",
-  "build_number": "14",
+  "version": "1.0.15",
+  "build_number": "15",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.14 - Registration & Admin Panel Enhancements:\n- Added Display Name and Phone Number fields to all registration screens\n- Display Name and Phone Number are now stored in database\n- Admin can now change user display names from admin panel\n- Fixed logs screen - Added backend endpoints for user and admin logs\n- Logs screen now properly displays activity logs\n- Improved user management in admin panel\n- Enhanced data consistency across all platforms",
+  "release_notes": "SOC Chat App v1.0.15 - Notification System Improvements:\n- Fixed Android 13+ foreground service notification visibility\n- Enhanced notification permission handling for all Android versions\n- Improved iOS notification permissions and background handling\n- Added iOS notification service with app lifecycle management\n- Better socket reconnection on iOS when app resumes\n- Improved notification initialization with retry logic\n- Enhanced error handling and logging for notifications\n- Fixed notification channel importance for Android 13+\n- Better battery optimization handling\n- Comprehensive notification troubleshooting guides added",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": false,
-  "last_updated": "2025-01-24T12:00:00Z"
+  "last_updated": "2025-11-10T20:30:00Z"
 }

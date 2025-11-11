@@ -36,6 +36,9 @@ import 'screens/chat_list_screen_mongodb.dart';
 import 'services/realtime_service.dart';
 import 'services/active_chat_service.dart';
 import 'services/message_sound_service.dart';
+import 'services/background_service_manager.dart';
+import 'services/ios_notification_service.dart';
+import 'dart:io' if (dart.library.html) 'dart:html' as io;
 
 // =============================================================================
 // GLOBAL NAVIGATOR KEY
@@ -86,6 +89,15 @@ Future<void> main() async {
     } catch (cacheError) {
       Log.e('MediaCacheService initialization failed, continuing without cache', 'MAIN', cacheError);
       // Continue without media caching if it fails
+    }
+    
+    // Initialize background services (after user might be logged in)
+    try {
+      await BackgroundServiceManager().initialize();
+      Log.i('Background services initialized', 'MAIN');
+    } catch (bgError) {
+      Log.e('Background services initialization failed, continuing', 'MAIN', bgError);
+      // Continue without background services if they fail
     }
   } catch (e, st) {
     Log.e('Failed to initialize app services', 'MAIN', e, st);
@@ -374,11 +386,33 @@ class MainApp extends StatefulWidget {
   State<MainApp> createState() => _MainAppState();
 }
 
-class _MainAppState extends State<MainApp> {
+class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _initializeApp();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    
+    // Handle iOS background/foreground transitions
+    if (!kIsWeb && io.Platform.isIOS) {
+      final iosService = IOSNotificationService();
+      if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+        iosService.onAppPaused();
+      } else if (state == AppLifecycleState.resumed) {
+        iosService.onAppResumed();
+      }
+    }
   }
 
   Future<void> _initializeApp() async {
@@ -464,31 +498,65 @@ class _MainAppState extends State<MainApp> {
 
   Future<void> _initializeNotifications() async {
     try {
-      // Physical server mode - simplified notification handling
+      // Physical server mode - comprehensive notification handling
       Log.i('Physical server mode - initializing notifications', 'MAIN_APP');
       
-      // Request basic notification permissions for mobile
-      if (!kIsWeb) {
-        try {
+      if (kIsWeb) {
+        Log.i('Web platform - skipping mobile notification setup', 'MAIN_APP');
+        return;
+      }
+      
+      // Step 1: Request notification permissions (critical for Android 13+)
+      bool hasNotificationPermission = false;
+      try {
+        final notifStatus = await Permission.notification.status;
+        Log.i('Notification permission status: $notifStatus', 'MAIN_APP');
+        
+        if (notifStatus.isGranted) {
+          hasNotificationPermission = true;
+          Log.i('Notification permission already granted', 'MAIN_APP');
+        } else {
+          Log.i('Requesting notification permission...', 'MAIN_APP');
           final notif = await Permission.notification.request();
-          if (!notif.isGranted) {
-            Log.w('Notifications denied by user', 'MAIN_APP');
+          hasNotificationPermission = notif.isGranted;
+          if (hasNotificationPermission) {
+            Log.i('✅ Notification permission granted', 'MAIN_APP');
           } else {
-            Log.i('Notifications granted', 'MAIN_APP');
+            Log.w('❌ Notification permission denied - notifications will not work', 'MAIN_APP');
+          }
+        }
+      } catch (e) {
+        Log.e('Error requesting notification permission', 'MAIN_APP', e);
+      }
+      
+      // Step 2: Request battery optimization exemption (Android only)
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        try {
+          final batteryStatus = await Permission.ignoreBatteryOptimizations.status;
+          if (!batteryStatus.isGranted) {
+            Log.i('Requesting battery optimization exemption...', 'MAIN_APP');
+            final batteryResult = await Permission.ignoreBatteryOptimizations.request();
+            if (batteryResult.isGranted) {
+              Log.i('✅ Battery optimization exemption granted', 'MAIN_APP');
+            } else {
+              Log.w('⚠️ Battery optimization exemption denied - notifications may be unreliable', 'MAIN_APP');
+            }
+          } else {
+            Log.i('✅ Battery optimization already ignored', 'MAIN_APP');
           }
         } catch (e) {
-          Log.e('Error requesting notification permission', 'MAIN_APP', e);
+          Log.e('Error requesting battery optimization exemption', 'MAIN_APP', e);
         }
       }
 
-      // Initialize enhanced notification services for physical server
+      // Step 3: Initialize enhanced notification service
       try {
         final enhanced = EnhancedNotificationService();
         
-        // Check if already initialized to avoid re-initialization
         if (!enhanced.isInitialized) {
+          Log.i('Initializing enhanced notification service...', 'MAIN_APP');
           await enhanced.initialize();
-          Log.i('Enhanced notification service initialized successfully', 'MAIN_APP');
+          Log.i('✅ Enhanced notification service initialized', 'MAIN_APP');
           
           // Verify initialization
           final status = await enhanced.getNotificationStatus();
@@ -496,20 +564,90 @@ class _MainAppState extends State<MainApp> {
         } else {
           Log.i('Enhanced notification service already initialized', 'MAIN_APP');
         }
+        
+        // Request notification permission through service (important for iOS)
+        // On iOS, this will show the system permission dialog
+        Log.i('Requesting notification permission through service...', 'MAIN_APP');
+        final hasPermission = await enhanced.requestPermission();
+        if (hasPermission) {
+          hasNotificationPermission = true;
+          Log.i('✅ Notification permission granted via service', 'MAIN_APP');
+        } else {
+          Log.w('⚠️ Notification permission not granted via service', 'MAIN_APP');
+        }
+        
+        // Send a test notification to verify setup (only if permission granted)
+        if (hasNotificationPermission) {
+          try {
+            await Future.delayed(const Duration(seconds: 2));
+            await enhanced.sendTestNotification();
+            Log.i('✅ Test notification sent', 'MAIN_APP');
+          } catch (e) {
+            Log.e('Failed to send test notification', 'MAIN_APP', e);
+          }
+        } else {
+          Log.w('Skipping test notification - permission not granted', 'MAIN_APP');
+        }
       } catch (e) {
         Log.e('Enhanced notification service failed', 'MAIN_APP', e);
       }
 
-      // Send startup notification if user is logged in
+      // Step 4: Start background services if user is logged in
       try {
         final prefs = await SharedPreferences.getInstance();
         final token = prefs.getString('auth_token');
-        if (token != null) {
-          await Future.delayed(const Duration(seconds: 2));
-          Log.i('User logged in - startup notification sent', 'MAIN_APP');
+        if (token != null && token.isNotEmpty) {
+          Log.i('User logged in - starting background services...', 'MAIN_APP');
+          
+          // Wait for services to be ready
+          await Future.delayed(const Duration(seconds: 3));
+          
+          // Platform-specific background services
+          if (!kIsWeb && io.Platform.isAndroid) {
+            // Android: Start foreground service with retry logic
+            bool started = false;
+            for (int attempt = 1; attempt <= 3; attempt++) {
+              Log.i('Starting foreground service (attempt $attempt/3)...', 'MAIN_APP');
+              started = await BackgroundServiceManager().startForegroundService();
+              if (started) {
+                Log.i('✅ Background services started successfully', 'MAIN_APP');
+                break;
+              } else {
+                Log.w('Foreground service failed to start (attempt $attempt/3)', 'MAIN_APP');
+                if (attempt < 3) {
+                  await Future.delayed(const Duration(seconds: 2));
+                }
+              }
+            }
+            
+            if (!started) {
+              Log.e('❌ Background services failed to start after 3 attempts', 'MAIN_APP');
+            }
+            
+            // Verify service is running
+            await Future.delayed(const Duration(seconds: 2));
+            final isRunning = BackgroundServiceManager().isForegroundServiceRunning();
+            if (isRunning) {
+              Log.i('✅ Foreground service is running', 'MAIN_APP');
+            } else {
+              Log.w('⚠️ Foreground service may not be running', 'MAIN_APP');
+            }
+          } else if (!kIsWeb && io.Platform.isIOS) {
+            // iOS: Initialize iOS notification service
+            Log.i('Initializing iOS notification service...', 'MAIN_APP');
+            try {
+              final iosService = IOSNotificationService();
+              await iosService.initialize();
+              Log.i('✅ iOS notification service initialized', 'MAIN_APP');
+            } catch (e) {
+              Log.e('Error initializing iOS notification service', 'MAIN_APP', e);
+            }
+          }
+        } else {
+          Log.i('User not logged in - skipping background services', 'MAIN_APP');
         }
       } catch (e) {
-        Log.e('Error sending startup notification', 'MAIN_APP', e);
+        Log.e('Error starting background services', 'MAIN_APP', e);
       }
     } catch (e) {
       Log.e('Error initializing notifications', 'MAIN_APP', e);

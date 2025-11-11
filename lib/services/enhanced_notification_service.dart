@@ -580,7 +580,45 @@ class EnhancedNotificationService {
       }
       
       if (defaultTargetPlatform == TargetPlatform.iOS || defaultTargetPlatform == TargetPlatform.macOS) {
-        return true; // iOS/macOS notifications handled by system
+        // iOS/macOS: Request permission through flutter_local_notifications
+        try {
+          final ios = _fln.resolvePlatformSpecificImplementation<
+              IOSFlutterLocalNotificationsPlugin>();
+          if (ios != null) {
+            // Request permissions explicitly
+            final result = await ios.requestPermissions(
+              alert: true,
+              badge: true,
+              sound: true,
+            );
+            if (result == true) {
+              Log.i('✅ iOS notification permission granted', 'ENHANCED_NOTIF');
+              return true;
+            } else {
+              Log.w('❌ iOS notification permission denied', 'ENHANCED_NOTIF');
+              return false;
+            }
+          }
+          // Fallback: check if already granted
+          final settings = await _fln.getNotificationAppLaunchDetails();
+          return settings?.didNotificationLaunchApp ?? false;
+        } catch (e) {
+          Log.e('Error requesting iOS notification permission', 'ENHANCED_NOTIF', e);
+          // Try to check current permission status
+          try {
+            final ios = _fln.resolvePlatformSpecificImplementation<
+                IOSFlutterLocalNotificationsPlugin>();
+            if (ios != null) {
+              final settings = await ios.requestPermissions(
+                alert: true,
+                badge: true,
+                sound: true,
+              );
+              return settings ?? false;
+            }
+          } catch (_) {}
+          return false;
+        }
       }
 
       if (defaultTargetPlatform == TargetPlatform.android) {

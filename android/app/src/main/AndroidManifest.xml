@@ -37,6 +37,10 @@
     
     <!-- Foreground service permission for background notifications -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    
+    <!-- Battery optimization exemption for reliable background notifications -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     
     <!-- Audio focus permission for notification sounds -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
@@ -72,6 +76,12 @@
             </intent-filter>
 
         </activity>
+
+        <!-- Foreground Service for background chat -->
+        <service
+            android:name="com.pravera.flutter_foreground_task.service.ForegroundService"
+            android:foregroundServiceType="dataSync"
+            android:exported="false" />
 
         <!-- Flutter tooling -->
         <meta-data android:name="flutterEmbedding" android:value="2" />
