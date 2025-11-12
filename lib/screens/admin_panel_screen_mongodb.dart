@@ -15,7 +15,6 @@ import '../services/theme_service.dart';
 import '../services/mongodb_admin_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
-import '../services/device_tracking_service.dart';
 import '../theme/app_design_system.dart';
 import '../config/database_config.dart';
 import '../utils/responsive_utils.dart';
@@ -60,9 +59,6 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   Map<String, dynamic>? _localApiHealth;
   Map<String, dynamic>? _comprehensiveHealth;
   List<Map<String, dynamic>> _apiEndpointsStatus = [];
-  Map<String, dynamic>? _deviceStats;
-  List<Map<String, dynamic>> _devices = [];
-  bool _isLoadingDevices = false;
   
   // Loading states
   bool _isLoadingUsers = false;
@@ -84,7 +80,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     _themeService.addListener(() {
       if (mounted) setState(() {});
     });
-    _tabController = TabController(length: 10, vsync: this);
+    _tabController = TabController(length: 9, vsync: this);
     _checkAdminAccess();
     _startServerTimeSync();
   }
@@ -487,7 +483,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 Navigator.pop(context, {'reason': reasonController.text.trim()});
               }
             },
-            style: ElevatedButton.styleFrom(backgroundColor: AppDesignSystem.warningColor),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
             child: const Text('Lock User'),
           ),
         ],
@@ -564,7 +560,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           ElevatedButton(
             onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(backgroundColor: AppDesignSystem.successColor),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Unlock User'),
           ),
         ],
@@ -740,7 +736,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppDesignSystem.errorColor),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
           ),
         ],
@@ -1184,7 +1180,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppDesignSystem.errorColor),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Cleanup'),
           ),
         ],
@@ -1249,7 +1245,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppDesignSystem.errorColor),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
           ),
         ],
@@ -1704,7 +1700,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppDesignSystem.errorColor),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
           ),
         ],
@@ -1777,7 +1773,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppDesignSystem.errorColor),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete All'),
           ),
         ],
@@ -1841,7 +1837,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppDesignSystem.errorColor),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Clear Database'),
           ),
         ],
@@ -1891,7 +1887,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
                 content: Text('Database cleared: ${result['deleted']?.toString() ?? 'Success'}'),
-                backgroundColor: AppDesignSystem.successColor,
+                backgroundColor: Colors.green,
               ),
             );
             await _loadInitialData();
@@ -2049,7 +2045,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     
     final result = await showModalBottomSheet<String>(
       context: context,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      backgroundColor: Colors.transparent,
       builder: (context) => Container(
         decoration: BoxDecoration(
           color: Theme.of(context).scaffoldBackgroundColor,
@@ -2064,7 +2060,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 width: 40,
                 height: 4,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  color: Colors.grey[300],
                   borderRadius: BorderRadius.circular(2),
                 ),
               ),
@@ -2092,7 +2088,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 },
               ),
               ListTile(
-                leading: Icon(Icons.lock_reset, color: AppDesignSystem.infoColor),
+                leading: const Icon(Icons.lock_reset, color: Colors.blue),
                 title: const Text('Update Password'),
                 onTap: () {
                   Navigator.pop(context, 'update_password');
@@ -2110,7 +2106,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
               ),
               if (!currentIsLocked)
                 ListTile(
-                  leading: Icon(Icons.lock, color: AppDesignSystem.warningColor),
+                  leading: const Icon(Icons.lock, color: Colors.orange),
                   title: const Text('Lock User'),
                   onTap: () {
                     Navigator.pop(context, 'lock');
@@ -2118,17 +2114,10 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 ),
               if (currentIsLocked)
                 ListTile(
-                  leading: Icon(Icons.lock_open, color: AppDesignSystem.successColor),
+                  leading: const Icon(Icons.lock_open, color: Colors.green),
                   title: const Text('Unlock User'),
                   onTap: () {
                     Navigator.pop(context, 'unlock');
-                  },
-                ),
-              ListTile(
-                leading: Icon(Icons.phone_android, color: AppDesignSystem.infoColor),
-                title: const Text('View Devices'),
-                onTap: () {
-                  Navigator.pop(context, 'view_devices');
                   },
                 ),
               ListTile(
@@ -2158,9 +2147,6 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           break;
         case 'update_password':
           await _updateUserPassword(userId, name);
-          break;
-        case 'view_devices':
-          await _showUserDevicesDialog(userId, name);
           break;
         case 'toggle_status':
           await _toggleUserStatusAction(userId, !currentDisabled);
@@ -2245,7 +2231,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
             ScaffoldMessenger.of(context).showSnackBar(
               const SnackBar(
                 content: Text('Display name updated successfully'),
-                backgroundColor: AppDesignSystem.successColor,
+                backgroundColor: Colors.green,
               ),
             );
             await _loadUsers();
@@ -2335,7 +2321,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(success ? 'Role updated to $result' : 'Failed to update role'),
-              backgroundColor: success ? AppDesignSystem.successColor : AppDesignSystem.errorColor,
+              backgroundColor: success ? Colors.green : Colors.red,
             ),
         );
         if (success) await _loadUsers();
@@ -2451,21 +2437,21 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 'Users',
                 '${_users.length}',
                 Icons.people,
-                AppDesignSystem.infoColor,
+                Colors.blue,
                 () => _tabController.animateTo(1),
               ),
               _buildStatCard(
                 'Chats',
                 '${_chats.length}',
                 Icons.chat,
-                AppDesignSystem.successColor,
+                Colors.green,
                 () => _tabController.animateTo(2),
               ),
               _buildStatCard(
                 'Groups',
                 '${_groups.length}',
                 Icons.group,
-                AppDesignSystem.accentColor,
+                Colors.teal,
                 () => _tabController.animateTo(3),
               ),
               _buildStatCard(
@@ -2507,7 +2493,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 'System Health',
                 _systemHealth?['status']?.toString() ?? 'Unknown',
                 Icons.health_and_safety,
-                _systemHealth?['status'] == 'healthy' ? AppDesignSystem.successColor : AppDesignSystem.warningColor,
+                _systemHealth?['status'] == 'healthy' ? Colors.green : Colors.orange,
                 null,
               ),
             ],
@@ -2790,7 +2776,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 Navigator.pop(context);
                 _clearAllMedia();
               },
-              style: TextButton.styleFrom(foregroundColor: AppDesignSystem.errorColor),
+              style: TextButton.styleFrom(foregroundColor: Colors.red),
               child: const Text('Delete All Media'),
             ),
         ],
@@ -3057,9 +3043,6 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                   case 'delete':
                                     _deleteUser(userId);
                                     break;
-                                  case 'view_devices':
-                                    await _showUserDevicesDialog(userId, name);
-                                    break;
                                 }
                               },
                               itemBuilder: (context) {
@@ -3134,16 +3117,6 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                         Icon(Icons.lock_open, color: Colors.green),
                                       const SizedBox(width: 8),
                                         const Text('Unlock User'),
-                                    ],
-                                  ),
-                                ),
-                                PopupMenuItem(
-                                  value: 'view_devices',
-                                  child: Row(
-                                    children: [
-                                      Icon(Icons.phone_android, color: AppDesignSystem.infoColor),
-                                      const SizedBox(width: 8),
-                                      const Text('View Devices'),
                                     ],
                                   ),
                                 ),
@@ -4213,11 +4186,6 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
               text: isMobile ? null : 'Health',
               iconMargin: isMobile ? const EdgeInsets.only(bottom: 4) : EdgeInsets.zero,
             ),
-            Tab(
-              icon: const Icon(Icons.phone_android),
-              text: isMobile ? null : 'Devices',
-              iconMargin: isMobile ? const EdgeInsets.only(bottom: 4) : EdgeInsets.zero,
-            ),
           ],
         ),
       ),
@@ -4233,7 +4201,6 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           _buildLogsTab(),
           _buildSystemStatsTab(),
           _buildHealthMonitoringTab(),
-          _buildDevicesTab(),
         ],
       ),
     );
@@ -4288,7 +4255,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                         ),
                         TextButton(
                           onPressed: () => Navigator.pop(context, true),
-                          style: TextButton.styleFrom(foregroundColor: AppDesignSystem.errorColor),
+                          style: TextButton.styleFrom(foregroundColor: Colors.red),
                           child: const Text('Delete All'),
                         ),
                       ],
@@ -4324,7 +4291,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                 },
                         icon: const Icon(Icons.delete_forever, size: 18),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppDesignSystem.errorColor,
+                          backgroundColor: Colors.red,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 12),
                           minimumSize: const Size(0, 44),
@@ -4356,7 +4323,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                         ),
                         TextButton(
                           onPressed: () => Navigator.pop(context, true),
-                          style: TextButton.styleFrom(foregroundColor: AppDesignSystem.errorColor),
+                          style: TextButton.styleFrom(foregroundColor: Colors.red),
                           child: const Text('Delete All'),
                         ),
                       ],
@@ -4804,7 +4771,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                       icon: const Icon(Icons.people, size: 16),
                                       label: const Text('Members'),
                                       style: ElevatedButton.styleFrom(
-                                        backgroundColor: AppDesignSystem.successColor,
+                                        backgroundColor: Colors.green,
                                         foregroundColor: Colors.white,
                                       ),
                                     ),
@@ -4960,7 +4927,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(success ? 'Group updated successfully' : 'Failed to update group'),
-              backgroundColor: success ? AppDesignSystem.successColor : AppDesignSystem.errorColor,
+              backgroundColor: success ? Colors.green : Colors.red,
             ),
           );
           await _loadGroups();
@@ -5267,7 +5234,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
               content: Text(success
                   ? (archive ? 'Group archived' : 'Group unarchived')
                   : 'Failed to ${archive ? 'archive' : 'unarchive'} group'),
-              backgroundColor: success ? AppDesignSystem.successColor : AppDesignSystem.errorColor,
+              backgroundColor: success ? Colors.green : Colors.red,
             ),
           );
           await _loadGroups();
@@ -5296,7 +5263,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            style: TextButton.styleFrom(foregroundColor: AppDesignSystem.errorColor),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
             child: const Text('Delete'),
           ),
         ],
@@ -5318,7 +5285,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text(success ? 'Group deleted successfully' : 'Failed to delete group'),
-              backgroundColor: success ? AppDesignSystem.successColor : AppDesignSystem.errorColor,
+              backgroundColor: success ? Colors.green : Colors.red,
             ),
           );
           await _loadGroups();
@@ -6976,541 +6943,5 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     } catch (e) {
       return timestamp.toString();
     }
-  }
-
-  // Device Statistics Methods
-  Future<void> _loadDeviceStats() async {
-    setState(() => _isLoadingDevices = true);
-    try {
-      final token = await _authService.getAuthToken();
-      if (token == null) return;
-      
-      final baseUrl = DatabaseConfig.physicalServerUrl;
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/admin/devices/stats'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-      );
-      
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _deviceStats = data;
-        });
-      } else {
-        Log.e('Failed to load device stats', 'ADMIN_PANEL', response.statusCode);
-      }
-    } catch (e) {
-      Log.e('Error loading device stats', 'ADMIN_PANEL', e);
-    } finally {
-      setState(() => _isLoadingDevices = false);
-    }
-  }
-
-  Future<void> _loadDevices({String? platform}) async {
-    setState(() => _isLoadingDevices = true);
-    try {
-      final token = await _authService.getAuthToken();
-      if (token == null) return;
-      
-      final baseUrl = DatabaseConfig.physicalServerUrl;
-      final queryParams = platform != null ? '?platform=$platform' : '';
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/admin/devices$queryParams'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-      );
-      
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _devices = List<Map<String, dynamic>>.from(data['devices'] ?? []);
-        });
-      } else {
-        Log.e('Failed to load devices', 'ADMIN_PANEL', response.statusCode);
-      }
-    } catch (e) {
-      Log.e('Error loading devices', 'ADMIN_PANEL', e);
-    } finally {
-      setState(() => _isLoadingDevices = false);
-    }
-  }
-
-  Widget _buildDevicesTab() {
-    final isMobile = ResponsiveUtils.isMobile(context);
-    final isDark = _themeService.isDarkMode;
-    final padding = ResponsiveUtils.getResponsiveValue(
-      context,
-      mobile: 12.0,
-      tablet: 16.0,
-      desktop: 24.0,
-    );
-
-    // Load stats when tab is first opened
-    if (_deviceStats == null && !_isLoadingDevices) {
-      _loadDeviceStats();
-      _loadDevices();
-    }
-
-    return RefreshIndicator(
-      onRefresh: () async {
-        await _loadDeviceStats();
-        await _loadDevices();
-      },
-      child: SingleChildScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: EdgeInsets.all(padding),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Statistics Cards
-            if (_deviceStats != null) ...[
-              Text(
-                'Device Statistics',
-                style: AppDesignSystem.headlineSmall.copyWith(
-                  color: isDark ? AppDesignSystem.neutral50 : AppDesignSystem.neutral900,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Wrap(
-                spacing: 16,
-                runSpacing: 16,
-                children: [
-                  _buildDeviceStatCard(
-                    'Total Devices',
-                    '${_deviceStats!['totalDevices'] ?? 0}',
-                    Icons.phone_android,
-                    AppDesignSystem.primaryColor,
-                    isDark,
-                  ),
-                  _buildDeviceStatCard(
-                    'Android',
-                    '${_deviceStats!['platformBreakdown']?['android'] ?? 0}',
-                    Icons.android,
-                    const Color(0xFF3DDC84),
-                    isDark,
-                  ),
-                  _buildDeviceStatCard(
-                    'iOS',
-                    '${_deviceStats!['platformBreakdown']?['ios'] ?? 0}',
-                    Icons.phone_iphone,
-                    const Color(0xFF007AFF),
-                    isDark,
-                  ),
-                  _buildDeviceStatCard(
-                    'Unique Users',
-                    '${_deviceStats!['uniqueUsers'] ?? 0}',
-                    Icons.people,
-                    AppDesignSystem.secondaryColor,
-                    isDark,
-                  ),
-                  _buildDeviceStatCard(
-                    'Multi-Device Users',
-                    '${_deviceStats!['multiDeviceUsers'] ?? 0}',
-                    Icons.devices,
-                    AppDesignSystem.warningColor,
-                    isDark,
-                  ),
-                  _buildDeviceStatCard(
-                    'Recent Logins (24h)',
-                    '${_deviceStats!['recentLogins24h'] ?? 0}',
-                    Icons.access_time,
-                    AppDesignSystem.infoColor,
-                    isDark,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32),
-            ],
-            
-            // Platform Filter
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    'All Devices',
-                    style: AppDesignSystem.headlineSmall.copyWith(
-                      color: isDark ? AppDesignSystem.neutral50 : AppDesignSystem.neutral900,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-                Wrap(
-                  spacing: 8,
-                  children: [
-                    FilterChip(
-                      label: const Text('All'),
-                      selected: true,
-                      onSelected: (selected) {
-                        if (selected) _loadDevices();
-                      },
-                    ),
-                    FilterChip(
-                      label: const Text('Android'),
-                      selected: false,
-                      onSelected: (selected) {
-                        if (selected) _loadDevices(platform: 'android');
-                      },
-                    ),
-                    FilterChip(
-                      label: const Text('iOS'),
-                      selected: false,
-                      onSelected: (selected) {
-                        if (selected) _loadDevices(platform: 'ios');
-                      },
-                    ),
-                    FilterChip(
-                      label: const Text('Web'),
-                      selected: false,
-                      onSelected: (selected) {
-                        if (selected) _loadDevices(platform: 'web');
-                      },
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            
-            // Devices List
-            if (_isLoadingDevices)
-              const Center(child: Padding(
-                padding: EdgeInsets.all(32.0),
-                child: CircularProgressIndicator(),
-              ))
-            else if (_devices.isEmpty)
-              Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(32.0),
-                  child: Column(
-                    children: [
-                      Icon(
-                        Icons.phone_android_outlined,
-                        size: 64,
-                        color: isDark ? AppDesignSystem.neutral600 : AppDesignSystem.neutral400,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No devices found',
-                        style: AppDesignSystem.bodyLarge.copyWith(
-                          color: isDark ? AppDesignSystem.neutral500 : AppDesignSystem.neutral600,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              )
-            else
-              ListView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                itemCount: _devices.length,
-                itemBuilder: (context, index) {
-                  final device = _devices[index];
-                  return _buildDeviceCard(device, isDark);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildDeviceStatCard(String title, String value, IconData icon, Color color, bool isDark) {
-    return Card(
-      elevation: 2,
-      child: Container(
-        width: ResponsiveUtils.isMobile(context) ? double.infinity : 180,
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(icon, color: color, size: 24),
-                ),
-                const Spacer(),
-              ],
-            ),
-            const SizedBox(height: 12),
-            Text(
-              value,
-              style: AppDesignSystem.headlineMedium.copyWith(
-                color: isDark ? AppDesignSystem.neutral50 : AppDesignSystem.neutral900,
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              title,
-              style: AppDesignSystem.bodySmall.copyWith(
-                color: isDark ? AppDesignSystem.neutral400 : AppDesignSystem.neutral600,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _showUserDevicesDialog(String userId, String userName) async {
-    try {
-      final token = await _authService.getAuthToken();
-      if (token == null) return;
-      
-      final baseUrl = DatabaseConfig.physicalServerUrl;
-      final response = await http.get(
-        Uri.parse('$baseUrl/api/admin/devices/user/$userId'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-      );
-      
-      if (response.statusCode != 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Failed to load devices: ${response.statusCode}')),
-          );
-        }
-        return;
-      }
-      
-      final data = json.decode(response.body);
-      final devices = List<Map<String, dynamic>>.from(data['devices'] ?? []);
-      final deviceCount = data['deviceCount'] ?? 0;
-      
-      if (!mounted) return;
-      
-      final isDark = _themeService.isDarkMode;
-      final deviceTracking = DeviceTrackingService();
-      
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          title: Text('Devices for $userName'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: deviceCount == 0
-                ? Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(
-                        Icons.phone_android_outlined,
-                        size: 48,
-                        color: isDark ? AppDesignSystem.neutral600 : AppDesignSystem.neutral400,
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        'No devices found',
-                        style: AppDesignSystem.bodyLarge,
-                      ),
-                    ],
-                  )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: devices.length,
-                    itemBuilder: (context, index) {
-                      final device = devices[index];
-                      return _buildDeviceCard(device, isDark);
-                    },
-                  ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Close'),
-            ),
-          ],
-        ),
-      );
-    } catch (e) {
-      Log.e('Error showing user devices', 'ADMIN_PANEL', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error loading devices: $e')),
-        );
-      }
-    }
-  }
-
-  Widget _buildDeviceCard(Map<String, dynamic> device, bool isDark) {
-    final platform = device['platform'] ?? 'unknown';
-    final deviceModel = device['deviceModel'] ?? 'Unknown Device';
-    final osVersion = device['osVersion'] ?? 'Unknown';
-    final loginCount = device['loginCount'] ?? 1;
-    final lastLoginAt = device['lastLoginAt'];
-    final user = device['user'];
-    final manufacturer = device['manufacturer'] ?? '';
-    final brand = device['brand'] ?? '';
-    final browserName = device['browserName'] ?? '';
-    final browserVersion = device['browserVersion'] ?? '';
-    
-    IconData platformIcon;
-    Color platformColor;
-    if (platform == 'android') {
-      platformIcon = Icons.android;
-      platformColor = const Color(0xFF3DDC84);
-    } else if (platform == 'ios') {
-      platformIcon = Icons.phone_iphone;
-      platformColor = const Color(0xFF007AFF);
-    } else if (platform == 'web') {
-      platformIcon = Icons.web;
-      platformColor = const Color(0xFF4285F4);
-    } else {
-      platformIcon = Icons.computer;
-      platformColor = AppDesignSystem.neutral500;
-    }
-    
-    String deviceDisplayName = deviceModel;
-    if (platform == 'web') {
-      // For web, show browser name and version
-      if (browserName.isNotEmpty && browserVersion.isNotEmpty) {
-        deviceDisplayName = '$browserName $browserVersion';
-      } else if (browserName.isNotEmpty) {
-        deviceDisplayName = browserName;
-      } else {
-        deviceDisplayName = 'Web Browser';
-      }
-    } else if (manufacturer.isNotEmpty || brand.isNotEmpty) {
-      deviceDisplayName = '${manufacturer.isNotEmpty ? "$manufacturer " : ""}${brand.isNotEmpty ? "$brand " : ""}$deviceModel';
-    }
-    
-    return Card(
-      margin: const EdgeInsets.only(bottom: 12),
-      elevation: 2,
-      child: ListTile(
-        contentPadding: const EdgeInsets.all(16),
-        leading: Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: platformColor.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Icon(platformIcon, color: platformColor, size: 28),
-        ),
-        title: Text(
-          deviceDisplayName,
-          style: AppDesignSystem.titleMedium.copyWith(
-            fontWeight: FontWeight.bold,
-            color: isDark ? AppDesignSystem.neutral50 : AppDesignSystem.neutral900,
-          ),
-        ),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            if (user != null)
-              Text(
-                'User: ${user['displayName'] ?? user['email'] ?? 'Unknown'}',
-                style: AppDesignSystem.bodySmall.copyWith(
-                  color: isDark ? AppDesignSystem.neutral400 : AppDesignSystem.neutral600,
-                ),
-              ),
-            if (platform == 'web')
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  if (browserName.isNotEmpty)
-                    Text(
-                      'Browser: $browserName${browserVersion.isNotEmpty ? " $browserVersion" : ""}',
-                      style: AppDesignSystem.bodySmall.copyWith(
-                        color: isDark ? AppDesignSystem.neutral400 : AppDesignSystem.neutral600,
-                      ),
-                    ),
-                  Text(
-                    'Platform: $osVersion',
-                    style: AppDesignSystem.bodySmall.copyWith(
-                      color: isDark ? AppDesignSystem.neutral400 : AppDesignSystem.neutral600,
-                    ),
-                  ),
-                  if (device['ipAddress'] != null && device['ipAddress'].toString().isNotEmpty)
-                    Text(
-                      'IP: ${device['ipAddress']}',
-                      style: AppDesignSystem.bodySmall.copyWith(
-                        color: isDark ? AppDesignSystem.neutral500 : AppDesignSystem.neutral500,
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                ],
-              )
-            else
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '$osVersion',
-                    style: AppDesignSystem.bodySmall.copyWith(
-                      color: isDark ? AppDesignSystem.neutral400 : AppDesignSystem.neutral600,
-                    ),
-                  ),
-                  if (device['ipAddress'] != null && device['ipAddress'].toString().isNotEmpty)
-                    Text(
-                      'IP: ${device['ipAddress']}',
-                      style: AppDesignSystem.bodySmall.copyWith(
-                        color: isDark ? AppDesignSystem.neutral500 : AppDesignSystem.neutral500,
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                ],
-              ),
-            if (lastLoginAt != null)
-              Text(
-                'Last login: ${_formatTimestamp(lastLoginAt)}',
-                style: AppDesignSystem.bodySmall.copyWith(
-                  color: isDark ? AppDesignSystem.neutral500 : AppDesignSystem.neutral500,
-                  fontSize: 11,
-                ),
-              ),
-          ],
-        ),
-        trailing: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: platformColor.withOpacity(0.2),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text(
-                platform.toUpperCase(),
-                style: TextStyle(
-                  color: platformColor,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '$loginCount login${loginCount != 1 ? 's' : ''}',
-              style: AppDesignSystem.bodySmall.copyWith(
-                color: isDark ? AppDesignSystem.neutral400 : AppDesignSystem.neutral600,
-                fontSize: 11,
-              ),
-            ),
-          ],
-        ),
-        isThreeLine: true,
-      ),
-    );
   }
 }

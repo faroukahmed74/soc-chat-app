@@ -77,12 +77,6 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   // Track previous message IDs for sound detection
   final Set<String> _previousMessageIds = {};
   
-  // Reply functionality
-  Map<String, dynamic>? _replyingToMessage;
-  
-  // Reactions
-  final Map<String, Map<String, List<String>>> _messageReactions = {}; // messageId -> {emoji: [userId]}
-  
   String? _extractMessageId(Map<String, dynamic> m) {
     final id = m['_id'] ?? m['id'];
     return id?.toString();
@@ -239,26 +233,6 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           _loadMessages();
         }
       });
-      // Listen for reaction updates (works offline via polling fallback)
-      _realtime.onMessageReaction((reactionData) {
-        try {
-          final messageId = (reactionData['messageId'] ?? '').toString();
-          final reactions = reactionData['reactions'];
-          if (messageId.isNotEmpty && reactions != null && mounted) {
-            setState(() {
-              _messageReactions[messageId] = Map<String, List<String>>.from(
-                (reactions as Map).map((k, v) => MapEntry(
-                  k.toString(),
-                  List<String>.from((v as List).map((e) => e.toString())),
-                )),
-              );
-            });
-          }
-        } catch (e) {
-          Log.e('Error handling reaction update', 'CHAT_SCREEN_MONGODB', e);
-          // If Socket.IO fails, reactions will still sync via polling (every 2 seconds)
-        }
-      });
     } catch (e) {
       Log.e('Error initializing chat', 'CHAT_SCREEN_MONGODB', e);
       if (mounted) {
@@ -311,19 +285,6 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           }
         }
         
-        // Sync reactions from messages
-        for (final msg in messages) {
-          final msgId = _extractMessageId(msg);
-          if (msgId != null && msg['reactions'] != null) {
-            _messageReactions[msgId] = Map<String, List<String>>.from(
-              (msg['reactions'] as Map).map((k, v) => MapEntry(
-                k.toString(),
-                List<String>.from((v as List).map((e) => e.toString())),
-              )),
-            );
-          }
-        }
-        
         // Mark messages as read for those not sent by current user
         await _markMessagesAsRead(_messages);
         
@@ -367,18 +328,6 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           
           setState(() {
             _messages = messages;
-            // Sync reactions from messages
-            for (final msg in messages) {
-              final msgId = _extractMessageId(msg);
-              if (msgId != null && msg['reactions'] != null) {
-                _messageReactions[msgId] = Map<String, List<String>>.from(
-                  (msg['reactions'] as Map).map((k, v) => MapEntry(
-                    k.toString(),
-                    List<String>.from((v as List).map((e) => e.toString())),
-                  )),
-                );
-              }
-            }
           });
           
           // Play sound for new messages from others
@@ -510,14 +459,10 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     });
 
     try {
-      final replyToId = _replyingToMessage != null ? _extractMessageId(_replyingToMessage!) : null;
-      Log.i('Sending message to chat ID: ${widget.chatId}${replyToId != null ? " (replying to $replyToId)" : ""}', 'CHAT_SCREEN_MONGODB');
-      final result = await _chatService.sendTextMessage(widget.chatId, content, replyTo: replyToId);
+      Log.i('Sending message to chat ID: ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
+      final result = await _chatService.sendTextMessage(widget.chatId, content);
       if (result != null) {
         _messageController.clear();
-        setState(() {
-          _replyingToMessage = null; // Clear reply after sending
-        });
         // Force scroll to bottom when user sends their own message
         _scrollToBottom(force: true);
         // Message will be added via the stream listener
@@ -552,18 +497,13 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     });
 
     try {
-      final replyToId = _replyingToMessage != null ? _extractMessageId(_replyingToMessage!) : null;
       final result = await _chatService.sendMediaMessage(
         widget.chatId,
         mediaUrl,
         messageType,
         content: (content != null && content.isNotEmpty) ? content : null,
-        replyTo: replyToId,
       );
       if (result != null) {
-        setState(() {
-          _replyingToMessage = null; // Clear reply after sending
-        });
         // Force scroll to bottom when user sends their own media
         _scrollToBottom(force: true);
         // Message will be added via the stream listener
@@ -907,35 +847,26 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
               ),
               child: Container(
                 padding: messagePadding,
-                decoration: BoxDecoration(
-                  color: isCurrentUser
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.surfaceVariant,
+              decoration: BoxDecoration(
+                color: isCurrentUser
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.surfaceVariant,
                   borderRadius: BorderRadius.circular(borderRadius),
-                ),
-                child: InkWell(
-                  onLongPress: () {
-                    // Long press to reply
-                    setState(() {
-                      _replyingToMessage = message;
-                    });
-                  },
-                  child: Column(
+              ),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                    // Reply preview
-                    if (message['replyTo'] != null) _buildReplyPreview(message),
                   if (!isCurrentUser && widget.isGroupChat)
                     Padding(
-                        padding: EdgeInsets.only(bottom: spacing * 0.33),
+                      padding: EdgeInsets.only(bottom: spacing * 0.33),
                       child: Text(
                         senderName,
-                          style: ResponsiveUtils.getResponsiveCaptionStyle(
-                            context,
+                        style: ResponsiveUtils.getResponsiveCaptionStyle(
+                          context,
                           color: isCurrentUser
                               ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
                               : Theme.of(context).colorScheme.onSurfaceVariant,
-                            weight: FontWeight.bold,
+                          weight: FontWeight.bold,
                         ),
                       ),
                     ),
@@ -1190,12 +1121,9 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                       ],
                     ],
                   ),
-                  // Reactions
-                  _buildReactions(message),
                 ],
               ),
-            ),
-          ),
+              ),
             ),
           ),
           if (isCurrentUser) ...[
@@ -1216,289 +1144,6 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         ],
       ),
     );
-  }
-
-  Widget _buildReplyPreview(Map<String, dynamic> message) {
-    final replyToId = message['replyTo']?.toString();
-    if (replyToId == null) return const SizedBox.shrink();
-    
-    final spacing = ResponsiveUtils.getResponsiveSpacing(context);
-    final isDark = _themeService.isDarkMode;
-    
-    // Find the replied message
-    final repliedMessage = _messages.firstWhere(
-      (m) => _extractMessageId(m) == replyToId,
-      orElse: () => {},
-    );
-    
-    if (repliedMessage.isEmpty) {
-      return Padding(
-        padding: EdgeInsets.only(bottom: spacing * 0.5),
-        child: Container(
-          padding: EdgeInsets.all(spacing * 0.5),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-            borderRadius: BorderRadius.circular(8),
-            border: Border(
-              left: BorderSide(
-                color: Theme.of(context).colorScheme.primary,
-                width: 3,
-              ),
-            ),
-          ),
-          child: Text(
-            'Original message deleted',
-            style: ResponsiveUtils.getResponsiveCaptionStyle(
-              context,
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      );
-    }
-    
-    final repliedSenderId = _extractSenderId(repliedMessage);
-    final isRepliedToCurrentUser = repliedSenderId == _currentUserId;
-    final repliedSenderName = _extractSenderName(repliedMessage);
-    final repliedContent = _extractContent(repliedMessage);
-    final repliedType = _extractType(repliedMessage);
-    
-    return Padding(
-      padding: EdgeInsets.only(bottom: spacing * 0.5),
-      child: Container(
-        padding: EdgeInsets.all(spacing * 0.5),
-        decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-          borderRadius: BorderRadius.circular(8),
-          border: Border(
-            left: BorderSide(
-              color: Theme.of(context).colorScheme.primary,
-              width: 3,
-            ),
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              isRepliedToCurrentUser ? 'You' : repliedSenderName,
-              style: ResponsiveUtils.getResponsiveCaptionStyle(
-                context,
-                color: Theme.of(context).colorScheme.primary,
-                weight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: spacing * 0.25),
-            Text(
-              repliedType == 'text' 
-                  ? repliedContent 
-                  : repliedType == 'image' 
-                      ? '📷 Image' 
-                      : repliedType == 'video' 
-                          ? '🎥 Video' 
-                          : repliedType == 'audio' 
-                              ? '🎵 Audio' 
-                              : '📎 ${repliedType}',
-              style: ResponsiveUtils.getResponsiveCaptionStyle(
-                context,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
-              ),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReactions(Map<String, dynamic> message) {
-    final messageId = _extractMessageId(message);
-    if (messageId == null) return const SizedBox.shrink();
-    
-    final spacing = ResponsiveUtils.getResponsiveSpacing(context);
-    final isDark = _themeService.isDarkMode;
-    final reactions = _messageReactions[messageId] ?? {};
-    if (reactions.isEmpty) {
-      // Show add reaction button even if no reactions
-      return Padding(
-        padding: EdgeInsets.only(top: spacing * 0.33),
-        child: InkWell(
-          onTap: () => _showReactionPicker(messageId),
-          borderRadius: BorderRadius.circular(12),
-          child: Container(
-            padding: EdgeInsets.symmetric(
-              horizontal: spacing * 0.5,
-              vertical: spacing * 0.25,
-            ),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              Icons.add_reaction_outlined,
-              size: ResponsiveUtils.getResponsiveIconSize(context),
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      );
-    }
-    
-    return Padding(
-      padding: EdgeInsets.only(top: spacing * 0.33),
-      child: Wrap(
-        spacing: spacing * 0.33,
-        runSpacing: spacing * 0.25,
-        children: reactions.entries.map((entry) {
-          final emoji = entry.key;
-          final userIds = entry.value;
-          final hasUserReacted = userIds.contains(_currentUserId?.toString());
-          
-          return InkWell(
-            onTap: () => _toggleReaction(messageId, emoji),
-            borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: spacing * 0.5,
-                vertical: spacing * 0.25,
-              ),
-              decoration: BoxDecoration(
-                color: hasUserReacted
-                    ? Theme.of(context).colorScheme.primary.withOpacity(0.2)
-                    : Theme.of(context).colorScheme.surfaceVariant,
-                borderRadius: BorderRadius.circular(12),
-                border: hasUserReacted
-                    ? Border.all(
-                        color: Theme.of(context).colorScheme.primary,
-                        width: 1,
-                      )
-                    : null,
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    emoji,
-                    style: ResponsiveUtils.getResponsiveBodyStyle(context),
-                  ),
-                  if (userIds.length > 1) ...[
-                    SizedBox(width: spacing * 0.25),
-                    Text(
-                      '${userIds.length}',
-                      style: ResponsiveUtils.getResponsiveCaptionStyle(
-                        context,
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        weight: FontWeight.bold,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          );
-        }).toList()
-          ..add(
-            InkWell(
-              onTap: () => _showReactionPicker(messageId),
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: spacing * 0.5,
-                  vertical: spacing * 0.25,
-                ),
-                decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  Icons.add_reaction_outlined,
-                  size: ResponsiveUtils.getResponsiveIconSize(context) * 0.8,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ),
-      ),
-    );
-  }
-
-  void _showReactionPicker(String messageId) {
-    final emojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'];
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: BoxDecoration(
-          color: Theme.of(context).scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        padding: EdgeInsets.all(ResponsiveUtils.getResponsiveSpacing(context)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Add Reaction',
-              style: ResponsiveUtils.getResponsiveHeadingStyle(context),
-            ),
-            SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context)),
-            Wrap(
-              spacing: ResponsiveUtils.getResponsiveSpacing(context),
-              children: emojis.map((emoji) {
-                return InkWell(
-                  onTap: () {
-                    Navigator.pop(context);
-                    _toggleReaction(messageId, emoji);
-                  },
-                  borderRadius: BorderRadius.circular(20),
-                  child: Container(
-                    padding: EdgeInsets.all(ResponsiveUtils.getResponsiveSpacing(context) * 0.75),
-                    child: Text(
-                      emoji,
-                      style: TextStyle(
-                        fontSize: ResponsiveUtils.getResponsiveFontSize(
-                          context,
-                          baseSize: 32.0,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-            SizedBox(height: ResponsiveUtils.getResponsiveSpacing(context)),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Future<void> _toggleReaction(String messageId, String emoji) async {
-    try {
-      final result = await _chatService.toggleReaction(messageId, emoji);
-      if (result != null && result['reactions'] != null && mounted) {
-        setState(() {
-          _messageReactions[messageId] = Map<String, List<String>>.from(
-            (result['reactions'] as Map).map((k, v) => MapEntry(
-              k.toString(),
-              List<String>.from((v as List).map((e) => e.toString())),
-            )),
-          );
-        });
-      }
-    } catch (e) {
-      Log.e('Error toggling reaction', 'CHAT_SCREEN_MONGODB', e);
-      // Even if API call fails, reactions will sync via polling (every 2 seconds)
-      // This ensures reactions work fully offline on local network
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Reaction saved. Syncing...'),
-            duration: Duration(seconds: 1),
-          ),
-        );
-      }
-    }
   }
 
   void _showFullScreenMedia(String mediaUrl, String mediaType, String fileName, {String? fileSize}) {
@@ -1967,12 +1612,6 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
             onSendMedia: _sendMediaMessage,
             chatId: widget.chatId,
             isEnabled: !_isSending,
-            replyingToMessage: _replyingToMessage,
-            onCancelReply: () {
-              setState(() {
-                _replyingToMessage = null;
-              });
-            },
           ),
         ],
       ),

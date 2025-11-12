@@ -5,7 +5,6 @@ import 'dart:typed_data';
 import '../widgets/emoji_picker.dart';
 import '../widgets/enhanced_media_sender.dart';
 import '../utils/responsive_utils.dart';
-import '../theme/app_design_system.dart';
 
 /// Intent class for sending messages via keyboard shortcut
 class _SendMessageIntent extends Intent {
@@ -25,10 +24,6 @@ class EnhancedChatInput extends StatefulWidget {
   final String? selectedMediaType;
   final String? selectedMediaFileName;
   final VoidCallback? onClearMedia;
-  
-  // Reply functionality
-  final Map<String, dynamic>? replyingToMessage;
-  final VoidCallback? onCancelReply;
 
   const EnhancedChatInput({
     super.key,
@@ -41,8 +36,6 @@ class EnhancedChatInput extends StatefulWidget {
     this.selectedMediaType,
     this.selectedMediaFileName,
     this.onClearMedia,
-    this.replyingToMessage,
-    this.onCancelReply,
   });
 
   @override
@@ -167,59 +160,6 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
             },
           ),
 
-        // Reply preview
-        if (widget.replyingToMessage != null) ...[
-          Container(
-            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            padding: const EdgeInsets.all(12),
-            decoration: BoxDecoration(
-              color: theme.colorScheme.surfaceVariant.withOpacity(0.5),
-              borderRadius: BorderRadius.circular(12),
-              border: Border(
-                left: BorderSide(
-                  color: theme.colorScheme.primary,
-                  width: 3,
-                ),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Replying to ${widget.replyingToMessage!['senderName'] ?? 'User'}',
-                        style: ResponsiveUtils.getResponsiveCaptionStyle(
-                          context,
-                          color: theme.colorScheme.primary,
-                          weight: FontWeight.bold,
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        widget.replyingToMessage!['content'] ?? 'Media message',
-                        style: ResponsiveUtils.getResponsiveCaptionStyle(
-                          context,
-                          color: theme.colorScheme.onSurfaceVariant,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ],
-                  ),
-                ),
-                IconButton(
-                  icon: const Icon(Icons.close, size: 20),
-                  onPressed: widget.onCancelReply,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(),
-                ),
-              ],
-            ),
-          ),
-        ],
-        
         // Media preview
         if (widget.selectedMediaBytes != null) ...[
           Container(

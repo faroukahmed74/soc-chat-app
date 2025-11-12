@@ -117,14 +117,14 @@ class MongoDBChatService {
   }
 
   /// Send a text message
-  Future<Map<String, dynamic>?> sendTextMessage(String chatId, String content, {String? replyTo}) async {
+  Future<Map<String, dynamic>?> sendTextMessage(String chatId, String content) async {
     try {
       final token = await _getAuthToken();
       if (token == null) throw Exception('No auth token');
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final response = await http.post(
-        Uri.parse('$baseUrl/api/chats/$chatId/messages'),
+        Uri.parse('$baseUrl/api/messages'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -134,7 +134,6 @@ class MongoDBChatService {
           'chatId': chatId,
           'content': content,
           'type': 'text',
-          'replyTo': replyTo,
         }),
       );
 
@@ -158,17 +157,16 @@ class MongoDBChatService {
   Future<Map<String, dynamic>?> sendMediaMessage(
     String chatId,
     String mediaUrl,
-    String messageType, {
-    String? content,
-    String? replyTo,
-  }) async {
+    String messageType,
+    {String? content}
+  ) async {
     try {
       final token = await _getAuthToken();
       if (token == null) throw Exception('No auth token');
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final response = await http.post(
-        Uri.parse('$baseUrl/api/chats/$chatId/messages'),
+        Uri.parse('$baseUrl/api/messages'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
@@ -179,7 +177,6 @@ class MongoDBChatService {
           'content': (content != null && content.isNotEmpty) ? content : 'Media message',
           'type': messageType,
           'mediaUrl': mediaUrl,
-          'replyTo': replyTo,
         }),
       );
 
@@ -529,37 +526,6 @@ class MongoDBChatService {
     } catch (e) {
       Log.e('Error updating message', 'MONGODB_CHAT_SERVICE', e);
       return false;
-    }
-  }
-
-  /// Toggle reaction on a message
-  Future<Map<String, dynamic>?> toggleReaction(String messageId, String emoji) async {
-    try {
-      final token = await _getAuthToken();
-      if (token == null) throw Exception('No auth token');
-
-      final baseUrl = DatabaseConfig.physicalServerUrl;
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/messages/$messageId/reactions'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-          'ngrok-skip-browser-warning': 'true',
-        },
-        body: json.encode({
-          'emoji': emoji,
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        final body = json.decode(response.body);
-        return Map<String, dynamic>.from(body);
-      } else {
-        throw Exception('Failed to toggle reaction: ${response.statusCode}');
-      }
-    } catch (e) {
-      Log.e('Error toggling reaction', 'MONGODB_CHAT_SERVICE', e);
-      return null;
     }
   }
 

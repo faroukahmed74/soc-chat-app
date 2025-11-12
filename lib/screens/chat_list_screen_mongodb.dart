@@ -285,38 +285,54 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
       DateTime? timeB = _getLastMessageTime(b);
       
       // Chats with messages come first
-      if (timeA == null && timeB == null) return 0;
+      if (timeA == null && timeB == null) {
+        // Both have no messages - sort by updatedAt or createdAt as fallback
+        final updatedA = _getFallbackTime(a);
+        final updatedB = _getFallbackTime(b);
+        if (updatedA == null && updatedB == null) return 0;
+        if (updatedA == null) return 1;
+        if (updatedB == null) return -1;
+        return updatedB.compareTo(updatedA);
+      }
       if (timeA == null) return 1; // No message goes to end
       if (timeB == null) return -1; // Has message goes to front
       
       // Sort by newest first (descending)
-      return timeB.compareTo(timeA);
+      final comparison = timeB.compareTo(timeA);
+      // If times are equal, use fallback time for secondary sort
+      if (comparison == 0) {
+        final updatedA = _getFallbackTime(a);
+        final updatedB = _getFallbackTime(b);
+        if (updatedA == null && updatedB == null) return 0;
+        if (updatedA == null) return 1;
+        if (updatedB == null) return -1;
+        return updatedB.compareTo(updatedA);
+      }
+      return comparison;
     });
     return sorted;
   }
 
   DateTime? _getLastMessageTime(Map<String, dynamic> chat) {
-    // Try lastMessageTime first
+    // Try lastMessageTime first (most reliable)
     final lastMessageTime = chat['lastMessageTime'];
     if (lastMessageTime != null) {
       if (lastMessageTime is DateTime) {
         return lastMessageTime;
       } else if (lastMessageTime is String) {
-        return DateTime.tryParse(lastMessageTime);
+        final parsed = DateTime.tryParse(lastMessageTime);
+        if (parsed != null) return parsed;
+      } else if (lastMessageTime is Map) {
+        // Handle MongoDB Date objects that might be serialized as maps
+        final dateStr = lastMessageTime['\$date']?.toString();
+        if (dateStr != null) {
+          final parsed = DateTime.tryParse(dateStr);
+          if (parsed != null) return parsed;
+        }
       }
     }
     
-    // Fallback to updatedAt
-    final updatedAt = chat['updatedAt'];
-    if (updatedAt != null) {
-      if (updatedAt is DateTime) {
-        return updatedAt;
-      } else if (updatedAt is String) {
-        return DateTime.tryParse(updatedAt);
-      }
-    }
-    
-    // Fallback to lastMessage.timestamp
+    // Fallback to lastMessage.timestamp (second most reliable)
     final lastMsgObj = chat['lastMessage'];
     if (lastMsgObj is Map<String, dynamic>) {
       final timestamp = lastMsgObj['timestamp'] ?? lastMsgObj['createdAt'];
@@ -324,8 +340,57 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
         if (timestamp is DateTime) {
           return timestamp;
         } else if (timestamp is String) {
-          return DateTime.tryParse(timestamp);
+          final parsed = DateTime.tryParse(timestamp);
+          if (parsed != null) return parsed;
+        } else if (timestamp is Map) {
+          // Handle MongoDB Date objects
+          final dateStr = timestamp['\$date']?.toString();
+          if (dateStr != null) {
+            final parsed = DateTime.tryParse(dateStr);
+            if (parsed != null) return parsed;
+          }
         }
+      }
+    }
+    
+    // Fallback to updatedAt (less reliable but better than nothing)
+    final updatedAt = chat['updatedAt'];
+    if (updatedAt != null) {
+      if (updatedAt is DateTime) {
+        return updatedAt;
+      } else if (updatedAt is String) {
+        final parsed = DateTime.tryParse(updatedAt);
+        if (parsed != null) return parsed;
+      } else if (updatedAt is Map) {
+        // Handle MongoDB Date objects
+        final dateStr = updatedAt['\$date']?.toString();
+        if (dateStr != null) {
+          final parsed = DateTime.tryParse(dateStr);
+          if (parsed != null) return parsed;
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  DateTime? _getFallbackTime(Map<String, dynamic> chat) {
+    // Get updatedAt or createdAt as fallback for sorting
+    final updatedAt = chat['updatedAt'];
+    if (updatedAt != null) {
+      if (updatedAt is DateTime) return updatedAt;
+      if (updatedAt is String) {
+        final parsed = DateTime.tryParse(updatedAt);
+        if (parsed != null) return parsed;
+      }
+    }
+    
+    final createdAt = chat['createdAt'];
+    if (createdAt != null) {
+      if (createdAt is DateTime) return createdAt;
+      if (createdAt is String) {
+        final parsed = DateTime.tryParse(createdAt);
+        if (parsed != null) return parsed;
       }
     }
     

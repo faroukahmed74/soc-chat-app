@@ -86,17 +86,13 @@ router.post('/', authenticateToken, async (req, res) => {
       senderId: new ObjectId(req.user.id),
       content,
       type,
+      mediaUrl: mediaUrl || '', // Always store mediaUrl, even if empty string
       createdAt: new Date(),
       updatedAt: new Date(),
       edited: false,
       readBy: [], // Initialize empty readBy array
       status: 'sent' // Initialize status as 'sent'
     };
-    
-    // Add mediaUrl if provided
-    if (mediaUrl) {
-      newMessage.mediaUrl = mediaUrl;
-    }
     
     const result = await messagesCollection.insertOne(newMessage);
     
@@ -190,21 +186,38 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
     // Get total count for pagination
     const totalMessages = await messagesCollection.countDocuments({ chatId: chatObjectId });
     
-    // Format the response
-    const formattedMessages = messages.map(msg => ({
-      _id: msg._id.toString(),
-      id: msg._id.toString(),
-      chatId: msg.chatId.toString(),
-      senderId: msg.senderId.toString(),
-      content: msg.content,
-      type: msg.type,
-      mediaUrl: rewriteMediaUrlIfNeeded(msg.mediaUrl || null, req),
-      createdAt: msg.createdAt,
-      updatedAt: msg.updatedAt,
-      edited: msg.edited,
-      readBy: msg.readBy ? msg.readBy.map(id => id.toString()) : [],
-      status: msg.status || (msg.readBy && msg.readBy.length > 0 ? 'read' : 'sent')
-    }));
+    // Format the response - ensure all fields are included
+    const formattedMessages = messages.map(msg => {
+      const formatted = {
+        _id: msg._id.toString(),
+        id: msg._id.toString(),
+        chatId: msg.chatId.toString(),
+        senderId: msg.senderId.toString(),
+        content: msg.content,
+        type: msg.type || msg.messageType || 'text', // Include both type and messageType
+        messageType: msg.messageType || msg.type || 'text', // Keep messageType for backward compatibility
+        createdAt: msg.createdAt,
+        updatedAt: msg.updatedAt,
+        edited: msg.edited || false,
+        readBy: msg.readBy ? msg.readBy.map(id => id.toString()) : [],
+        status: msg.status || (msg.readBy && msg.readBy.length > 0 ? 'read' : 'sent')
+      };
+      
+      // Ensure mediaUrl is included - check multiple possible field names
+      // Always include mediaUrl field, even if empty, so the client can handle it
+      if (msg.mediaUrl) {
+        formatted.mediaUrl = rewriteMediaUrlIfNeeded(msg.mediaUrl, req);
+      } else if (msg.media_url) {
+        formatted.mediaUrl = rewriteMediaUrlIfNeeded(msg.media_url, req);
+      } else if (msg.url) {
+        formatted.mediaUrl = rewriteMediaUrlIfNeeded(msg.url, req);
+      } else {
+        // Include empty string so client knows mediaUrl field exists but is empty
+        formatted.mediaUrl = '';
+      }
+      
+      return formatted;
+    });
     
     res.status(200).json({
       messages: formattedMessages.reverse(), // Reverse to show oldest first

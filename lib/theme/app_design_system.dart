@@ -51,96 +51,65 @@ class AppDesignSystem {
     fontFamily: 'Roboto',
     fontFamilyFallback: const ['NotoNaskhArabic', 'NotoSansArabic', 'Arial', 'Helvetica', 'Segoe UI', 'Tahoma', 'sans-serif'],
     primaryColor: primaryColor,
-    scaffoldBackgroundColor: const Color(0xFFF8F9FA), // Softer, warmer background
-    colorScheme: ColorScheme.light(
+    scaffoldBackgroundColor: neutral50,
+    colorScheme: const ColorScheme.light(
       primary: primaryColor,
       secondary: secondaryColor,
       surface: Colors.white,
-      surfaceVariant: neutral100, // For elevated surfaces
-      background: const Color(0xFFF8F9FA),
+      background: neutral50,
       error: errorColor,
       onPrimary: Colors.white,
       onSecondary: Colors.white,
       onSurface: neutral900,
       onBackground: neutral900,
       onError: Colors.white,
-      outline: neutral300, // For borders
-      outlineVariant: neutral200,
     ),
-    appBarTheme: AppBarTheme(
+    appBarTheme: const AppBarTheme(
       backgroundColor: Colors.white,
       foregroundColor: neutral900,
       elevation: 0,
-      shadowColor: Colors.black.withOpacity(0.05),
       centerTitle: true,
-      titleTextStyle: const TextStyle(
+      titleTextStyle: TextStyle(
         color: neutral900,
         fontSize: 20,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.5,
       ),
-      iconTheme: const IconThemeData(
-        color: neutral900,
-      ),
     ),
     cardTheme: CardThemeData(
       color: Colors.white,
-      elevation: 1,
-      shadowColor: Colors.black.withOpacity(0.08),
+      elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: neutral200.withOpacity(0.8), width: 1),
+        side: BorderSide(color: neutral200, width: 1),
       ),
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: Colors.white,
+      fillColor: neutral100,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: neutral300.withOpacity(0.8), width: 1),
+        borderSide: BorderSide(color: neutral300, width: 1),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: neutral300.withOpacity(0.8), width: 1),
+        borderSide: BorderSide(color: neutral300, width: 1),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: primaryColor, width: 2),
+        borderSide: BorderSide(color: primaryColor, width: 2),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: errorColor, width: 1.5),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: errorColor, width: 2),
+        borderSide: BorderSide(color: errorColor, width: 1),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      hintStyle: TextStyle(color: neutral500),
-      labelStyle: TextStyle(color: neutral600),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: primaryColor,
         foregroundColor: Colors.white,
-        elevation: 2,
-        shadowColor: primaryColor.withOpacity(0.3),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        textStyle: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-        ),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: primaryColor,
-        side: BorderSide(color: primaryColor.withOpacity(0.8), width: 1.5),
+        elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
@@ -161,70 +130,11 @@ class AppDesignSystem {
         ),
       ),
     ),
-    floatingActionButtonTheme: FloatingActionButtonThemeData(
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
       backgroundColor: primaryColor,
       foregroundColor: Colors.white,
       elevation: 4,
-      highlightElevation: 6,
-      shape: const CircleBorder(),
-    ),
-    dividerTheme: DividerThemeData(
-      color: neutral200.withOpacity(0.8),
-      thickness: 1,
-      space: 1,
-    ),
-    listTileTheme: ListTileThemeData(
-      tileColor: Colors.white,
-      selectedTileColor: primaryColor.withOpacity(0.08),
-      iconColor: neutral900,
-      textColor: neutral900,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-    ),
-    chipTheme: ChipThemeData(
-      backgroundColor: neutral100,
-      deleteIconColor: neutral700,
-      labelStyle: const TextStyle(color: neutral900),
-      secondaryLabelStyle: const TextStyle(color: Colors.white),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: neutral300.withOpacity(0.5)),
-      ),
-    ),
-    dialogTheme: DialogThemeData(
-      backgroundColor: Colors.white,
-      elevation: 8,
-      shadowColor: Colors.black.withOpacity(0.2),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      titleTextStyle: const TextStyle(
-        color: neutral900,
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-      ),
-      contentTextStyle: const TextStyle(
-        color: neutral700,
-        fontSize: 14,
-      ),
-    ),
-    bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: Colors.white,
-      elevation: 8,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-    ),
-    snackBarTheme: SnackBarThemeData(
-      backgroundColor: const Color(0xFF323232),
-      contentTextStyle: const TextStyle(color: Colors.white),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
-      behavior: SnackBarBehavior.floating,
-      elevation: 4,
+      shape: CircleBorder(),
     ),
   );
   
@@ -239,96 +149,65 @@ class AppDesignSystem {
     fontFamily: 'Roboto',
     fontFamilyFallback: const ['NotoNaskhArabic', 'NotoSansArabic', 'Arial', 'Helvetica', 'Segoe UI', 'Tahoma', 'sans-serif'],
     primaryColor: primaryLight,
-    scaffoldBackgroundColor: const Color(0xFF0F0F0F), // Deeper black for better contrast
-    colorScheme: ColorScheme.dark(
+    scaffoldBackgroundColor: neutral900,
+    colorScheme: const ColorScheme.dark(
       primary: primaryLight,
       secondary: secondaryLight,
-      surface: const Color(0xFF1A1A1A), // Slightly lighter than before
-      surfaceVariant: const Color(0xFF2A2A2A), // For elevated surfaces
-      background: const Color(0xFF0F0F0F),
+      surface: neutral800,
+      background: neutral900,
       error: errorColor,
       onPrimary: Colors.white,
       onSecondary: Colors.white,
-      onSurface: const Color(0xFFE5E5E5), // Better contrast
-      onBackground: const Color(0xFFE5E5E5),
+      onSurface: neutral50,
+      onBackground: neutral50,
       onError: Colors.white,
-      outline: neutral600, // For borders
-      outlineVariant: neutral700,
     ),
-    appBarTheme: AppBarTheme(
-      backgroundColor: const Color(0xFF1A1A1A),
-      foregroundColor: const Color(0xFFE5E5E5),
+    appBarTheme: const AppBarTheme(
+      backgroundColor: neutral800,
+      foregroundColor: neutral50,
       elevation: 0,
-      shadowColor: Colors.black.withOpacity(0.3),
       centerTitle: true,
-      titleTextStyle: const TextStyle(
-        color: Color(0xFFE5E5E5),
+      titleTextStyle: TextStyle(
+        color: neutral50,
         fontSize: 20,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.5,
       ),
-      iconTheme: const IconThemeData(
-        color: Color(0xFFE5E5E5),
-      ),
     ),
     cardTheme: CardThemeData(
-      color: const Color(0xFF1A1A1A),
-      elevation: 2,
-      shadowColor: Colors.black.withOpacity(0.5),
+      color: neutral800,
+      elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: neutral700.withOpacity(0.5), width: 1),
+        side: BorderSide(color: neutral700, width: 1),
       ),
-      margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: const Color(0xFF1A1A1A),
+      fillColor: neutral800,
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: neutral700.withOpacity(0.6), width: 1),
+        borderSide: BorderSide(color: neutral700, width: 1),
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: neutral700.withOpacity(0.6), width: 1),
+        borderSide: BorderSide(color: neutral700, width: 1),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: primaryLight, width: 2),
+        borderSide: BorderSide(color: primaryLight, width: 2),
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: errorColor, width: 1.5),
-      ),
-      focusedErrorBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-        borderSide: const BorderSide(color: errorColor, width: 2),
+        borderSide: BorderSide(color: errorColor, width: 1),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-      hintStyle: TextStyle(color: neutral500),
-      labelStyle: TextStyle(color: neutral400),
     ),
     elevatedButtonTheme: ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: primaryLight,
         foregroundColor: Colors.white,
-        elevation: 2,
-        shadowColor: primaryLight.withOpacity(0.4),
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        textStyle: const TextStyle(
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-          letterSpacing: 0.5,
-        ),
-      ),
-    ),
-    outlinedButtonTheme: OutlinedButtonThemeData(
-      style: OutlinedButton.styleFrom(
-        foregroundColor: primaryLight,
-        side: BorderSide(color: primaryLight.withOpacity(0.7), width: 1.5),
+        elevation: 0,
         padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(12),
@@ -349,68 +228,11 @@ class AppDesignSystem {
         ),
       ),
     ),
-    floatingActionButtonTheme: FloatingActionButtonThemeData(
+    floatingActionButtonTheme: const FloatingActionButtonThemeData(
       backgroundColor: primaryLight,
       foregroundColor: Colors.white,
-      elevation: 6,
-      highlightElevation: 8,
-      shape: const CircleBorder(),
-    ),
-    dividerTheme: DividerThemeData(
-      color: neutral700.withOpacity(0.5),
-      thickness: 1,
-      space: 1,
-    ),
-    listTileTheme: ListTileThemeData(
-      tileColor: const Color(0xFF1A1A1A),
-      selectedTileColor: primaryLight.withOpacity(0.1),
-      iconColor: const Color(0xFFE5E5E5),
-      textColor: const Color(0xFFE5E5E5),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
-    ),
-    chipTheme: ChipThemeData(
-      backgroundColor: const Color(0xFF2A2A2A),
-      deleteIconColor: const Color(0xFFE5E5E5),
-      labelStyle: const TextStyle(color: Color(0xFFE5E5E5)),
-      secondaryLabelStyle: const TextStyle(color: Colors.white),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-        side: BorderSide(color: neutral700.withOpacity(0.5)),
-      ),
-    ),
-    dialogTheme: DialogThemeData(
-      backgroundColor: const Color(0xFF1A1A1A),
-      elevation: 8,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
-      titleTextStyle: const TextStyle(
-        color: Color(0xFFE5E5E5),
-        fontSize: 20,
-        fontWeight: FontWeight.w600,
-      ),
-      contentTextStyle: const TextStyle(
-        color: Color(0xFFE5E5E5),
-        fontSize: 14,
-      ),
-    ),
-    bottomSheetTheme: BottomSheetThemeData(
-      backgroundColor: const Color(0xFF1A1A1A),
-      elevation: 8,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-    ),
-    snackBarTheme: SnackBarThemeData(
-      backgroundColor: const Color(0xFF2A2A2A),
-      contentTextStyle: const TextStyle(color: Color(0xFFE5E5E5)),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(8),
-      ),
-      behavior: SnackBarBehavior.floating,
+      elevation: 4,
+      shape: CircleBorder(),
     ),
   );
   

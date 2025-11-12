@@ -19,16 +19,5 @@ class _BodyElement {
   void append(dynamic element) {}
 }
 
-class _Navigator {
-  String? get userAgent => null;
-  String? get platform => null;
-  String? get language => null;
-}
-
-class _Window {
-  _Navigator? get navigator => null;
-}
-
 final document = _Document();
-final window = _Window();
 

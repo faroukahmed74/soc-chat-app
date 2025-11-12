@@ -13,8 +13,6 @@ import '../services/theme_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
 import '../services/localization_service.dart';
-import '../utils/responsive_utils.dart';
-import '../theme/app_design_system.dart';
 
 class RegisterScreenMongoDB extends StatefulWidget {
   const RegisterScreenMongoDB({Key? key}) : super(key: key);
@@ -150,21 +148,14 @@ class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = ResponsiveUtils.isMobile(context);
-    final padding = ResponsiveUtils.getResponsivePadding(context);
-    final spacing = ResponsiveUtils.getResponsiveSpacing(context);
+    final screenWidth = MediaQuery.of(context).size.width;
+    final isWideScreen = screenWidth > 600;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          AppLocalizations.getString('register', _currentLanguage),
-          style: AppDesignSystem.titleLarge.copyWith(
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        title: Text(AppLocalizations.getString('register', _currentLanguage)),
+        backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
         foregroundColor: Colors.white,
-        elevation: 0,
         actions: [
           IconButton(
             icon: Icon(_themeService.isDarkMode ? Icons.light_mode : Icons.dark_mode),
@@ -179,9 +170,11 @@ class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            padding: padding,
+            padding: const EdgeInsets.all(16.0),
             child: ConstrainedBox(
-              constraints: ResponsiveUtils.getResponsiveCardConstraints(context),
+              constraints: BoxConstraints(
+                maxWidth: isWideScreen ? 400 : double.infinity,
+              ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -189,83 +182,65 @@ class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
                   // App Logo/Title
                   Text(
                     AppLocalizations.getString('app_name', _currentLanguage),
-                    style: ResponsiveUtils.getResponsiveHeadingStyle(
-                      context,
-                      weight: FontWeight.bold,
+                    style: const TextStyle(
+                      fontSize: 32,
+                      fontWeight: FontWeight.bold,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  SizedBox(height: spacing / 2),
+                  const SizedBox(height: 8),
                   Text(
                     'Create your account',
-                    style: ResponsiveUtils.getResponsiveBodyStyle(
-                      context,
-                      color: _themeService.isDarkMode 
-                          ? AppDesignSystem.neutral400 
-                          : AppDesignSystem.neutral600,
+                    style: TextStyle(
+                      fontSize: 16,
+                      color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
                     ),
                     textAlign: TextAlign.center,
                   ),
-                  SizedBox(height: spacing * 2),
+                  const SizedBox(height: 32),
 
                   // Display Name Field
                   TextField(
                     controller: _displayNameController,
-                    style: ResponsiveUtils.getResponsiveBodyStyle(context),
                     decoration: InputDecoration(
                       labelText: AppLocalizations.getString('display_name', _currentLanguage),
-                      prefixIcon: Icon(
-                        Icons.person,
-                        size: ResponsiveUtils.getResponsiveIconSize(context),
-                      ),
+                      prefixIcon: const Icon(Icons.person),
                       border: const OutlineInputBorder(),
-                      filled: true,
                     ),
                     textCapitalization: TextCapitalization.words,
                   ),
-                  SizedBox(height: spacing),
+                  const SizedBox(height: 16),
 
                   // Email Field
                   TextField(
                     controller: _emailController,
-                    style: ResponsiveUtils.getResponsiveBodyStyle(context),
                     decoration: InputDecoration(
                       labelText: AppLocalizations.getString('email', _currentLanguage),
-                      prefixIcon: Icon(
-                        Icons.email,
-                        size: ResponsiveUtils.getResponsiveIconSize(context),
-                      ),
+                      prefixIcon: const Icon(Icons.email),
                       border: const OutlineInputBorder(),
-                      filled: true,
                     ),
                     keyboardType: TextInputType.emailAddress,
                     textCapitalization: TextCapitalization.none,
                   ),
-                  SizedBox(height: spacing),
+                  const SizedBox(height: 16),
 
                   // Phone Number Field
                   TextField(
                     controller: _phoneController,
-                    style: ResponsiveUtils.getResponsiveBodyStyle(context),
                     decoration: InputDecoration(
                       labelText: AppLocalizations.getString('phone_number', _currentLanguage),
-                      prefixIcon: Icon(
-                        Icons.phone,
-                        size: ResponsiveUtils.getResponsiveIconSize(context),
-                      ),
+                      prefixIcon: const Icon(Icons.phone),
                       border: const OutlineInputBorder(),
-                      filled: true,
                     ),
                     keyboardType: TextInputType.phone,
                     textCapitalization: TextCapitalization.none,
                   ),
-                  SizedBox(height: spacing),
+                  const SizedBox(height: 16),
 
                   // Password Field
                   TextField(
                     controller: _passwordController,
                     obscureText: _obscurePassword,
-                    style: ResponsiveUtils.getResponsiveBodyStyle(context),
                     decoration: InputDecoration(
                       labelText: AppLocalizations.getString('password', _currentLanguage),
                       prefixIcon: const Icon(Icons.lock),
@@ -280,26 +255,20 @@ class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
                         },
                       ),
                       border: const OutlineInputBorder(),
-                      filled: true,
                     ),
                   ),
-                  SizedBox(height: spacing),
+                  const SizedBox(height: 16),
 
                   // Confirm Password Field
                   TextField(
                     controller: _confirmPasswordController,
                     obscureText: _obscureConfirmPassword,
-                    style: ResponsiveUtils.getResponsiveBodyStyle(context),
                     decoration: InputDecoration(
                       labelText: AppLocalizations.getString('confirm_password', _currentLanguage),
-                      prefixIcon: Icon(
-                        Icons.lock_outline,
-                        size: ResponsiveUtils.getResponsiveIconSize(context),
-                      ),
+                      prefixIcon: const Icon(Icons.lock_outline),
                       suffixIcon: IconButton(
                         icon: Icon(
                           _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
-                          size: ResponsiveUtils.getResponsiveIconSize(context),
                         ),
                         onPressed: () {
                           setState(() {
@@ -308,85 +277,58 @@ class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
                         },
                       ),
                       border: const OutlineInputBorder(),
-                      filled: true,
                     ),
                   ),
-                  SizedBox(height: spacing * 1.5),
+                  const SizedBox(height: 24),
 
                   // Error Message
                   if (_error != null) ...[
                     Container(
-                      padding: EdgeInsets.all(spacing / 2),
+                      padding: const EdgeInsets.all(12),
                       decoration: BoxDecoration(
-                        color: AppDesignSystem.errorColor.withOpacity(0.1),
-                        border: Border.all(
-                          color: AppDesignSystem.errorColor.withOpacity(0.3),
-                        ),
+                        color: Colors.red.shade50,
+                        border: Border.all(color: Colors.red.shade200),
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Row(
                         children: [
-                          Icon(
-                            Icons.error,
-                            color: AppDesignSystem.errorColor,
-                            size: ResponsiveUtils.getResponsiveIconSize(context),
-                          ),
-                          SizedBox(width: spacing / 2),
+                          Icon(Icons.error, color: Colors.red.shade700),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: Text(
                               _error!,
-                              style: ResponsiveUtils.getResponsiveBodyStyle(
-                                context,
-                                color: AppDesignSystem.errorColor,
-                              ),
+                              style: TextStyle(color: Colors.red.shade700),
                             ),
                           ),
                         ],
                       ),
                     ),
-                    SizedBox(height: spacing),
+                    const SizedBox(height: 16),
                   ],
 
                   // Register Button
-                  SizedBox(
-                    height: ResponsiveUtils.getResponsiveButtonHeight(context),
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _register,
-                      style: ElevatedButton.styleFrom(
-                        padding: EdgeInsets.symmetric(
-                          vertical: spacing,
-                        ),
-                      ),
-                      child: _isLoading
-                          ? SizedBox(
-                              height: ResponsiveUtils.getResponsiveValue(
-                                context,
-                                mobile: 18.0,
-                                tablet: 20.0,
-                                desktop: 22.0,
-                              ),
-                              width: ResponsiveUtils.getResponsiveValue(
-                                context,
-                                mobile: 18.0,
-                                tablet: 20.0,
-                                desktop: 22.0,
-                              ),
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                              ),
-                            )
-                          : Text(
-                              AppLocalizations.getString('sign_up', _currentLanguage),
-                              style: ResponsiveUtils.getResponsiveBodyStyle(
-                                context,
-                                color: Colors.white,
-                                weight: FontWeight.bold,
-                              ),
-                            ),
+                  ElevatedButton(
+                    onPressed: _isLoading ? null : _register,
+                    style: ElevatedButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      backgroundColor: _themeService.isDarkMode ? Colors.blue[700] : Colors.blue[500],
+                      foregroundColor: Colors.white,
                     ),
+                    child: _isLoading
+                        ? const SizedBox(
+                            height: 20,
+                            width: 20,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          )
+                        : Text(
+                            AppLocalizations.getString('sign_up', _currentLanguage),
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
                   ),
-                  SizedBox(height: spacing * 1.5),
+                  const SizedBox(height: 24),
 
                   // Login Link
                   Row(

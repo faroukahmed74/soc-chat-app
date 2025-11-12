@@ -32,8 +32,6 @@ import '../config/database_config.dart';
 import '../services/database_service.dart';
 import '../services/physical_auth_service.dart';
 import 'chat_screen_mongodb.dart';
-import '../utils/responsive_utils.dart';
-import '../theme/app_design_system.dart';
 
 class CreateGroupScreen extends StatefulWidget {
   const CreateGroupScreen({Key? key}) : super(key: key);
@@ -238,121 +236,70 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final isMobile = ResponsiveUtils.isMobile(context);
-    final padding = ResponsiveUtils.getResponsivePadding(context);
-    final spacing = ResponsiveUtils.getResponsiveSpacing(context);
+    final isWideScreen = MediaQuery.of(context).size.width > 600;
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-          'Create Group',
-          style: AppDesignSystem.titleLarge.copyWith(
-            color: Colors.white,
-          ),
-        ),
-        backgroundColor: Theme.of(context).colorScheme.primary,
+        title: const Text('Create Group'),
+        backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
         foregroundColor: Colors.white,
-        elevation: 0,
         actions: [
           if (_selectedUserIds.isNotEmpty)
             TextButton(
               onPressed: _isLoading ? null : _createGroup,
               child: _isLoading
-                  ? SizedBox(
-                      width: ResponsiveUtils.getResponsiveValue(
-                        context,
-                        mobile: 18.0,
-                        tablet: 20.0,
-                        desktop: 22.0,
-                      ),
-                      height: ResponsiveUtils.getResponsiveValue(
-                        context,
-                        mobile: 18.0,
-                        tablet: 20.0,
-                        desktop: 22.0,
-                      ),
-                      child: const CircularProgressIndicator(
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
                         strokeWidth: 2,
                         valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     )
-                  : Text(
+                  : const Text(
                       'Create',
-                      style: ResponsiveUtils.getResponsiveBodyStyle(
-                        context,
-                        color: Colors.white,
-                        weight: FontWeight.bold,
-                      ),
+                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
                     ),
             ),
         ],
       ),
       body: Padding(
-        padding: padding,
+        padding: const EdgeInsets.all(16.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Group Name',
-              style: ResponsiveUtils.getResponsiveHeadingStyle(
-                context,
-                weight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: spacing / 2),
+            const Text('Group Name', style: TextStyle(fontWeight: FontWeight.bold)),
             TextField(
               controller: _groupNameController,
-              style: ResponsiveUtils.getResponsiveBodyStyle(context),
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 hintText: 'Enter group name',
-                border: const OutlineInputBorder(),
-                filled: true,
+                border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: spacing),
-            Text(
-              'Select Members',
-              style: ResponsiveUtils.getResponsiveHeadingStyle(
-                context,
-                weight: FontWeight.bold,
-              ),
-            ),
-            SizedBox(height: spacing / 2),
+            const SizedBox(height: 16),
+            const Text('Select Members', style: TextStyle(fontWeight: FontWeight.bold)),
             TextField(
               controller: _searchController,
-              style: ResponsiveUtils.getResponsiveBodyStyle(context),
-              decoration: InputDecoration(
+              decoration: const InputDecoration(
                 hintText: 'Search users by username or email',
-                prefixIcon: Icon(
-                  Icons.search,
-                  size: ResponsiveUtils.getResponsiveIconSize(context),
-                ),
-                border: const OutlineInputBorder(),
-                filled: true,
+                prefixIcon: Icon(Icons.search),
+                border: OutlineInputBorder(),
               ),
             ),
-            SizedBox(height: spacing / 2),
+            const SizedBox(height: 8),
             if (_error != null)
               Padding(
-                padding: EdgeInsets.symmetric(vertical: spacing / 2),
+                padding: const EdgeInsets.symmetric(vertical: 8.0),
                 child: Text(
                   _error!,
-                  style: ResponsiveUtils.getResponsiveBodyStyle(
-                    context,
-                    color: AppDesignSystem.errorColor,
-                  ),
+                  style: const TextStyle(color: Colors.red),
                 ),
               ),
             Expanded(
               child: _filteredUsers == null
                   ? const Center(child: CircularProgressIndicator())
                   : _filteredUsers!.isEmpty
-                      ? Center(
-                          child: Text(
-                            'No users found.',
-                            style: ResponsiveUtils.getResponsiveBodyStyle(context),
-                          ),
-                        )
+                      ? const Center(child: Text('No users found.'))
                       : FutureBuilder<QuerySnapshot>(
                           future: Future.value(QuerySnapshot(docs: [])), // Empty for now
                           builder: (context, blockedSnapshot) {
@@ -365,26 +312,8 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                                 final userId = user.id;
                                 
                                 return Card(
-                                  margin: EdgeInsets.symmetric(
-                                    vertical: 4,
-                                    horizontal: ResponsiveUtils.getResponsiveValue(
-                                      context,
-                                      mobile: 0.0,
-                                      tablet: 4.0,
-                                      desktop: 8.0,
-                                    ),
-                                  ),
-                                  elevation: 1,
+                                  margin: const EdgeInsets.symmetric(vertical: 4),
                                   child: ListTile(
-                                    contentPadding: EdgeInsets.symmetric(
-                                      horizontal: ResponsiveUtils.getResponsiveValue(
-                                        context,
-                                        mobile: 12.0,
-                                        tablet: 16.0,
-                                        desktop: 20.0,
-                                      ),
-                                      vertical: 8,
-                                    ),
                                     leading: Row(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
@@ -400,17 +329,12 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                                             });
                                           },
                                         ),
-                                        SizedBox(width: spacing / 4),
                                         CircleAvatar(
-                                          radius: ResponsiveUtils.getResponsiveAvatarRadius(context) / 2,
                                           backgroundImage: _getUserPhotoUrl(user).isNotEmpty
                                               ? NetworkImage(_getUserPhotoUrl(user))
                                               : null,
                                           child: _getUserPhotoUrl(user).isEmpty
-                                              ? Icon(
-                                                  Icons.person,
-                                                  size: ResponsiveUtils.getResponsiveIconSize(context),
-                                                )
+                                              ? const Icon(Icons.person)
                                               : null,
                                         ),
                                       ],
@@ -421,52 +345,41 @@ class _CreateGroupScreenState extends State<CreateGroupScreen> {
                                         // Display Name (if available) or Username
                                         Text(
                                           _getUserDisplayName(user),
-                                          style: ResponsiveUtils.getResponsiveBodyStyle(
-                                            context,
-                                            weight: FontWeight.w600,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.w600,
+                                            fontSize: 16,
                                           ),
                                         ),
-                                        SizedBox(height: spacing / 4),
+                                        const SizedBox(height: 2),
                                         // Email address
                                         Text(
                                           _getUserEmail(user),
-                                          style: ResponsiveUtils.getResponsiveCaptionStyle(
-                                            context,
-                                            color: _themeService.isDarkMode
-                                                ? AppDesignSystem.neutral400
-                                                : AppDesignSystem.neutral600,
+                                          style: TextStyle(
+                                            color: Colors.grey.shade600,
+                                            fontSize: 14,
                                           ),
                                         ),
                                       ],
                                     ),
                                     subtitle: null, // Friend status can be implemented later
-                                    trailing: !isMobile
+                                    trailing: isWideScreen
                                         ? Row(
                                             mainAxisSize: MainAxisSize.min,
                                             children: [
                                               IconButton(
-                                                icon: Icon(
-                                                  Icons.block,
-                                                  size: ResponsiveUtils.getResponsiveIconSize(context),
-                                                ),
+                                                icon: const Icon(Icons.block),
                                                 tooltip: 'Block',
                                                 onPressed: () => _blockUser(userId, user),
                                               ),
                                               IconButton(
-                                                icon: Icon(
-                                                  Icons.report,
-                                                  size: ResponsiveUtils.getResponsiveIconSize(context),
-                                                ),
+                                                icon: const Icon(Icons.report),
                                                 tooltip: 'Report',
                                                 onPressed: () => _reportUser(userId, user),
                                               ),
                                             ],
                                           )
                                         : PopupMenuButton<String>(
-                                            icon: Icon(
-                                              Icons.more_vert,
-                                              size: ResponsiveUtils.getResponsiveIconSize(context),
-                                            ),
+                                            icon: const Icon(Icons.more_vert),
                                             onSelected: (value) {
                                               switch (value) {
                                                 case 'block':
