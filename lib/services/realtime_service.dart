@@ -95,6 +95,21 @@ class RealtimeService {
     });
   }
 
+  void onMessageReaction(MessageCallback handler) {
+    _socket?.off('message_reaction');
+    _socket?.on('message_reaction', (data) {
+      try {
+        if (data is Map) {
+          handler(Map<String, dynamic>.from(data));
+        } else if (data is Map<dynamic, dynamic>) {
+          handler(Map<String, dynamic>.from(data));
+        }
+      } catch (e) {
+        Log.e('Realtime reaction parse error', 'REALTIME', e);
+      }
+    });
+  }
+
   void dispose() {
     try {
       _socket?.dispose();

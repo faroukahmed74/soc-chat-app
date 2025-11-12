@@ -41,7 +41,9 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   List<Map<String, dynamic>> _mediaFiles = [];
   List<Map<String, dynamic>> _userLogs = [];
   List<Map<String, dynamic>> _adminLogs = [];
+  List<Map<String, dynamic>> _devices = [];
   Map<String, dynamic>? _systemStats;
+  Map<String, dynamic>? _fcmStatus;
   Map<String, dynamic>? _analyticsData;
   Map<String, dynamic>? _systemHealth;
   Map<String, dynamic>? _apiHealth;
@@ -52,6 +54,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   Timer? _healthCheckTimer;
   final TextEditingController _userSearchController = TextEditingController();
   final TextEditingController _logSearchController = TextEditingController();
+  final TextEditingController _deviceSearchController = TextEditingController();
   String _selectedChatIdForMessages = '';
   String _selectedLogType = 'user'; // 'user' or 'admin'
   bool _isLoadingAnalytics = false;
@@ -70,8 +73,10 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
   bool _isLoadingMedia = false;
   bool _isLoadingUserLogs = false;
   bool _isLoadingAdminLogs = false;
+  bool _isLoadingDevices = false;
   bool _roleLoaded = false;
   bool _isAdmin = false;
+  String _devicePlatformFilter = '';
 
   @override
   void initState() {
@@ -80,7 +85,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     _themeService.addListener(() {
       if (mounted) setState(() {});
     });
-    _tabController = TabController(length: 9, vsync: this);
+    _tabController = TabController(length: 10, vsync: this);
     _checkAdminAccess();
     _startServerTimeSync();
   }
@@ -90,6 +95,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
     _tabController.dispose();
     _userSearchController.dispose();
     _logSearchController.dispose();
+    _deviceSearchController.dispose();
     _serverTimeTimer?.cancel();
     _healthCheckTimer?.cancel();
     super.dispose();
@@ -165,7 +171,53 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
       _loadAnalytics(),
       _loadHealthMonitoring(),
       _loadGroups(),
+      _loadDevices(),
+      _loadFcmStatus(),
     ]);
+  }
+
+  Future<void> _loadDevices() async {
+    setState(() {
+      _isLoadingDevices = true;
+    });
+    
+    try {
+      final result = await _adminService.getDevices(
+        search: _deviceSearchController.text.isEmpty ? null : _deviceSearchController.text,
+        platform: _devicePlatformFilter.isEmpty ? null : _devicePlatformFilter,
+      );
+      if (mounted) {
+        setState(() {
+          _devices = List<Map<String, dynamic>>.from(result['devices'] ?? []);
+        });
+      }
+    } catch (e) {
+      Log.e('Error loading devices', 'ADMIN_PANEL_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading devices: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isLoadingDevices = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadFcmStatus() async {
+    try {
+      final status = await _adminService.getFcmStatus();
+      if (mounted) {
+        setState(() {
+          _fcmStatus = status;
+        });
+      }
+    } catch (e) {
+      Log.e('Error loading FCM status', 'ADMIN_PANEL_MONGODB', e);
+    }
   }
 
   Future<void> _loadGroups() async {
@@ -4186,6 +4238,11 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
               text: isMobile ? null : 'Health',
               iconMargin: isMobile ? const EdgeInsets.only(bottom: 4) : EdgeInsets.zero,
             ),
+            Tab(
+              icon: const Icon(Icons.devices),
+              text: isMobile ? null : 'Devices',
+              iconMargin: isMobile ? const EdgeInsets.only(bottom: 4) : EdgeInsets.zero,
+            ),
           ],
         ),
       ),
@@ -4201,6 +4258,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
           _buildLogsTab(),
           _buildSystemStatsTab(),
           _buildHealthMonitoringTab(),
+          _buildDevicesTab(),
         ],
       ),
     );
@@ -6942,6 +7000,435 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
       return timestamp.toString();
     } catch (e) {
       return timestamp.toString();
+    }
+  }
+
+  Widget _buildDevicesTab() {
+    final isMobile = ResponsiveUtils.isMobile(context);
+    final padding = ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 8.0,
+      tablet: 12.0,
+      desktop: 16.0,
+    );
+
+    if (_isLoadingDevices) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    // Get unique platforms for filter
+    final platforms = _devices.map((d) => d['platform']?.toString() ?? 'unknown').toSet().toList()..sort();
+    final filteredDevices = _devices.where((device) {
+      if (_devicePlatformFilter.isNotEmpty && device['platform'] != _devicePlatformFilter) {
+        return false;
+      }
+      final search = _deviceSearchController.text.toLowerCase();
+      if (search.isNotEmpty) {
+        final email = (device['userEmail'] ?? '').toString().toLowerCase();
+        final model = (device['deviceModel'] ?? '').toString().toLowerCase();
+        final ip = (device['ipAddress'] ?? '').toString().toLowerCase();
+        final deviceId = (device['deviceId'] ?? '').toString().toLowerCase();
+        return email.contains(search) || model.contains(search) || ip.contains(search) || deviceId.contains(search);
+      }
+      return true;
+    }).toList();
+
+    return SingleChildScrollView(
+      padding: EdgeInsets.all(padding),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // FCM Status Card
+          if (_fcmStatus != null)
+            Card(
+              elevation: 2,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.all(16.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(
+                          _fcmStatus!['fcmSystemStatus']?['available'] == true
+                              ? Icons.notifications_active
+                              : Icons.notifications_off,
+                          color: _fcmStatus!['fcmSystemStatus']?['available'] == true
+                              ? Colors.green
+                              : Colors.red,
+                          size: 28,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                'FCM Notification System',
+                                style: AppDesignSystem.headlineSmall.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              const SizedBox(height: 4),
+                              Text(
+                                _fcmStatus!['fcmSystemStatus']?['message'] ?? 'Unknown status',
+                                style: AppDesignSystem.bodySmall.copyWith(
+                                  color: _fcmStatus!['fcmSystemStatus']?['available'] == true
+                                      ? Colors.green
+                                      : Colors.red,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+                    if (_fcmStatus!['overall'] != null) ...[
+                      _buildStatRow('Total Devices', '${_fcmStatus!['overall']?['totalDevices'] ?? 0}'),
+                      _buildStatRow('FCM Enabled', '${_fcmStatus!['overall']?['fcmEnabled'] ?? 0}'),
+                      _buildStatRow('FCM Disabled', '${_fcmStatus!['overall']?['fcmDisabled'] ?? 0}'),
+                      _buildStatRow('Enabled %', '${_fcmStatus!['overall']?['enabledPercentage'] ?? '0'}%'),
+                    ],
+                    if (_fcmStatus!['byPlatform'] != null && (_fcmStatus!['byPlatform'] as List).isNotEmpty) ...[
+                      const SizedBox(height: 16),
+                      Text(
+                        'By Platform',
+                        style: AppDesignSystem.titleMedium.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      ...(_fcmStatus!['byPlatform'] as List).map<Widget>((platform) {
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                platform['platform'] ?? 'unknown',
+                                style: AppDesignSystem.bodyMedium,
+                              ),
+                              Text(
+                                '${platform['fcmEnabled'] ?? 0}/${platform['total'] ?? 0} (${platform['enabledPercentage'] ?? '0'}%)',
+                                style: AppDesignSystem.bodyMedium.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      }).toList(),
+                    ],
+                  ],
+                ),
+              ),
+            ),
+          SizedBox(height: padding),
+          
+          // Search and Filter
+          Card(
+            elevation: 2,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(16.0),
+              child: Column(
+                children: [
+                  TextField(
+                    controller: _deviceSearchController,
+                    decoration: InputDecoration(
+                      labelText: 'Search devices',
+                      hintText: 'Search by email, model, IP, or device ID',
+                      prefixIcon: const Icon(Icons.search),
+                      suffixIcon: _deviceSearchController.text.isNotEmpty
+                          ? IconButton(
+                              icon: const Icon(Icons.clear),
+                              onPressed: () {
+                                _deviceSearchController.clear();
+                                _loadDevices();
+                              },
+                            )
+                          : null,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                      ),
+                    ),
+                    onSubmitted: (_) => _loadDevices(),
+                  ),
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: DropdownButtonFormField<String>(
+                          value: _devicePlatformFilter.isEmpty ? null : _devicePlatformFilter,
+                          decoration: InputDecoration(
+                            labelText: 'Filter by Platform',
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
+                            ),
+                          ),
+                          items: [
+                            const DropdownMenuItem<String>(
+                              value: '',
+                              child: Text('All Platforms'),
+                            ),
+                            ...platforms.map((platform) => DropdownMenuItem<String>(
+                              value: platform,
+                              child: Text(platform.toUpperCase()),
+                            )),
+                          ],
+                          onChanged: (value) {
+                            setState(() {
+                              _devicePlatformFilter = value ?? '';
+                            });
+                            _loadDevices();
+                          },
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      IconButton(
+                        icon: const Icon(Icons.refresh),
+                        onPressed: _loadDevices,
+                        tooltip: 'Refresh devices',
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: padding),
+          
+          // Devices List
+          Text(
+            'Devices (${filteredDevices.length})',
+            style: AppDesignSystem.headlineSmall.copyWith(
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          SizedBox(height: padding * 0.5),
+          if (filteredDevices.isEmpty)
+            Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32.0),
+                child: Column(
+                  children: [
+                    Icon(
+                      Icons.devices_other,
+                      size: 64,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'No devices found',
+                      style: AppDesignSystem.bodyLarge.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          else
+            ListView.builder(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: filteredDevices.length,
+              itemBuilder: (context, index) {
+                final device = filteredDevices[index];
+                return _buildDeviceCard(device);
+              },
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeviceCard(Map<String, dynamic> device) {
+    final platform = device['platform']?.toString() ?? 'unknown';
+    final fcmEnabled = device['fcmEnabled'] == true;
+    final lastSeen = device['lastSeen'];
+    DateTime? lastSeenDate;
+    if (lastSeen != null) {
+      try {
+        if (lastSeen is String) {
+          lastSeenDate = DateTime.parse(lastSeen);
+        } else if (lastSeen is Map && lastSeen['\$date'] != null) {
+          final timestamp = lastSeen['\$date'];
+          if (timestamp is int) {
+            lastSeenDate = DateTime.fromMillisecondsSinceEpoch(timestamp);
+          }
+        }
+      } catch (_) {}
+    }
+
+    return Card(
+      elevation: 2,
+      margin: EdgeInsets.only(bottom: ResponsiveUtils.getResponsiveValue(
+        context,
+        mobile: 8.0,
+        tablet: 12.0,
+        desktop: 16.0,
+      )),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppDesignSystem.radiusLG),
+      ),
+      child: ExpansionTile(
+        leading: Icon(
+          platform == 'web' ? Icons.web
+              : platform == 'android' ? Icons.android
+              : platform == 'ios' ? Icons.phone_iphone
+              : platform == 'windows' ? Icons.desktop_windows
+              : platform == 'macos' ? Icons.desktop_mac
+              : platform == 'linux' ? Icons.computer
+              : Icons.devices_other,
+          color: Theme.of(context).colorScheme.primary,
+        ),
+        title: Text(
+          device['userEmail']?.toString() ?? 'Unknown User',
+          style: AppDesignSystem.titleMedium.copyWith(
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              '${device['deviceModel'] ?? 'Unknown'} • ${platform.toUpperCase()}',
+              style: AppDesignSystem.bodySmall,
+            ),
+            if (lastSeenDate != null)
+              Text(
+                'Last seen: ${_formatLastSeen(lastSeenDate)}',
+                style: AppDesignSystem.bodySmall.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+          ],
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: fcmEnabled ? Colors.green : Colors.grey,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Text(
+                fcmEnabled ? 'FCM ON' : 'FCM OFF',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              Icons.expand_more,
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ],
+        ),
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildDeviceDetailRow('Device ID', device['deviceId']?.toString() ?? 'N/A'),
+                _buildDeviceDetailRow('User Email', device['userEmail']?.toString() ?? 'N/A'),
+                _buildDeviceDetailRow('Device Type', device['deviceType']?.toString() ?? 'N/A'),
+                _buildDeviceDetailRow('Device Model', device['deviceModel']?.toString() ?? 'N/A'),
+                _buildDeviceDetailRow('Platform', platform.toUpperCase()),
+                _buildDeviceDetailRow('Platform Version', device['platformVersion']?.toString() ?? 'N/A'),
+                _buildDeviceDetailRow('App Version', device['appVersion']?.toString() ?? 'N/A'),
+                _buildDeviceDetailRow('IP Address', device['ipAddress']?.toString() ?? 'N/A'),
+                _buildDeviceDetailRow('FCM Token', device['fcmToken']?.toString() ?? 'Not available'),
+                _buildDeviceDetailRow('FCM Status', fcmEnabled ? 'Enabled' : 'Disabled'),
+                if (device['createdAt'] != null)
+                  _buildDeviceDetailRow('Registered', _formatDate(device['createdAt'])),
+                if (lastSeenDate != null)
+                  _buildDeviceDetailRow('Last Seen', _formatDate(lastSeenDate)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeviceDetailRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4.0),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              '$label:',
+              style: AppDesignSystem.bodySmall.copyWith(
+                fontWeight: FontWeight.bold,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: AppDesignSystem.bodySmall,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatLastSeen(DateTime dateTime) {
+    final now = DateTime.now();
+    final difference = now.difference(dateTime);
+    
+    if (difference.inMinutes < 1) {
+      return 'Just now';
+    } else if (difference.inMinutes < 60) {
+      return '${difference.inMinutes} minute${difference.inMinutes == 1 ? '' : 's'} ago';
+    } else if (difference.inHours < 24) {
+      return '${difference.inHours} hour${difference.inHours == 1 ? '' : 's'} ago';
+    } else if (difference.inDays < 7) {
+      return '${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
+    } else {
+      return DateFormat('MMM dd, yyyy HH:mm').format(dateTime);
+    }
+  }
+
+  String _formatDate(dynamic date) {
+    if (date == null) return 'N/A';
+    try {
+      DateTime dateTime;
+      if (date is String) {
+        dateTime = DateTime.parse(date);
+      } else if (date is DateTime) {
+        dateTime = date;
+      } else if (date is Map && date['\$date'] != null) {
+        final timestamp = date['\$date'];
+        if (timestamp is int) {
+          dateTime = DateTime.fromMillisecondsSinceEpoch(timestamp);
+        } else {
+          return 'N/A';
+        }
+      } else {
+        return 'N/A';
+      }
+      return DateFormat('MMM dd, yyyy HH:mm:ss').format(dateTime);
+    } catch (_) {
+      return 'N/A';
     }
   }
 }

@@ -577,4 +577,102 @@ class MongoDBChatService {
       return false;
     }
   }
+
+  /// Reply to a message
+  Future<Map<String, dynamic>?> replyToMessage(
+    String messageId,
+    String content, {
+    String? messageType,
+    String? mediaUrl,
+  }) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/messages/$messageId/reply'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({
+          'content': content,
+          'messageType': messageType ?? 'text',
+          'mediaUrl': mediaUrl,
+        }),
+      );
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        final body = json.decode(response.body);
+        return Map<String, dynamic>.from(body);
+      } else {
+        throw Exception('Failed to reply to message: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error replying to message', 'MONGODB_CHAT_SERVICE', e);
+      return null;
+    }
+  }
+
+  /// React to a message (add or remove reaction)
+  Future<Map<String, dynamic>?> reactToMessage(String messageId, String emoji) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.post(
+        Uri.parse('$baseUrl/api/messages/$messageId/react'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({
+          'emoji': emoji,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body);
+        return Map<String, dynamic>.from(body);
+      } else {
+        throw Exception('Failed to react to message: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error reacting to message', 'MONGODB_CHAT_SERVICE', e);
+      return null;
+    }
+  }
+
+  /// Get replies for a message
+  Future<List<Map<String, dynamic>>> getMessageReplies(String messageId) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/messages/$messageId/replies'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body);
+        final replies = body['replies'] as List? ?? [];
+        return List<Map<String, dynamic>>.from(replies);
+      } else {
+        throw Exception('Failed to get replies: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting message replies', 'MONGODB_CHAT_SERVICE', e);
+      return [];
+    }
+  }
 }

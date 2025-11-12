@@ -1,8 +1,8 @@
 {
-  "version": "1.0.18",
-  "build_number": "18",
+  "version": "1.0.21",
+  "build_number": "21",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.18 - Unread Message Indicators & FCM Notifications:\n- Added unread message count badge beside red dot on avatar\n- Unread indicators disappear when chat is opened\n- Integrated FCM push notifications for all platforms (iOS, Android, Web)\n- FCM notifications sent to offline users automatically\n- Fixed video loading issues on Android 10 with ngrok URLs\n- Improved unread count reset and message read status\n- Enhanced chat list refresh after opening chats\n- Better platform-specific URL routing (Web: local network, Mobile: ngrok)",
+  "release_notes": "SOC Chat App v1.0.21 - UI Improvements & Bug Fixes:\n- Fixed dark mode toggle crash on web platform\n- Enhanced real-time chat sorting for individual and group chats\n- Improved unread message indicators (red dot with shadow, bold text)\n- Fixed Android 10 video playback issues (automatic download fallback)\n- Enhanced reply message UI with better visual context\n- Improved chat list real-time updates without manual refresh\n- Better error handling and state management\n- All features verified across Web, Android, and iOS platforms",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": false,

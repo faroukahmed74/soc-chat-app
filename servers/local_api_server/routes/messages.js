@@ -382,4 +382,359 @@ router.delete('/:messageId', authenticateToken, async (req, res) => {
   }
 });
 
+// Reply to a message
+// Accessible from both web (local network) and mobile (ngrok)
+router.post('/:messageId/reply', authenticateToken, async (req, res) => {
+  try {
+    const { content, messageType, mediaUrl } = req.body;
+    const userId = req.user.id;
+    const messageId = req.params.messageId;
+
+    if (!content && !mediaUrl) {
+      return res.status(400).json({ error: 'Content or mediaUrl is required' });
+    }
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(messageId)) {
+      return res.status(400).json({ error: 'Invalid message ID' });
+    }
+
+    const database = await connectDB();
+    const messagesCollection = database.collection('messages');
+    const chatsCollection = database.collection('chats');
+    const usersCollection = database.collection('users');
+
+    // Get the original message
+    const originalMessage = await messagesCollection.findOne({
+      _id: new ObjectId(messageId)
+    });
+
+    if (!originalMessage) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Verify user is a member of the chat
+    const chat = await chatsCollection.findOne({
+      _id: new ObjectId(originalMessage.chatId),
+      members: new ObjectId(userId),
+    });
+
+    if (!chat) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get sender's display name
+    const sender = await usersCollection.findOne({ _id: new ObjectId(userId) });
+    const senderName = sender?.displayName || sender?.username || 'Someone';
+
+    // Get original message sender name
+    const originalSender = await usersCollection.findOne({ 
+      _id: new ObjectId(originalMessage.senderId) 
+    });
+    const originalSenderName = originalSender?.displayName || originalSender?.username || 'Unknown';
+
+    // Create reply message
+    const replyMessage = {
+      chatId: originalMessage.chatId,
+      senderId: new ObjectId(userId),
+      content: content || '',
+      type: messageType || 'text',
+      messageType: messageType || 'text',
+      mediaUrl: mediaUrl || null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      readBy: [],
+      status: 'sent',
+      replies: [],
+      reactions: {},
+      replyTo: messageId,
+      replyToContent: originalMessage.content?.substring(0, 100) || '',
+      replyToSenderName: originalSenderName,
+    };
+
+    const result = await messagesCollection.insertOne(replyMessage);
+
+    // Add reply reference to original message
+    await messagesCollection.updateOne(
+      { _id: new ObjectId(messageId) },
+      { 
+        $push: { 
+          replies: {
+            replyId: result.insertedId.toString(),
+            senderId: userId,
+            senderName: senderName,
+            content: content || (mediaUrl ? 'Media' : ''),
+            createdAt: new Date(),
+          }
+        },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    // Update chat's last message
+    const now = new Date();
+    await chatsCollection.updateOne(
+      { _id: new ObjectId(originalMessage.chatId) },
+      { 
+        $set: { 
+          updatedAt: now,
+          lastMessageTime: now,
+          lastMessage: {
+            content: content || (mediaUrl ? 'Media reply' : ''),
+            senderId: userId,
+            senderName: senderName,
+            timestamp: now.toISOString(),
+            createdAt: now,
+          },
+        }
+      }
+    );
+
+    // Emit socket notification to ALL members (if io is available)
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        // Emit to the entire chat room
+        io.to(originalMessage.chatId.toString()).emit('new_message', {
+          id: result.insertedId.toString(),
+          _id: result.insertedId.toString(),
+          chatId: originalMessage.chatId.toString(),
+          senderId: userId.toString(),
+          senderName: senderName,
+          content: replyMessage.content,
+          messageType: replyMessage.messageType,
+          mediaUrl: rewriteMediaUrlIfNeeded(replyMessage.mediaUrl, req),
+          createdAt: replyMessage.createdAt,
+          replyTo: messageId,
+          replyToContent: replyMessage.replyToContent,
+          replyToSenderName: replyMessage.replyToSenderName,
+          readBy: [],
+          status: 'sent'
+        });
+        // Also emit to individual members to ensure delivery
+        const memberIds = chat.members.map(m => m.toString());
+        for (const memberId of memberIds) {
+          io.to(memberId).emit('new_message', {
+            id: result.insertedId.toString(),
+            _id: result.insertedId.toString(),
+            chatId: originalMessage.chatId.toString(),
+            senderId: userId.toString(),
+            senderName: senderName,
+            content: replyMessage.content,
+            messageType: replyMessage.messageType,
+            mediaUrl: rewriteMediaUrlIfNeeded(replyMessage.mediaUrl, req),
+            createdAt: replyMessage.createdAt,
+            replyTo: messageId,
+            replyToContent: replyMessage.replyToContent,
+            replyToSenderName: replyMessage.replyToSenderName,
+            readBy: [],
+            status: 'sent'
+          });
+        }
+      }
+    } catch (socketErr) {
+      console.warn('Socket emission failed:', socketErr?.message || socketErr);
+    }
+
+    res.status(201).json({
+      id: result.insertedId.toString(),
+      _id: result.insertedId.toString(),
+      chatId: originalMessage.chatId.toString(),
+      senderId: userId.toString(),
+      content: replyMessage.content,
+      messageType: replyMessage.messageType,
+      mediaUrl: rewriteMediaUrlIfNeeded(replyMessage.mediaUrl, req),
+      createdAt: replyMessage.createdAt,
+      replyTo: messageId,
+      replyToContent: replyMessage.replyToContent,
+      replyToSenderName: replyMessage.replyToSenderName,
+      readBy: [],
+      status: 'sent'
+    });
+  } catch (err) {
+    console.error('Reply error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// React to a message (add or remove reaction)
+// Accessible from both web (local network) and mobile (ngrok)
+router.post('/:messageId/react', authenticateToken, async (req, res) => {
+  try {
+    const { emoji } = req.body;
+    const userId = req.user.id;
+    const messageId = req.params.messageId;
+
+    if (!emoji) {
+      return res.status(400).json({ error: 'Emoji is required' });
+    }
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(messageId)) {
+      return res.status(400).json({ error: 'Invalid message ID' });
+    }
+
+    const database = await connectDB();
+    const messagesCollection = database.collection('messages');
+    const chatsCollection = database.collection('chats');
+
+    // Get the message
+    const message = await messagesCollection.findOne({
+      _id: new ObjectId(messageId)
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Verify user is a member of the chat
+    const chat = await chatsCollection.findOne({
+      _id: new ObjectId(message.chatId),
+      members: new ObjectId(userId),
+    });
+
+    if (!chat) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Initialize reactions if not exists
+    const reactions = message.reactions || {};
+    const emojiReactions = reactions[emoji] || [];
+
+    // Toggle reaction (add if not exists, remove if exists)
+    const userIdStr = userId.toString();
+    const hasReacted = emojiReactions.includes(userIdStr);
+    
+    if (hasReacted) {
+      // Remove reaction
+      reactions[emoji] = emojiReactions.filter(id => id !== userIdStr);
+      // Remove emoji key if no reactions left
+      if (reactions[emoji].length === 0) {
+        delete reactions[emoji];
+      }
+    } else {
+      // Add reaction
+      reactions[emoji] = [...emojiReactions, userIdStr];
+    }
+
+    // Update message
+    await messagesCollection.updateOne(
+      { _id: new ObjectId(messageId) },
+      { 
+        $set: { 
+          reactions: reactions,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    // Emit socket notification to ALL members of the chat (if io is available)
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        // Emit to the entire chat room so all members receive the reaction update
+        io.to(message.chatId.toString()).emit('message_reaction', {
+          messageId: messageId,
+          emoji: emoji,
+          userId: userId.toString(),
+          action: hasReacted ? 'removed' : 'added',
+          reactions: reactions
+        });
+        // Also emit to individual members to ensure delivery
+        const memberIds = chat.members.map(m => m.toString());
+        for (const memberId of memberIds) {
+          io.to(memberId).emit('message_reaction', {
+            messageId: messageId,
+            emoji: emoji,
+            userId: userId.toString(),
+            action: hasReacted ? 'removed' : 'added',
+            reactions: reactions
+          });
+        }
+      }
+    } catch (socketErr) {
+      console.warn('Socket emission failed:', socketErr?.message || socketErr);
+    }
+
+    res.status(200).json({
+      success: true,
+      messageId: messageId,
+      emoji: emoji,
+      action: hasReacted ? 'removed' : 'added',
+      reactions: reactions
+    });
+  } catch (err) {
+    console.error('Reaction error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// Get replies for a message
+// Accessible from both web (local network) and mobile (ngrok)
+router.get('/:messageId/replies', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const messageId = req.params.messageId;
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(messageId)) {
+      return res.status(400).json({ error: 'Invalid message ID' });
+    }
+
+    const database = await connectDB();
+    const messagesCollection = database.collection('messages');
+    const chatsCollection = database.collection('chats');
+
+    // Get the original message
+    const message = await messagesCollection.findOne({
+      _id: new ObjectId(messageId)
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Verify user is a member of the chat
+    const chat = await chatsCollection.findOne({
+      _id: new ObjectId(message.chatId),
+      members: new ObjectId(userId),
+    });
+
+    if (!chat) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get all reply messages
+    const replies = await messagesCollection
+      .find({ replyTo: messageId })
+      .sort({ createdAt: 1 })
+      .toArray();
+
+    // Format replies
+    const formattedReplies = replies.map(reply => ({
+      id: reply._id.toString(),
+      _id: reply._id.toString(),
+      chatId: reply.chatId.toString(),
+      senderId: reply.senderId.toString(),
+      senderName: reply.senderName || 'Unknown',
+      content: reply.content,
+      messageType: reply.messageType || reply.type || 'text',
+      mediaUrl: rewriteMediaUrlIfNeeded(reply.mediaUrl, req),
+      createdAt: reply.createdAt,
+      replyTo: reply.replyTo,
+      readBy: reply.readBy || [],
+      status: reply.status || 'sent',
+      reactions: reply.reactions || {}
+    }));
+
+    res.status(200).json({
+      messageId: messageId,
+      replies: formattedReplies
+    });
+  } catch (err) {
+    console.error('Get replies error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 module.exports = router;

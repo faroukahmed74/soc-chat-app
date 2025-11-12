@@ -1182,4 +1182,78 @@ class MongoDBAdminService {
       return false;
     }
   }
+
+  /// Get all devices (admin only)
+  Future<Map<String, dynamic>> getDevices({
+    String? search,
+    String? platform,
+    String? userId,
+    int page = 1,
+    int limit = 50,
+  }) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final queryParams = <String, String>{
+        'page': page.toString(),
+        'limit': limit.toString(),
+        if (search != null && search.isNotEmpty) 'search': search,
+        if (platform != null && platform.isNotEmpty) 'platform': platform,
+        if (userId != null && userId.isNotEmpty) 'userId': userId,
+      };
+      final uri = Uri.parse('$baseUrl/api/admin/devices').replace(queryParameters: queryParams);
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Map<String, dynamic>.from(data);
+      } else {
+        throw Exception('Failed to load devices: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting devices', 'MONGODB_ADMIN_SERVICE', e);
+      return {
+        'devices': <Map<String, dynamic>>[],
+        'pagination': {'page': 1, 'limit': 50, 'total': 0, 'pages': 0},
+        'fcmStats': {'enabled': 0, 'disabled': 0, 'total': 0}
+      };
+    }
+  }
+
+  /// Get FCM notification system status (admin only)
+  Future<Map<String, dynamic>?> getFcmStatus() async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/admin/devices/fcm-status'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return Map<String, dynamic>.from(data);
+      } else {
+        throw Exception('Failed to load FCM status: ${response.statusCode}');
+      }
+    } catch (e) {
+      Log.e('Error getting FCM status', 'MONGODB_ADMIN_SERVICE', e);
+      return null;
+    }
+  }
 }

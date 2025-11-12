@@ -7,6 +7,7 @@ import 'package:audioplayers/audioplayers.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:syncfusion_flutter_pdfviewer/pdfviewer.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import 'dart:io';
 import 'dart:typed_data';
 import 'dart:html' if (dart.library.io) '../widgets/html_stub.dart' as html;
@@ -100,6 +101,30 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
 
   Future<void> _initializeVideo() async {
     try {
+      // Check if Android 10 (API 29) - use download method directly for better reliability
+      bool isAndroid10 = false;
+      if (Platform.isAndroid && !kIsWeb) {
+        try {
+          final deviceInfo = DeviceInfoPlugin();
+          final androidInfo = await deviceInfo.androidInfo;
+          // Android 10 is API level 29
+          isAndroid10 = androidInfo.version.sdkInt == 29;
+        } catch (e) {
+          // If we can't detect, try network first then fallback
+        }
+      }
+      
+      // For Android 10, use download method directly (more reliable)
+      if (isAndroid10) {
+        try {
+          await _initializeVideoWithDownload();
+          return;
+        } catch (e) {
+          Log.w('Android 10 download method failed, trying network fallback', 'FULL_SCREEN_MEDIA_PREVIEW');
+          // If download fails, try network as last resort
+        }
+      }
+      
       final videoUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
       
       // Check video format and handle platform-specific requirements
@@ -140,7 +165,7 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
     } catch (e) {
       Log.e('Error initializing video', 'FULL_SCREEN_MEDIA_PREVIEW', e);
       
-      // Try fallback: download and play locally (for mobile)
+      // Try fallback: download and play locally (for mobile, especially Android 10)
       if (!kIsWeb) {
         try {
           await _initializeVideoWithDownload();
@@ -182,6 +207,21 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
       
       final videoUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
       
+      // Get file extension from URL or default to mp4
+      final uri = Uri.parse(videoUrl);
+      final path = uri.path.toLowerCase();
+      String extension = 'mp4';
+      if (path.contains('.')) {
+        final parts = path.split('.');
+        if (parts.length > 1) {
+          extension = parts.last.split('?').first; // Remove query params
+          // Validate extension
+          if (!['mp4', 'webm', '3gp', 'mkv', 'mov', 'm4v'].contains(extension)) {
+            extension = 'mp4';
+          }
+        }
+      }
+      
       // Add headers for ngrok URLs (required for Android 10+)
       final headers = <String, String>{};
       if (videoUrl.contains('ngrok') || 
@@ -193,7 +233,16 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
           ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'
           : 'Mozilla/5.0 (Linux; Android 10) Mobile';
       
-      final response = await http.get(Uri.parse(videoUrl), headers: headers);
+      // Download with timeout
+      final response = await http.get(
+        Uri.parse(videoUrl), 
+        headers: headers,
+      ).timeout(
+        const Duration(minutes: 5), // 5 minute timeout for large videos
+        onTimeout: () {
+          throw Exception('Video download timeout - file may be too large');
+        },
+      );
       
       if (response.statusCode != 200) {
         throw Exception('Download failed: HTTP ${response.statusCode}');
@@ -201,9 +250,13 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
       
       // Save to temp file
       final tempDir = await getTemporaryDirectory();
-      final extension = widget.mediaUrl.toLowerCase().split('.').last;
       final tempFile = File('${tempDir.path}/temp_video_${DateTime.now().millisecondsSinceEpoch}.$extension');
       await tempFile.writeAsBytes(response.bodyBytes);
+      
+      // Verify file was written
+      if (!await tempFile.exists()) {
+        throw Exception('Failed to save video to temporary file');
+      }
       
       // Initialize from local file
       _videoController = VideoPlayerController.file(tempFile);

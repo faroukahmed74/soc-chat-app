@@ -1853,4 +1853,292 @@ router.post('/logs/admin', verifyAdminToken, async (req, res) => {
   }
 });
 
+// =============================================================================
+// DEVICE TRACKING ENDPOINTS
+// =============================================================================
+
+// Middleware to verify token (for device registration - allows regular users)
+const verifyToken = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  
+  if (!token) {
+    return res.status(401).json({ error: 'Access token required' });
+  }
+  
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_jwt_secret_here');
+    req.user = { ...decoded, userId: decoded.id };
+    next();
+  } catch (error) {
+    return res.status(401).json({ error: 'Invalid token' });
+  }
+};
+
+// Register or update device information
+// Accessible from both web (local network) and mobile (ngrok)
+router.post('/devices/register', verifyToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const userId = req.user.id;
+    const { deviceId, deviceType, deviceModel, platform, platformVersion, appVersion, fcmToken, ipAddress } = req.body;
+    
+    // Get client IP from request (works for both local network and ngrok)
+    // For ngrok, x-forwarded-for header contains the real client IP
+    const forwardedFor = req.headers['x-forwarded-for'];
+    const clientIp = forwardedFor 
+      ? (Array.isArray(forwardedFor) ? forwardedFor[0] : forwardedFor.split(',')[0].trim())
+      : req.ip || req.connection.remoteAddress || ipAddress || 'unknown';
+    
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId is required' });
+    }
+    
+    // Get user email for tracking
+    const user = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    const userEmail = user?.email || 'unknown';
+    
+    // Check if device already exists
+    const existingDevice = await db.collection('devices').findOne({
+      deviceId: deviceId,
+      userId: new ObjectId(userId)
+    });
+    
+    const deviceData = {
+      deviceId,
+      userId: new ObjectId(userId),
+      userEmail,
+      deviceType: deviceType || 'unknown',
+      deviceModel: deviceModel || 'unknown',
+      platform: platform || 'unknown',
+      platformVersion: platformVersion || 'unknown',
+      appVersion: appVersion || '1.0.0',
+      ipAddress: clientIp,
+      fcmToken: fcmToken || null,
+      fcmEnabled: fcmToken != null,
+      lastSeen: new Date(),
+      createdAt: existingDevice?.createdAt || new Date(),
+      updatedAt: new Date()
+    };
+    
+    if (existingDevice) {
+      // Update existing device
+      await db.collection('devices').updateOne(
+        { _id: existingDevice._id },
+        { $set: deviceData }
+      );
+      res.status(200).json({ message: 'Device updated successfully', device: deviceData });
+    } else {
+      // Create new device
+      const result = await db.collection('devices').insertOne(deviceData);
+      res.status(201).json({ message: 'Device registered successfully', device: { ...deviceData, _id: result.insertedId } });
+    }
+  } catch (error) {
+    console.error('Error registering device:', error);
+    res.status(500).json({ error: 'Failed to register device' });
+  }
+});
+
+// Update device last seen timestamp
+router.patch('/devices/update-last-seen', verifyToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const userId = req.user.id;
+    const { deviceId } = req.body;
+    
+    if (!deviceId) {
+      return res.status(400).json({ error: 'deviceId is required' });
+    }
+    
+    await db.collection('devices').updateOne(
+      { deviceId, userId: new ObjectId(userId) },
+      { 
+        $set: { 
+          lastSeen: new Date(),
+          updatedAt: new Date()
+        }
+      }
+    );
+    
+    res.status(200).json({ message: 'Last seen updated successfully' });
+  } catch (error) {
+    console.error('Error updating last seen:', error);
+    res.status(500).json({ error: 'Failed to update last seen' });
+  }
+});
+
+// Get all devices (admin only)
+router.get('/devices', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { page = 1, limit = 50, search = '', platform = '', userId = '' } = req.query;
+    
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const query = {};
+    
+    if (search) {
+      query.$or = [
+        { userEmail: { $regex: search, $options: 'i' } },
+        { deviceModel: { $regex: search, $options: 'i' } },
+        { ipAddress: { $regex: search, $options: 'i' } },
+        { deviceId: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    if (platform) {
+      query.platform = platform;
+    }
+    
+    if (userId) {
+      query.userId = new ObjectId(userId);
+    }
+    
+    const devices = await db.collection('devices')
+      .find(query)
+      .sort({ lastSeen: -1 })
+      .skip(skip)
+      .limit(parseInt(limit))
+      .toArray();
+    
+    const total = await db.collection('devices').countDocuments(query);
+    
+    // Get FCM status
+    const fcmEnabled = await db.collection('devices').countDocuments({ ...query, fcmEnabled: true });
+    const fcmDisabled = total - fcmEnabled;
+    
+    res.json({
+      devices: devices.map(device => ({
+        id: device._id.toString(),
+        _id: device._id.toString(),
+        deviceId: device.deviceId,
+        userId: device.userId.toString(),
+        userEmail: device.userEmail,
+        deviceType: device.deviceType,
+        deviceModel: device.deviceModel,
+        platform: device.platform,
+        platformVersion: device.platformVersion,
+        appVersion: device.appVersion,
+        ipAddress: device.ipAddress,
+        fcmToken: device.fcmToken ? '***' + device.fcmToken.slice(-4) : null, // Partially mask token
+        fcmEnabled: device.fcmEnabled || false,
+        lastSeen: device.lastSeen,
+        createdAt: device.createdAt,
+        updatedAt: device.updatedAt
+      })),
+      pagination: {
+        page: parseInt(page),
+        limit: parseInt(limit),
+        total,
+        pages: Math.ceil(total / parseInt(limit))
+      },
+      fcmStats: {
+        enabled: fcmEnabled,
+        disabled: fcmDisabled,
+        total: total
+      }
+    });
+  } catch (error) {
+    console.error('Error getting devices:', error);
+    res.status(500).json({ error: 'Failed to get devices' });
+  }
+});
+
+// Get devices for a specific user (admin only)
+router.get('/devices/user/:userId', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    const { userId } = req.params;
+    
+    const devices = await db.collection('devices')
+      .find({ userId: new ObjectId(userId) })
+      .sort({ lastSeen: -1 })
+      .toArray();
+    
+    res.json({
+      devices: devices.map(device => ({
+        id: device._id.toString(),
+        _id: device._id.toString(),
+        deviceId: device.deviceId,
+        userId: device.userId.toString(),
+        userEmail: device.userEmail,
+        deviceType: device.deviceType,
+        deviceModel: device.deviceModel,
+        platform: device.platform,
+        platformVersion: device.platformVersion,
+        appVersion: device.appVersion,
+        ipAddress: device.ipAddress,
+        fcmToken: device.fcmToken ? '***' + device.fcmToken.slice(-4) : null,
+        fcmEnabled: device.fcmEnabled || false,
+        lastSeen: device.lastSeen,
+        createdAt: device.createdAt,
+        updatedAt: device.updatedAt
+      }))
+    });
+  } catch (error) {
+    console.error('Error getting user devices:', error);
+    res.status(500).json({ error: 'Failed to get user devices' });
+  }
+});
+
+// Get FCM notification system status (admin only)
+router.get('/devices/fcm-status', verifyAdminToken, async (req, res) => {
+  try {
+    const db = req.app.locals.db;
+    
+    const totalDevices = await db.collection('devices').countDocuments();
+    const fcmEnabledDevices = await db.collection('devices').countDocuments({ fcmEnabled: true });
+    const fcmDisabledDevices = totalDevices - fcmEnabledDevices;
+    
+    // Get devices by platform with FCM status
+    const devicesByPlatform = await db.collection('devices').aggregate([
+      {
+        $group: {
+          _id: '$platform',
+          total: { $sum: 1 },
+          fcmEnabled: {
+            $sum: { $cond: [{ $eq: ['$fcmEnabled', true] }, 1, 0] }
+          },
+          fcmDisabled: {
+            $sum: { $cond: [{ $ne: ['$fcmEnabled', true] }, 1, 0] }
+          }
+        }
+      }
+    ]).toArray();
+    
+    // Check if Firebase Admin SDK is available
+    let firebaseAvailable = false;
+    try {
+      const firebaseAdmin = req.app.get('firebaseAdmin');
+      firebaseAvailable = firebaseAdmin != null;
+    } catch (e) {
+      firebaseAvailable = false;
+    }
+    
+    res.json({
+      fcmSystemStatus: {
+        available: firebaseAvailable,
+        status: firebaseAvailable ? 'operational' : 'not_configured',
+        message: firebaseAvailable 
+          ? 'FCM notifications are configured and ready' 
+          : 'Firebase Admin SDK not available - FCM notifications disabled'
+      },
+      overall: {
+        totalDevices: totalDevices,
+        fcmEnabled: fcmEnabledDevices,
+        fcmDisabled: fcmDisabledDevices,
+        enabledPercentage: totalDevices > 0 ? ((fcmEnabledDevices / totalDevices) * 100).toFixed(2) : 0
+      },
+      byPlatform: devicesByPlatform.map(platform => ({
+        platform: platform._id || 'unknown',
+        total: platform.total,
+        fcmEnabled: platform.fcmEnabled,
+        fcmDisabled: platform.fcmDisabled,
+        enabledPercentage: platform.total > 0 ? ((platform.fcmEnabled / platform.total) * 100).toFixed(2) : 0
+      }))
+    });
+  } catch (error) {
+    console.error('Error getting FCM status:', error);
+    res.status(500).json({ error: 'Failed to get FCM status' });
+  }
+});
+
 module.exports = router;

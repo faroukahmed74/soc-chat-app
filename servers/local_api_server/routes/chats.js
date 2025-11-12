@@ -190,9 +190,12 @@ router.get('/', authenticateToken, async (req, res) => {
     const chatsCollection = database.collection('chats');
     
     // Find chats where the user is a member
+    // Sort by lastMessageTime descending (newest first) at database level
     const chats = await chatsCollection.find({
       members: new ObjectId(req.user.id)
-    }).toArray();
+    })
+    .sort({ lastMessageTime: -1, updatedAt: -1, createdAt: -1 }) // Sort by lastMessageTime first, then updatedAt, then createdAt
+    .toArray();
     
     // Format the response
     const formattedChats = chats.map(chat => ({
@@ -205,9 +208,11 @@ router.get('/', authenticateToken, async (req, res) => {
       createdAt: chat.createdAt,
       updatedAt: chat.updatedAt,
       lastMessage: chat.lastMessage,
-      lastMessageTime: chat.lastMessageTime
+      lastMessageTime: chat.lastMessageTime,
+      unreadCount: chat.unreadCount || {}
     }));
     
+    // Client-side will also sort, but server-side sorting ensures consistency
     res.status(200).json({
       chats: formattedChats
     });

@@ -63,6 +63,8 @@ const io = socketIo(server, {
 
 // Make Socket.IO accessible to all routes
 app.set('io', io);
+// Make Firebase Admin accessible to all routes
+app.set('firebaseAdmin', admin);
 
 // Middleware
 // Compression middleware (should be first for maximum efficiency)
@@ -2231,7 +2233,9 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       mediaUrl,
       createdAt: new Date(),
       readBy: [], // Initialize empty readBy array
-      status: 'sent' // Initialize status as 'sent'
+      status: 'sent', // Initialize status as 'sent'
+      replies: [], // Initialize empty replies array
+      reactions: {} // Initialize empty reactions object (emoji -> [userId1, userId2, ...])
     };
     
     const result = await db.collection('messages').insertOne(message);
@@ -2316,6 +2320,28 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       console.warn('Error fetching online users:', e?.message || e);
     }
     
+    // Fallback: Check if user has active FCM token (indicates they might be online)
+    // This is a backup mechanism if Socket.IO check fails
+    const usersWithActiveTokens = new Set();
+    try {
+      const usersWithTokens = await db.collection('users').find(
+        { 
+          _id: { $in: otherMembers.map(id => new ObjectId(id)) },
+          fcmToken: { $exists: true, $ne: '' },
+          fcmTokenUpdatedAt: { 
+            $gte: new Date(Date.now() - 5 * 60 * 1000) // Updated in last 5 minutes
+          }
+        },
+        { projection: { _id: 1 } }
+      ).toArray();
+      
+      for (const user of usersWithTokens) {
+        usersWithActiveTokens.add(user._id.toString());
+      }
+    } catch (e) {
+      console.warn('Error checking active FCM tokens:', e?.message || e);
+    }
+    
     for (const memberId of otherMembers) {
       // Determine title based on chat type
       const title = (chat.type === 'group' || chat.type === 'Group') ? chat.name : senderName;
@@ -2325,20 +2351,31 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       console.log(`   Available rooms include memberId: ${allRooms.has(memberId)}`);
       
       // Send socket notification
-      io.to(memberId).emit('chat_notification', {
-        title: title,
-        body: body,
-        chatId: chatId,
-        senderId: userId,
-        senderName: senderName,
-        messageType: messageType || 'text',
-        timestamp: new Date(),
-      });
+      try {
+        io.to(memberId).emit('chat_notification', {
+          title: title,
+          body: body,
+          chatId: chatId,
+          senderId: userId,
+          senderName: senderName,
+          messageType: messageType || 'text',
+          timestamp: new Date(),
+        });
+      } catch (socketErr) {
+        console.warn(`Error sending socket notification to ${memberId}:`, socketErr?.message || socketErr);
+      }
       
-      // Send FCM push notification if user is offline
-      const isOnline = onlineUsers.has(memberId);
-      if (!isOnline) {
-        console.log(`📱 User ${memberId} is offline, sending FCM notification`);
+      // Determine if user is online using multiple methods
+      const isOnlineViaSocket = onlineUsers.has(memberId);
+      const hasActiveToken = usersWithActiveTokens.has(memberId);
+      
+      // User is considered offline if:
+      // 1. Not connected via Socket.IO AND
+      // 2. Either no active FCM token OR token is old (more than 5 minutes)
+      const isOffline = !isOnlineViaSocket && !hasActiveToken;
+      
+      if (isOffline) {
+        console.log(`📱 User ${memberId} is offline (socket: ${isOnlineViaSocket}, active token: ${hasActiveToken}), sending FCM notification`);
         // Send FCM notification asynchronously (don't block response)
         sendFCMNotification(
           memberId,
@@ -2356,7 +2393,7 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
           console.error(`Error sending FCM to user ${memberId}:`, err.message);
         });
       } else {
-        console.log(`✅ User ${memberId} is online, skipping FCM notification`);
+        console.log(`✅ User ${memberId} is online (socket: ${isOnlineViaSocket}, active token: ${hasActiveToken}), skipping FCM notification`);
       }
     }
     
@@ -2424,6 +2461,316 @@ app.patch('/api/chats/:chatId/messages/read', authenticateToken, async (req, res
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// Reply to a message - MOVED TO routes/messages.js
+// This route is now handled by the messageRoutes router
+// Keeping this comment for reference - actual route is in routes/messages.js
+/*
+app.post('/api/messages/:messageId/reply', authenticateToken, async (req, res) => {
+  try {
+    const { content, messageType, mediaUrl } = req.body;
+    const userId = req.user.id;
+    const messageId = req.params.messageId;
+
+    if (!content && !mediaUrl) {
+      return res.status(400).json({ error: 'Content or mediaUrl is required' });
+    }
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(messageId)) {
+      return res.status(400).json({ error: 'Invalid message ID' });
+    }
+
+    // Get the original message
+    const originalMessage = await db.collection('messages').findOne({
+      _id: new ObjectId(messageId)
+    });
+
+    if (!originalMessage) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Verify user is a member of the chat
+    const chat = await db.collection('chats').findOne({
+      _id: new ObjectId(originalMessage.chatId),
+      members: new ObjectId(userId),
+    });
+
+    if (!chat) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get sender's display name
+    const sender = await db.collection('users').findOne({ _id: new ObjectId(userId) });
+    const senderName = sender?.displayName || sender?.username || 'Someone';
+
+    // Create reply message
+    const replyMessage = {
+      chatId: originalMessage.chatId,
+      senderId: userId,
+      content: content || '',
+      messageType: messageType || 'text',
+      mediaUrl: mediaUrl || null,
+      createdAt: new Date(),
+      readBy: [],
+      status: 'sent',
+      replies: [],
+      reactions: {},
+      replyTo: messageId, // Reference to original message
+      replyToContent: originalMessage.content?.substring(0, 100) || '', // Preview of original message
+      replyToSenderName: originalMessage.senderName || 'Unknown',
+    };
+
+    const result = await db.collection('messages').insertOne(replyMessage);
+
+    // Add reply reference to original message
+    await db.collection('messages').updateOne(
+      { _id: new ObjectId(messageId) },
+      { 
+        $push: { 
+          replies: {
+            replyId: result.insertedId.toString(),
+            senderId: userId,
+            senderName: senderName,
+            content: content || (mediaUrl ? 'Media' : ''),
+            createdAt: new Date(),
+          }
+        },
+        $set: { updatedAt: new Date() }
+      }
+    );
+
+    // Update chat's last message
+    const now = new Date();
+    await db.collection('chats').updateOne(
+      { _id: new ObjectId(originalMessage.chatId) },
+      { 
+        $set: { 
+          updatedAt: now,
+          lastMessageTime: now,
+          lastMessage: {
+            content: content || (mediaUrl ? 'Media reply' : ''),
+            senderId: userId,
+            senderName: senderName,
+            timestamp: now.toISOString(),
+            createdAt: now,
+          },
+        }
+      }
+    );
+
+    // Emit socket notification
+    try {
+      const otherMembers = chat.members
+        .filter(m => m.toString() !== userId.toString())
+        .map(m => m.toString());
+      
+      for (const memberId of otherMembers) {
+        io.to(memberId).emit('new_message', {
+          id: result.insertedId.toString(),
+          _id: result.insertedId.toString(),
+          chatId: originalMessage.chatId.toString(),
+          senderId: userId.toString(),
+          senderName: senderName,
+          content: replyMessage.content,
+          messageType: replyMessage.messageType,
+          mediaUrl: replyMessage.mediaUrl,
+          createdAt: replyMessage.createdAt,
+          replyTo: messageId,
+          replyToContent: replyMessage.replyToContent,
+          replyToSenderName: replyMessage.replyToSenderName,
+          readBy: [],
+          status: 'sent'
+        });
+      }
+    } catch (socketErr) {
+      console.warn('Socket emission failed:', socketErr?.message || socketErr);
+    }
+
+    res.status(201).json({
+      id: result.insertedId.toString(),
+      _id: result.insertedId.toString(),
+      chatId: originalMessage.chatId.toString(),
+      senderId: userId.toString(),
+      content: replyMessage.content,
+      messageType: replyMessage.messageType,
+      mediaUrl: replyMessage.mediaUrl,
+      createdAt: replyMessage.createdAt,
+      replyTo: messageId,
+      replyToContent: replyMessage.replyToContent,
+      replyToSenderName: replyMessage.replyToSenderName,
+      readBy: [],
+      status: 'sent'
+    });
+  } catch (err) {
+    console.error('Reply error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+*/
+
+// React to a message (add or remove reaction) - MOVED TO routes/messages.js
+// This route is now handled by the messageRoutes router
+// Keeping this comment for reference - actual route is in routes/messages.js
+/*
+app.post('/api/messages/:messageId/react', authenticateToken, async (req, res) => {
+  try {
+    const { emoji } = req.body;
+    const userId = req.user.id;
+    const messageId = req.params.messageId;
+
+    if (!emoji) {
+      return res.status(400).json({ error: 'Emoji is required' });
+    }
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(messageId)) {
+      return res.status(400).json({ error: 'Invalid message ID' });
+    }
+
+    // Get the message
+    const message = await db.collection('messages').findOne({
+      _id: new ObjectId(messageId)
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Verify user is a member of the chat
+    const chat = await db.collection('chats').findOne({
+      _id: new ObjectId(message.chatId),
+      members: new ObjectId(userId),
+    });
+
+    if (!chat) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Initialize reactions if not exists
+    const reactions = message.reactions || {};
+    const emojiReactions = reactions[emoji] || [];
+
+    // Toggle reaction (add if not exists, remove if exists)
+    const userIdStr = userId.toString();
+    const hasReacted = emojiReactions.includes(userIdStr);
+    
+    if (hasReacted) {
+      // Remove reaction
+      reactions[emoji] = emojiReactions.filter(id => id !== userIdStr);
+      // Remove emoji key if no reactions left
+      if (reactions[emoji].length === 0) {
+        delete reactions[emoji];
+      }
+    } else {
+      // Add reaction
+      reactions[emoji] = [...emojiReactions, userIdStr];
+    }
+
+    // Update message
+    await db.collection('messages').updateOne(
+      { _id: new ObjectId(messageId) },
+      { 
+        $set: { 
+          reactions: reactions,
+          updatedAt: new Date()
+        }
+      }
+    );
+
+    // Emit socket notification
+    try {
+      io.to(message.chatId.toString()).emit('message_reaction', {
+        messageId: messageId,
+        emoji: emoji,
+        userId: userId,
+        action: hasReacted ? 'removed' : 'added',
+        reactions: reactions
+      });
+    } catch (socketErr) {
+      console.warn('Socket emission failed:', socketErr?.message || socketErr);
+    }
+
+    res.status(200).json({
+      success: true,
+      messageId: messageId,
+      emoji: emoji,
+      action: hasReacted ? 'removed' : 'added',
+      reactions: reactions
+    });
+  } catch (err) {
+    console.error('Reaction error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+*/
+
+// Get replies for a message - MOVED TO routes/messages.js
+// This route is now handled by the messageRoutes router
+// Keeping this comment for reference - actual route is in routes/messages.js
+/*
+app.get('/api/messages/:messageId/replies', authenticateToken, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const messageId = req.params.messageId;
+
+    // Validate ObjectId
+    if (!ObjectId.isValid(messageId)) {
+      return res.status(400).json({ error: 'Invalid message ID' });
+    }
+
+    // Get the original message
+    const message = await db.collection('messages').findOne({
+      _id: new ObjectId(messageId)
+    });
+
+    if (!message) {
+      return res.status(404).json({ error: 'Message not found' });
+    }
+
+    // Verify user is a member of the chat
+    const chat = await db.collection('chats').findOne({
+      _id: new ObjectId(message.chatId),
+      members: new ObjectId(userId),
+    });
+
+    if (!chat) {
+      return res.status(403).json({ error: 'Access denied' });
+    }
+
+    // Get all reply messages
+    const replies = await db.collection('messages')
+      .find({ replyTo: messageId })
+      .sort({ createdAt: 1 })
+      .toArray();
+
+    // Format replies
+    const formattedReplies = replies.map(reply => ({
+      id: reply._id.toString(),
+      _id: reply._id.toString(),
+      chatId: reply.chatId.toString(),
+      senderId: reply.senderId.toString(),
+      senderName: reply.senderName || 'Unknown',
+      content: reply.content,
+      messageType: reply.messageType || 'text',
+      mediaUrl: reply.mediaUrl,
+      createdAt: reply.createdAt,
+      replyTo: reply.replyTo,
+      readBy: reply.readBy || [],
+      status: reply.status || 'sent',
+      reactions: reply.reactions || {}
+    }));
+
+    res.status(200).json({
+      messageId: messageId,
+      replies: formattedReplies
+    });
+  } catch (err) {
+    console.error('Get replies error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+*/
 
 // Reset unread count for a chat
 app.patch('/api/chats/:chatId/read', authenticateToken, async (req, res) => {

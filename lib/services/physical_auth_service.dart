@@ -10,6 +10,7 @@ import 'dart:convert';
 import '../config/database_config.dart';
 import 'logger_service.dart';
 import 'fcm_service.dart';
+import 'device_tracking_service.dart';
 
 class PhysicalAuthService {
   static final PhysicalAuthService _instance = PhysicalAuthService._internal();
@@ -60,6 +61,16 @@ class PhysicalAuthService {
             Log.e('Failed to update FCM user ID', 'PHYSICAL_AUTH', e);
             // Continue even if FCM update fails
           }
+        }
+
+        // Register device for tracking (non-blocking)
+        try {
+          final deviceService = DeviceTrackingService.instance;
+          deviceService.registerDevice().catchError((e) {
+            Log.w('Device registration failed after login: $e', 'PHYSICAL_AUTH');
+          });
+        } catch (e) {
+          Log.w('Failed to register device after login: $e', 'PHYSICAL_AUTH');
         }
 
         Log.i('Login successful', 'PHYSICAL_AUTH');
@@ -133,6 +144,16 @@ class PhysicalAuthService {
             Log.e('Failed to update FCM user ID', 'PHYSICAL_AUTH', e);
             // Continue even if FCM update fails
           }
+        }
+
+        // Register device for tracking (non-blocking)
+        try {
+          final deviceService = DeviceTrackingService.instance;
+          deviceService.registerDevice().catchError((e) {
+            Log.w('Device registration failed after registration: $e', 'PHYSICAL_AUTH');
+          });
+        } catch (e) {
+          Log.w('Failed to register device after registration: $e', 'PHYSICAL_AUTH');
         }
 
         Log.i('Registration successful', 'PHYSICAL_AUTH');

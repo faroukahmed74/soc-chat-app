@@ -214,14 +214,42 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _onThemeChanged() {
-    setState(() {
-      _darkModeEnabled = _themeService.isDarkMode;
+    // Use post-frame callback to prevent setState during build (especially important on web)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        setState(() {
+          _darkModeEnabled = _themeService.isDarkMode;
+        });
+        widget.onThemeChanged?.call(_darkModeEnabled);
+      }
     });
-    widget.onThemeChanged?.call(_darkModeEnabled);
   }
 
   Future<void> _toggleTheme() async {
-    await _themeService.toggleTheme();
+    try {
+      // Toggle theme in service first
+      await _themeService.toggleTheme();
+      
+      // Update local state after toggle (listener will also update it, but this ensures immediate feedback)
+      // Use post-frame callback to prevent setState during build
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _darkModeEnabled = _themeService.isDarkMode;
+          });
+        }
+      });
+    } catch (e) {
+      Log.e('Error toggling theme', 'SETTINGS_SCREEN', e);
+      // Revert local state on error
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) {
+          setState(() {
+            _darkModeEnabled = _themeService.isDarkMode;
+          });
+        }
+      });
+    }
   }
 
   Future<void> _toggleNotifications() async {

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
@@ -8,6 +9,9 @@ import 'dart:convert';
 import '../config/database_config.dart';
 import 'logger_service.dart';
 import 'enhanced_notification_service.dart';
+import '../main.dart';
+import '../screens/chat_screen_mongodb.dart';
+import 'mongodb_chat_service.dart';
 
 /// FCM Service for handling Firebase Cloud Messaging tokens and background messages
 /// Supports iOS, Android (all versions), and Web
@@ -47,17 +51,22 @@ class FCMService {
       _firebaseMessaging = FirebaseMessaging.instance;
 
       // Request notification permissions
-      NotificationSettings settings = await _firebaseMessaging!.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
+      NotificationSettings settings = await _firebaseMessaging!
+          .requestPermission(
+            alert: true,
+            badge: true,
+            sound: true,
+            provisional: false,
+          );
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
         Log.i('✅ FCM notification permission granted', 'FCM_SERVICE');
-      } else if (settings.authorizationStatus == AuthorizationStatus.provisional) {
-        Log.i('⚠️ FCM notification permission granted provisionally', 'FCM_SERVICE');
+      } else if (settings.authorizationStatus ==
+          AuthorizationStatus.provisional) {
+        Log.i(
+          '⚠️ FCM notification permission granted provisionally',
+          'FCM_SERVICE',
+        );
       } else {
         Log.w('❌ FCM notification permission denied', 'FCM_SERVICE');
       }
@@ -87,7 +96,8 @@ class FCMService {
       FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
 
       // Check if app was opened from a notification
-      RemoteMessage? initialMessage = await _firebaseMessaging!.getInitialMessage();
+      RemoteMessage? initialMessage = await _firebaseMessaging!
+          .getInitialMessage();
       if (initialMessage != null) {
         _handleMessageOpenedApp(initialMessage);
       }
@@ -104,12 +114,13 @@ class FCMService {
       _firebaseMessaging = FirebaseMessaging.instance;
 
       // Request notification permissions for web
-      NotificationSettings settings = await _firebaseMessaging!.requestPermission(
-        alert: true,
-        badge: true,
-        sound: true,
-        provisional: false,
-      );
+      NotificationSettings settings = await _firebaseMessaging!
+          .requestPermission(
+            alert: true,
+            badge: true,
+            sound: true,
+            provisional: false,
+          );
 
       if (settings.authorizationStatus == AuthorizationStatus.authorized) {
         Log.i('✅ Web FCM notification permission granted', 'FCM_SERVICE');
@@ -140,7 +151,8 @@ class FCMService {
       FirebaseMessaging.onMessageOpenedApp.listen(_handleMessageOpenedApp);
 
       // Check if app was opened from a notification
-      RemoteMessage? initialMessage = await _firebaseMessaging!.getInitialMessage();
+      RemoteMessage? initialMessage = await _firebaseMessaging!
+          .getInitialMessage();
       if (initialMessage != null) {
         _handleMessageOpenedApp(initialMessage);
       }
@@ -162,8 +174,11 @@ class FCMService {
       String? token = await _firebaseMessaging!.getToken();
       if (token != null) {
         _currentToken = token;
-        Log.i('FCM token obtained: ${token.substring(0, 20)}...', 'FCM_SERVICE');
-        
+        Log.i(
+          'FCM token obtained: ${token.substring(0, 20)}...',
+          'FCM_SERVICE',
+        );
+
         // Send token to server
         await _sendTokenToServer(token);
       } else {
@@ -223,28 +238,69 @@ class FCMService {
         'timestamp': DateTime.now().toIso8601String(),
       });
 
-      Log.i('Sending FCM token to server for user: $userId, platform: $platform', 'FCM_SERVICE');
-
-      // Send request
-      final response = await http.post(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $authToken',
-        },
-        body: body,
-      ).timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          Log.e('Timeout sending FCM token to server', 'FCM_SERVICE', null);
-          throw Exception('Request timeout');
-        },
+      Log.i(
+        'Sending FCM token to server for user: $userId, platform: $platform',
+        'FCM_SERVICE',
       );
 
-      if (response.statusCode == 200 || response.statusCode == 201) {
-        Log.i('✅ FCM token sent to server successfully', 'FCM_SERVICE');
-      } else {
-        Log.w('Failed to send FCM token: ${response.statusCode} - ${response.body}', 'FCM_SERVICE');
+      // Send request with retry logic
+      int retries = 3;
+      while (retries > 0) {
+        try {
+          final response = await http
+              .post(
+                url,
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': 'Bearer $authToken',
+                  'ngrok-skip-browser-warning': 'true',
+                },
+                body: body,
+              )
+              .timeout(
+                const Duration(seconds: 10),
+                onTimeout: () {
+                  throw Exception('Request timeout');
+                },
+              );
+
+          if (response.statusCode == 200 || response.statusCode == 201) {
+            Log.i('✅ FCM token sent to server successfully', 'FCM_SERVICE');
+            return; // Success, exit retry loop
+          } else if (response.statusCode == 401 || response.statusCode == 403) {
+            Log.w(
+              'Authentication failed, cannot retry: ${response.statusCode}',
+              'FCM_SERVICE',
+            );
+            return; // Don't retry auth errors
+          } else {
+            Log.w(
+              'Failed to send FCM token: ${response.statusCode} - ${response.body}',
+              'FCM_SERVICE',
+            );
+            retries--;
+            if (retries > 0) {
+              await Future.delayed(
+                Duration(seconds: 3 - retries),
+              ); // Exponential backoff
+            }
+          }
+        } catch (e) {
+          retries--;
+          if (retries > 0) {
+            Log.w(
+              'Error sending FCM token, retrying... ($retries attempts left)',
+              'FCM_SERVICE',
+            );
+            await Future.delayed(Duration(seconds: 3 - retries));
+          } else {
+            Log.e(
+              'Error sending FCM token to server after retries',
+              'FCM_SERVICE',
+              e,
+            );
+          }
+        }
       }
     } catch (e) {
       Log.e('Error sending FCM token to server', 'FCM_SERVICE', e);
@@ -253,18 +309,27 @@ class FCMService {
 
   /// Handle foreground messages
   void _handleForegroundMessage(RemoteMessage message) {
-    Log.i('Received foreground FCM message: ${message.messageId}', 'FCM_SERVICE');
-    
+    Log.i(
+      'Received foreground FCM message: ${message.messageId}',
+      'FCM_SERVICE',
+    );
+
     // Show local notification for foreground messages
     _showLocalNotification(message);
   }
 
   /// Handle message when app is opened from notification
-  void _handleMessageOpenedApp(RemoteMessage message) {
-    Log.i('App opened from FCM notification: ${message.messageId}', 'FCM_SERVICE');
-    
+  Future<void> _handleMessageOpenedApp(RemoteMessage message) async {
+    Log.i(
+      'App opened from FCM notification: ${message.messageId}',
+      'FCM_SERVICE',
+    );
+
+    // Add small delay to ensure app is fully initialized
+    await Future.delayed(const Duration(milliseconds: 500));
+
     // Handle navigation or action based on message data
-    _processMessageData(message.data);
+    await _processMessageData(message.data);
   }
 
   /// Show local notification for FCM message
@@ -288,21 +353,100 @@ class FCMService {
 
       Log.i('Local notification shown for FCM message', 'FCM_SERVICE');
     } catch (e) {
-      Log.e('Error showing local notification for FCM message', 'FCM_SERVICE', e);
+      Log.e(
+        'Error showing local notification for FCM message',
+        'FCM_SERVICE',
+        e,
+      );
     }
   }
 
   /// Process message data (for navigation, actions, etc.)
-  void _processMessageData(Map<String, dynamic> data) {
+  Future<void> _processMessageData(Map<String, dynamic> data) async {
     Log.i('Processing FCM message data: $data', 'FCM_SERVICE');
-    
-    // Extract relevant data
-    final chatId = data['chatId'];
 
-    // TODO: Implement navigation logic based on message type
-    // This can be integrated with your app's navigation system
-    if (chatId != null) {
-      Log.i('Navigate to chat: $chatId', 'FCM_SERVICE');
+    try {
+      // Extract relevant data
+      final chatId = data['chatId']?.toString();
+      final senderId = data['senderId']?.toString();
+      final senderName = data['senderName']?.toString() ?? 'Unknown';
+      final messageType = data['type']?.toString() ?? 'chat_message';
+
+      if (chatId == null || chatId.isEmpty) {
+        Log.w('No chatId in FCM message data, cannot navigate', 'FCM_SERVICE');
+        return;
+      }
+
+      Log.i('Navigating to chat: $chatId', 'FCM_SERVICE');
+
+      // Use navigatorKey to navigate even when app is in background
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) {
+        Log.w(
+          'Navigator not available, storing chatId for later navigation',
+          'FCM_SERVICE',
+        );
+        // Store chatId to navigate when app becomes active
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('pending_chat_navigation', chatId);
+        return;
+      }
+
+      // Get chat details to determine if it's a group chat
+      try {
+        final chatService = MongoDBChatService();
+        final chatDetails = await chatService.getChatDetails(chatId);
+
+        if (chatDetails == null) {
+          Log.w('Chat not found: $chatId', 'FCM_SERVICE');
+          return;
+        }
+
+        final chat = chatDetails['chat'] ?? chatDetails;
+        final chatName = chat['name']?.toString() ?? senderName;
+        final isGroupChat =
+            chat['type']?.toString() == 'group' ||
+            ((chat['members'] as List?)?.length ?? 0) > 2;
+        final members = chat['members'] as List?;
+
+        // Navigate to chat screen
+        navigator.push(
+          MaterialPageRoute(
+            builder: (context) => ChatScreenMongoDB(
+              chatId: chatId,
+              chatName: chatName,
+              isGroupChat: isGroupChat,
+              userIds: members != null
+                  ? members.map((m) => m.toString()).toList()
+                  : null,
+            ),
+          ),
+        );
+
+        Log.i('✅ Successfully navigated to chat: $chatId', 'FCM_SERVICE');
+      } catch (e) {
+        Log.e('Error navigating to chat', 'FCM_SERVICE', e);
+        // Fallback: try to navigate with minimal info
+        try {
+          navigator.push(
+            MaterialPageRoute(
+              builder: (context) => ChatScreenMongoDB(
+                chatId: chatId,
+                chatName: senderName,
+                isGroupChat: false,
+              ),
+            ),
+          );
+        } catch (fallbackError) {
+          Log.e(
+            'Fallback navigation also failed',
+            'FCM_SERVICE',
+            fallbackError,
+          );
+        }
+      }
+    } catch (e) {
+      Log.e('Error processing FCM message data', 'FCM_SERVICE', e);
     }
   }
 
@@ -329,7 +473,7 @@ class FCMService {
     if (userId != null) {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_id', userId);
-      
+
       // Resend token with new user ID
       if (_currentToken != null) {
         await _sendTokenToServer(_currentToken!);
@@ -364,21 +508,24 @@ class FCMService {
       final baseUrl = DatabaseConfig.physicalServerUrl;
       final url = Uri.parse('$baseUrl/api/users/fcm-token');
 
-      final response = await http.delete(
-        url,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $authToken',
-        },
-        body: jsonEncode({
-          'userId': userId,
-        }),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .delete(
+            url,
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $authToken',
+            },
+            body: jsonEncode({'userId': userId}),
+          )
+          .timeout(const Duration(seconds: 10));
 
       if (response.statusCode == 200 || response.statusCode == 204) {
         Log.i('✅ FCM token deleted from server', 'FCM_SERVICE');
       } else {
-        Log.w('Failed to delete FCM token: ${response.statusCode}', 'FCM_SERVICE');
+        Log.w(
+          'Failed to delete FCM token: ${response.statusCode}',
+          'FCM_SERVICE',
+        );
       }
     } catch (e) {
       Log.e('Error deleting FCM token', 'FCM_SERVICE', e);
@@ -396,8 +543,11 @@ class FCMService {
 /// Top-level function for background message handler (must be top-level)
 @pragma('vm:entry-point')
 Future<void> _firebaseBackgroundMessageHandler(RemoteMessage message) async {
-  Log.i('Background FCM message received: ${message.messageId}', 'FCM_BACKGROUND');
-  
+  Log.i(
+    'Background FCM message received: ${message.messageId}',
+    'FCM_BACKGROUND',
+  );
+
   // Show local notification
   try {
     final notificationService = EnhancedNotificationService();
@@ -421,4 +571,3 @@ Future<void> _firebaseBackgroundMessageHandler(RemoteMessage message) async {
     Log.e('Error showing background notification', 'FCM_BACKGROUND', e);
   }
 }
-

@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
@@ -67,6 +68,13 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   late ThemeService _themeService;
   final RealtimeService _realtime = RealtimeService.instance;
   final ActiveChatService _activeChat = ActiveChatService.instance;
+  
+  // Reply and reaction state
+  Map<String, dynamic>? _replyingToMessage;
+  final Map<String, Map<String, List<String>>> _messageReactions = {}; // messageId -> {emoji: [userId1, userId2]}
+  
+  // Offline reactions cache key (for web platform)
+  String get _reactionsCacheKey => 'reactions_cache_${widget.chatId}';
   
   // User status for one-to-one chats
   bool? _otherUserIsOnline;
@@ -218,6 +226,11 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         }
       }
 
+      // Load cached reactions from local storage (for offline support on web)
+      if (kIsWeb) {
+        await _loadCachedReactions();
+      }
+
       // Load initial messages
       await _loadMessages();
 
@@ -230,7 +243,87 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       _realtime.onNewMessage((msg) {
         final chatId = (msg['chatId'] ?? msg['chat_id'] ?? '').toString();
         if (chatId == widget.chatId) {
-          _loadMessages();
+          // Add the new message directly to the list to preserve reply info
+          final messageId = (msg['id'] ?? msg['_id'] ?? '').toString();
+          if (messageId.isNotEmpty) {
+            setState(() {
+              // Check if message already exists
+              final existingIndex = _messages.indexWhere((m) => _extractMessageId(m) == messageId);
+              if (existingIndex == -1) {
+                // Add new message with all fields including reply info
+                _messages.add({
+                  'id': messageId,
+                  '_id': messageId,
+                  'chatId': chatId,
+                  'senderId': msg['senderId'] ?? msg['sender_id'],
+                  'senderName': msg['senderName'] ?? msg['sender_name'],
+                  'content': msg['content'] ?? '',
+                  'messageType': msg['messageType'] ?? msg['type'] ?? 'text',
+                  'mediaUrl': msg['mediaUrl'] ?? msg['media_url'],
+                  'createdAt': msg['createdAt'] ?? msg['created_at'],
+                  'replyTo': msg['replyTo'] ?? msg['reply_to'],
+                  'replyToContent': msg['replyToContent'] ?? msg['reply_to_content'],
+                  'replyToSenderName': msg['replyToSenderName'] ?? msg['reply_to_sender_name'],
+                  'readBy': msg['readBy'] ?? msg['read_by'] ?? [],
+                  'status': msg['status'] ?? 'sent',
+                  'reactions': msg['reactions'] ?? {},
+                });
+                // Sort messages by timestamp
+                _messages.sort((a, b) {
+                  final aTime = _extractTimestamp(a);
+                  final bTime = _extractTimestamp(b);
+                  if (aTime == null || bTime == null) return 0;
+                  return aTime.compareTo(bTime);
+                });
+              } else {
+                // Update existing message with latest data (preserve reply info)
+                _messages[existingIndex] = {
+                  ..._messages[existingIndex],
+                  'content': msg['content'] ?? _messages[existingIndex]['content'],
+                  'replyTo': msg['replyTo'] ?? msg['reply_to'] ?? _messages[existingIndex]['replyTo'],
+                  'replyToContent': msg['replyToContent'] ?? msg['reply_to_content'] ?? _messages[existingIndex]['replyToContent'],
+                  'replyToSenderName': msg['replyToSenderName'] ?? msg['reply_to_sender_name'] ?? _messages[existingIndex]['replyToSenderName'],
+                  'reactions': msg['reactions'] ?? _messages[existingIndex]['reactions'] ?? {},
+                };
+              }
+            });
+            // Also reload to ensure consistency
+            _loadMessages();
+          } else {
+            // Fallback to full reload if message ID is missing
+            _loadMessages();
+          }
+        }
+      });
+      
+      // Listen for message reactions
+      _realtime.onMessageReaction((data) {
+        final messageId = data['messageId']?.toString();
+        if (messageId != null) {
+          final reactions = data['reactions'] as Map<String, dynamic>? ?? {};
+          setState(() {
+            // Update reactions map
+            _messageReactions[messageId] = Map<String, List<String>>.from(
+              reactions.map((key, value) => MapEntry(
+                key,
+                List<String>.from(value as List? ?? []),
+              )),
+            );
+            // Also update the message in _messages array to ensure reactions are visible immediately
+            final messageIndex = _messages.indexWhere((m) => _extractMessageId(m) == messageId);
+            if (messageIndex != -1) {
+              _messages[messageIndex] = {
+                ..._messages[messageIndex],
+                'reactions': reactions,
+              };
+            }
+          });
+          // Save reactions to cache (for offline support on web)
+          if (kIsWeb) {
+            _saveReactionsToCache();
+          }
+          // Don't reload messages here - the state update above is sufficient
+          // Reloading would cause flickering and might overwrite the reactions
         }
       });
     } catch (e) {
@@ -285,6 +378,32 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           }
         }
         
+        // Extract and merge reactions from messages
+        // Server reactions take precedence, but we merge with cached reactions for offline support
+        for (final message in messages) {
+          final messageId = _extractMessageId(message);
+          if (messageId != null) {
+            final serverReactions = message['reactions'] as Map<String, dynamic>? ?? {};
+            if (serverReactions.isNotEmpty) {
+              // Server has reactions, use them
+              _messageReactions[messageId] = Map<String, List<String>>.from(
+                serverReactions.map((key, value) => MapEntry(
+                  key,
+                  List<String>.from(value as List? ?? []),
+                )),
+              );
+            } else if (kIsWeb && _messageReactions[messageId] == null) {
+              // No server reactions, but we might have cached reactions
+              // They should already be loaded from _loadCachedReactions
+            }
+          }
+        }
+        
+        // Save updated reactions to cache (for offline support on web)
+        if (kIsWeb) {
+          _saveReactionsToCache();
+        }
+        
         // Mark messages as read for those not sent by current user
         await _markMessagesAsRead(_messages);
         
@@ -295,6 +414,64 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       }
     } catch (e) {
       Log.e('Error loading messages', 'CHAT_SCREEN_MONGODB', e);
+      // On error, still try to use cached reactions if available (offline mode)
+      if (kIsWeb && _messageReactions.isNotEmpty) {
+        Log.i('Using cached reactions due to network error', 'CHAT_SCREEN_MONGODB');
+        if (mounted) {
+          setState(() {
+            // Reactions are already loaded from cache, just trigger rebuild
+          });
+        }
+      }
+    }
+  }
+
+  /// Load cached reactions from local storage (for offline support on web)
+  Future<void> _loadCachedReactions() async {
+    if (!kIsWeb) return;
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cachedJson = prefs.getString(_reactionsCacheKey);
+      
+      if (cachedJson != null) {
+        final cached = json.decode(cachedJson) as Map<String, dynamic>;
+        setState(() {
+          _messageReactions.clear();
+          cached.forEach((messageId, reactionsData) {
+            if (reactionsData is Map) {
+              _messageReactions[messageId] = Map<String, List<String>>.from(
+                (reactionsData as Map).map((key, value) => MapEntry(
+                  key.toString(),
+                  List<String>.from((value as List?)?.map((e) => e.toString()) ?? []),
+                )),
+              );
+            }
+          });
+        });
+        Log.i('Loaded ${_messageReactions.length} cached reactions for chat ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
+      }
+    } catch (e) {
+      Log.e('Error loading cached reactions', 'CHAT_SCREEN_MONGODB', e);
+    }
+  }
+
+  /// Save reactions to local storage (for offline support on web)
+  Future<void> _saveReactionsToCache() async {
+    if (!kIsWeb) return;
+    
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final reactionsJson = json.encode(
+        _messageReactions.map((messageId, reactions) => MapEntry(
+          messageId,
+          reactions.map((emoji, userIds) => MapEntry(emoji, userIds)),
+        )),
+      );
+      await prefs.setString(_reactionsCacheKey, reactionsJson);
+      Log.d('Saved ${_messageReactions.length} reactions to cache for chat ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
+    } catch (e) {
+      Log.e('Error saving reactions to cache', 'CHAT_SCREEN_MONGODB', e);
     }
   }
 
@@ -329,6 +506,27 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           setState(() {
             _messages = messages;
           });
+          
+          // Extract and update reactions from messages (for offline support)
+          for (final message in messages) {
+            final messageId = _extractMessageId(message);
+            if (messageId != null) {
+              final serverReactions = message['reactions'] as Map<String, dynamic>? ?? {};
+              if (serverReactions.isNotEmpty) {
+                _messageReactions[messageId] = Map<String, List<String>>.from(
+                  serverReactions.map((key, value) => MapEntry(
+                    key,
+                    List<String>.from(value as List? ?? []),
+                  )),
+                );
+              }
+            }
+          }
+          
+          // Save reactions to cache (for offline support on web)
+          if (kIsWeb) {
+            _saveReactionsToCache();
+          }
           
           // Play sound for new messages from others
           if (hasNewMessagesFromOthers && _currentUserId != null) {
@@ -460,9 +658,31 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
 
     try {
       Log.i('Sending message to chat ID: ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
+      
+      // Check if this is a reply
+      if (_replyingToMessage != null) {
+        final messageId = _extractMessageId(_replyingToMessage!);
+        if (messageId != null) {
+          final result = await _chatService.replyToMessage(messageId, content);
+          if (result != null) {
+            _messageController.clear();
+            setState(() {
+              _replyingToMessage = null;
+            });
+            _scrollToBottom(force: true);
+            await _loadMessages(); // Reload to show the reply
+            return;
+          }
+        }
+      }
+      
+      // Regular message
       final result = await _chatService.sendTextMessage(widget.chatId, content);
       if (result != null) {
         _messageController.clear();
+        setState(() {
+          _replyingToMessage = null;
+        });
         // Force scroll to bottom when user sends their own message
         _scrollToBottom(force: true);
         // Message will be added via the stream listener
@@ -487,6 +707,299 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         });
       }
     }
+  }
+
+  /// Reply to a message
+  Future<void> _replyToMessage(Map<String, dynamic> message) async {
+    setState(() {
+      _replyingToMessage = message;
+    });
+    // Focus on message input
+    _messageController.selection = TextSelection.fromPosition(
+      TextPosition(offset: _messageController.text.length),
+    );
+  }
+
+  /// React to a message
+  Future<void> _reactToMessage(String messageId, String emoji) async {
+    try {
+      final result = await _chatService.reactToMessage(messageId, emoji);
+      if (result != null) {
+        // Update local reactions cache immediately
+        final reactions = result['reactions'] as Map<String, dynamic>? ?? {};
+        setState(() {
+          _messageReactions[messageId] = Map<String, List<String>>.from(
+            reactions.map((key, value) => MapEntry(
+              key,
+              List<String>.from(value as List? ?? []),
+            )),
+          );
+          // Also update the message in _messages array immediately
+          final messageIndex = _messages.indexWhere((m) => _extractMessageId(m) == messageId);
+          if (messageIndex != -1) {
+            _messages[messageIndex] = {
+              ..._messages[messageIndex],
+              'reactions': reactions,
+            };
+          }
+        });
+        // Save reactions to cache (for offline support on web)
+        if (kIsWeb) {
+          _saveReactionsToCache();
+        }
+        // Don't reload messages - the socket will notify other users
+        // and the state update above is sufficient for the current user
+      }
+    } catch (e) {
+      Log.e('Error reacting to message', 'CHAT_SCREEN_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to react: $e')),
+        );
+      }
+    }
+  }
+
+  /// Show reaction picker
+  void _showReactionPicker(String messageId) {
+    final commonEmojis = ['👍', '❤️', '😂', '😮', '😢', '🙏', '🔥', '👏'];
+    
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Wrap(
+          spacing: 16,
+          runSpacing: 16,
+          alignment: WrapAlignment.center,
+          children: commonEmojis.map((emoji) {
+            return InkWell(
+              onTap: () {
+                Navigator.pop(context);
+                _reactToMessage(messageId, emoji);
+              },
+              child: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surfaceVariant,
+                  borderRadius: BorderRadius.circular(25),
+                ),
+                child: Center(
+                  child: Text(
+                    emoji,
+                    style: const TextStyle(fontSize: 28),
+                  ),
+                ),
+              ),
+            );
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
+  /// Show message options menu
+  void _showMessageOptions(Map<String, dynamic> message) {
+    final messageId = _extractMessageId(message);
+    if (messageId == null) return;
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (context) => Container(
+        padding: const EdgeInsets.symmetric(vertical: 20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.reply),
+              title: const Text('Reply'),
+              onTap: () {
+                Navigator.pop(context);
+                _replyToMessage(message);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.add_reaction),
+              title: const Text('Add Reaction'),
+              onTap: () {
+                Navigator.pop(context);
+                _showReactionPicker(messageId);
+              },
+            ),
+            if (message['replies'] != null && (message['replies'] as List).isNotEmpty)
+              ListTile(
+                leading: const Icon(Icons.chat_bubble_outline),
+                title: Text('View Replies (${(message['replies'] as List).length})'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showReplies(messageId);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Show replies for a message
+  void _showReplies(String messageId) async {
+    try {
+      final replies = await _chatService.getMessageReplies(messageId);
+      if (!mounted) return;
+
+      showModalBottomSheet(
+        context: context,
+        isScrollControlled: true,
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+        ),
+        builder: (context) => DraggableScrollableSheet(
+          initialChildSize: 0.7,
+          minChildSize: 0.5,
+          maxChildSize: 0.95,
+          expand: false,
+          builder: (context, scrollController) => Column(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  border: Border(
+                    bottom: BorderSide(
+                      color: Theme.of(context).dividerColor,
+                      width: 1,
+                    ),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    const Text(
+                      'Replies',
+                      style: TextStyle(
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(context),
+                    ),
+                  ],
+                ),
+              ),
+              Expanded(
+                child: replies.isEmpty
+                    ? Center(
+                        child: Text(
+                          'No replies yet',
+                          style: TextStyle(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      )
+                    : ListView.builder(
+                        controller: scrollController,
+                        padding: const EdgeInsets.all(16),
+                        itemCount: replies.length,
+                        itemBuilder: (context, index) {
+                          final reply = replies[index];
+                          return _buildReplyBubble(reply);
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } catch (e) {
+      Log.e('Error showing replies', 'CHAT_SCREEN_MONGODB', e);
+    }
+  }
+
+  /// Build reply bubble widget
+  Widget _buildReplyBubble(Map<String, dynamic> reply) {
+    final senderId = reply['senderId']?.toString();
+    final isCurrentUser = senderId == _currentUserId;
+    final content = reply['content']?.toString() ?? '';
+    final senderName = reply['senderName']?.toString() ?? 'Unknown';
+    final timestamp = reply['createdAt'];
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment:
+            isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (!isCurrentUser) ...[
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              child: Text(
+                senderName.isNotEmpty ? senderName[0].toUpperCase() : 'U',
+                style: const TextStyle(fontSize: 12, color: Colors.white),
+              ),
+            ),
+            const SizedBox(width: 8),
+          ],
+          Flexible(
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: isCurrentUser
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.surfaceVariant,
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!isCurrentUser)
+                    Text(
+                      senderName,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isCurrentUser
+                            ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
+                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  Text(
+                    content,
+                    style: TextStyle(
+                      color: isCurrentUser
+                          ? Theme.of(context).colorScheme.onPrimary
+                          : Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (isCurrentUser) ...[
+            const SizedBox(width: 8),
+            CircleAvatar(
+              radius: 16,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              child: Text(
+                _currentUserName?.isNotEmpty == true
+                    ? _currentUserName![0].toUpperCase()
+                    : 'U',
+                style: const TextStyle(fontSize: 12, color: Colors.white),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Future<void> _sendMediaMessage(String mediaUrl, String messageType, {String? content}) async {
@@ -819,43 +1332,123 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       desktop: 0.55,
     );
 
-    return Container(
-      margin: messageMargin,
-      child: Row(
-        mainAxisAlignment: isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!isCurrentUser) ...[
-            CircleAvatar(
-              radius: avatarRadius,
-              backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
-              child: Text(
-                senderName.isNotEmpty ? senderName[0].toUpperCase() : 'U',
-                style: TextStyle(
-                  fontSize: avatarFontSize,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+    // Extract reply info
+    final replyTo = message['replyTo'];
+    final replyToContent = message['replyToContent']?.toString() ?? '';
+    final replyToSenderName = message['replyToSenderName']?.toString() ?? '';
+    
+    // Extract reactions
+    final serverReactions = message['reactions'] as Map<String, dynamic>? ?? {};
+    final messageId = _extractMessageId(message);
+    
+    // Determine which reactions to use: prefer server, fallback to cached (for offline support)
+    Map<String, List<String>> reactionsToDisplay = {};
+    if (messageId != null) {
+      final serverReactionsMap = Map<String, List<String>>.from(
+        serverReactions.map((key, value) => MapEntry(
+          key,
+          List<String>.from(value as List? ?? []),
+        )),
+      );
+      
+      // Always use server reactions if available, otherwise use cached
+      if (serverReactionsMap.isNotEmpty) {
+        _messageReactions[messageId] = serverReactionsMap;
+        reactionsToDisplay = serverReactionsMap;
+      } else if (_messageReactions[messageId] != null) {
+        // Use cached reactions (for offline mode or when server hasn't synced yet)
+        reactionsToDisplay = _messageReactions[messageId]!;
+      }
+    }
+
+    return GestureDetector(
+      onLongPress: () => _showMessageOptions(message),
+      child: Container(
+        margin: messageMargin,
+        child: Row(
+          mainAxisAlignment: isCurrentUser ? MainAxisAlignment.end : MainAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            if (!isCurrentUser) ...[
+              CircleAvatar(
+                radius: avatarRadius,
+                backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
+                child: Text(
+                  senderName.isNotEmpty ? senderName[0].toUpperCase() : 'U',
+                  style: TextStyle(
+                    fontSize: avatarFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
                 ),
               ),
-            ),
-            SizedBox(width: spacing * 0.67),
-          ],
-          Flexible(
-            child: ConstrainedBox(
+              SizedBox(width: spacing * 0.67),
+            ],
+            Flexible(
+              child: ConstrainedBox(
               constraints: BoxConstraints(
                 maxWidth: MediaQuery.of(context).size.width * maxBubbleWidth,
               ),
               child: Container(
                 padding: messagePadding,
-              decoration: BoxDecoration(
-                color: isCurrentUser
-                    ? Theme.of(context).colorScheme.primary
-                    : Theme.of(context).colorScheme.surfaceVariant,
+                decoration: BoxDecoration(
+                  color: isCurrentUser
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.surfaceVariant,
                   borderRadius: BorderRadius.circular(borderRadius),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                  // Show reply preview if this is a reply
+                  if (replyTo != null && replyToContent.isNotEmpty)
+                    Container(
+                      margin: EdgeInsets.only(bottom: spacing * 0.5),
+                      padding: EdgeInsets.all(spacing * 0.5),
+                      decoration: BoxDecoration(
+                        color: isCurrentUser
+                            ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.2)
+                            : Theme.of(context).colorScheme.surfaceVariant.withOpacity(0.5),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border(
+                          left: BorderSide(
+                            color: isCurrentUser
+                                ? Theme.of(context).colorScheme.onPrimary
+                                : Theme.of(context).colorScheme.primary,
+                            width: 3,
+                          ),
+                        ),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            replyToSenderName.isNotEmpty ? replyToSenderName : 'Unknown',
+                            style: ResponsiveUtils.getResponsiveCaptionStyle(
+                              context,
+                              color: isCurrentUser
+                                  ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.8)
+                                  : Theme.of(context).colorScheme.primary,
+                              weight: FontWeight.bold,
+                            ),
+                          ),
+                          SizedBox(height: spacing * 0.25),
+                          Text(
+                            replyToContent.length > 50
+                                ? '${replyToContent.substring(0, 50)}...'
+                                : replyToContent,
+                            style: ResponsiveUtils.getResponsiveCaptionStyle(
+                              context,
+                              color: isCurrentUser
+                                  ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
+                                  : Theme.of(context).colorScheme.onSurfaceVariant,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
                   if (!isCurrentUser && widget.isGroupChat)
                     Padding(
                       padding: EdgeInsets.only(bottom: spacing * 0.33),
@@ -1121,27 +1714,113 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                       ],
                     ],
                   ),
-                ],
-              ),
-              ),
-            ),
-          ),
-          if (isCurrentUser) ...[
-            SizedBox(width: spacing * 0.67),
-            CircleAvatar(
-              radius: avatarRadius,
-              backgroundColor: Theme.of(context).colorScheme.primary,
-              child: Text(
-                _currentUserName?.isNotEmpty == true ? _currentUserName![0].toUpperCase() : 'U',
-                style: TextStyle(
-                  fontSize: avatarFontSize,
-                  fontWeight: FontWeight.bold,
-                  color: Theme.of(context).colorScheme.onPrimary,
+                  // Show reactions if any (use server reactions, fallback to cached)
+                  Builder(
+                    builder: (context) {
+                      // Priority: 1) reactionsToDisplay (from server), 2) _messageReactions cache
+                      final displayReactions = reactionsToDisplay.isNotEmpty
+                          ? reactionsToDisplay
+                          : (messageId != null && _messageReactions[messageId] != null
+                              ? _messageReactions[messageId]!
+                              : <String, List<String>>{});
+                      if (displayReactions.isEmpty) return const SizedBox.shrink();
+                      return Padding(
+                        padding: EdgeInsets.only(top: spacing * 0.33),
+                        child: Wrap(
+                        spacing: 4,
+                        runSpacing: 4,
+                        children: displayReactions.entries.map((entry) {
+                          final emoji = entry.key;
+                          final userIds = entry.value as List? ?? [];
+                          final hasUserReacted = messageId != null && 
+                              _currentUserId != null &&
+                              userIds.contains(_currentUserId);
+                          
+                          return GestureDetector(
+                            onTap: () => _reactToMessage(messageId ?? '', emoji),
+                            child: Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: hasUserReacted
+                                    ? Theme.of(context).colorScheme.primary.withOpacity(0.2)
+                                    : Theme.of(context).colorScheme.surfaceVariant,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
+                                  color: hasUserReacted
+                                      ? Theme.of(context).colorScheme.primary
+                                      : Theme.of(context).colorScheme.outline.withOpacity(0.3),
+                                  width: 1,
+                                ),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    emoji,
+                                    style: const TextStyle(fontSize: 14),
+                                  ),
+                                  if (userIds.isNotEmpty) ...[
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '${userIds.length}',
+                                      style: TextStyle(
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.bold,
+                                        color: hasUserReacted
+                                            ? Theme.of(context).colorScheme.primary
+                                            : Theme.of(context).colorScheme.onSurfaceVariant,
+                                      ),
+                                    ),
+                                  ],
+                                ],
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    );
+                    },
+                  ),
+                  // Show reply count if any
+                  if (message['replies'] != null && (message['replies'] as List).isNotEmpty)
+                    Padding(
+                      padding: EdgeInsets.only(top: spacing * 0.25),
+                      child: GestureDetector(
+                        onTap: () => _showReplies(messageId ?? ''),
+                        child: Text(
+                          '${(message['replies'] as List).length} ${(message['replies'] as List).length == 1 ? 'reply' : 'replies'}',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: isCurrentUser
+                                ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
+                                : Theme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
+          ),
+            if (isCurrentUser) ...[
+              SizedBox(width: spacing * 0.67),
+              CircleAvatar(
+                radius: avatarRadius,
+                backgroundColor: Theme.of(context).colorScheme.primary,
+                child: Text(
+                  _currentUserName?.isNotEmpty == true ? _currentUserName![0].toUpperCase() : 'U',
+                  style: TextStyle(
+                    fontSize: avatarFontSize,
+                    fontWeight: FontWeight.bold,
+                    color: Theme.of(context).colorScheme.onPrimary,
+                  ),
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
@@ -1605,6 +2284,69 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                         },
                       ),
           ),
+          // Show reply preview if replying
+          if (_replyingToMessage != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceVariant,
+                border: Border(
+                  top: BorderSide(
+                    color: Theme.of(context).dividerColor,
+                    width: 1,
+                  ),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    width: 3,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: Theme.of(context).colorScheme.primary,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Replying to ${_extractSenderName(_replyingToMessage!)}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _extractContent(_replyingToMessage!).length > 50
+                              ? '${_extractContent(_replyingToMessage!).substring(0, 50)}...'
+                              : _extractContent(_replyingToMessage!),
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    onPressed: () {
+                      setState(() {
+                        _replyingToMessage = null;
+                      });
+                    },
+                    iconSize: 20,
+                  ),
+                ],
+              ),
+            ),
           // Enhanced chat input with emoji picker and media attachment
           EnhancedChatInput(
             controller: _messageController,

@@ -5,6 +5,7 @@ import 'package:chewie/chewie.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
+import 'package:device_info_plus/device_info_plus.dart';
 
 class InAppVideoPlayer extends StatefulWidget {
   final String videoUrl;
@@ -94,35 +95,89 @@ class _InAppVideoPlayerState extends State<InAppVideoPlayer> {
   }
 
   Future<void> _initializeVideoPlayerStandard() async {
-    // Add headers for Android, especially for ngrok URLs
-    final headers = <String, String>{};
-    final videoUrl = _resolveWebSameOriginUrl(widget.videoUrl);
-    
-    // Add ngrok header if URL contains ngrok (required for Android 10+)
-    if (videoUrl.contains('ngrok') || 
-        videoUrl.contains('ngrok-free.app') || 
-        videoUrl.contains('ngrok.app')) {
-      headers['ngrok-skip-browser-warning'] = 'true';
+    // Check if Android 10 (API 29) - use download method directly for better reliability
+    bool isAndroid10 = false;
+    if (Platform.isAndroid) {
+      try {
+        final deviceInfo = DeviceInfoPlugin();
+        final androidInfo = await deviceInfo.androidInfo;
+        // Android 10 is API level 29
+        isAndroid10 = androidInfo.version.sdkInt == 29;
+      } catch (e) {
+        // If we can't detect, try network first then fallback
+      }
     }
     
-    // Add User-Agent for Android
-    headers['User-Agent'] = 'Mozilla/5.0 (Linux; Android 10) Mobile';
+    // For Android 10, use download method directly (more reliable)
+    if (isAndroid10) {
+      try {
+        await _initializeVideoPlayerWithDownload();
+        return;
+      } catch (e) {
+        // If download fails, try network as last resort
+      }
+    }
     
-    _videoPlayerController = VideoPlayerController.networkUrl(
-      Uri.parse(videoUrl),
-      httpHeaders: headers,
-    );
-    await _videoPlayerController!.initialize();
-    _createChewieController();
+    // Try network playback first (for non-Android 10 or as fallback)
+    try {
+      // Add headers for Android, especially for ngrok URLs
+      final headers = <String, String>{};
+      final videoUrl = _resolveWebSameOriginUrl(widget.videoUrl);
+      
+      // Add ngrok header if URL contains ngrok (required for Android 10+)
+      if (videoUrl.contains('ngrok') || 
+          videoUrl.contains('ngrok-free.app') || 
+          videoUrl.contains('ngrok.app')) {
+        headers['ngrok-skip-browser-warning'] = 'true';
+      }
+      
+      // Add User-Agent for Android
+      headers['User-Agent'] = 'Mozilla/5.0 (Linux; Android 10) Mobile';
+      
+      _videoPlayerController = VideoPlayerController.networkUrl(
+        Uri.parse(videoUrl),
+        httpHeaders: headers,
+      );
+      await _videoPlayerController!.initialize();
+      _createChewieController();
+    } catch (e) {
+      // Network playback failed, try download fallback (especially important for Android 10)
+      if (Platform.isAndroid) {
+        try {
+          await _initializeVideoPlayerWithDownload();
+        } catch (downloadError) {
+          // Both methods failed, re-throw the original error
+          throw Exception('Failed to load video: Network playback failed ($e), Download fallback also failed ($downloadError)');
+        }
+      } else {
+        // Re-throw if not Android
+        rethrow;
+      }
+    }
   }
 
   Future<void> _initializeVideoPlayerWithDownload() async {
     try {
       // Download video to temporary file first
       final tempDir = await getTemporaryDirectory();
-      final tempFile = File('${tempDir.path}/temp_video_${DateTime.now().millisecondsSinceEpoch}.mp4');
       
+      // Get file extension from URL or default to mp4
       final videoUrl = _resolveWebSameOriginUrl(widget.videoUrl);
+      final uri = Uri.parse(videoUrl);
+      final path = uri.path.toLowerCase();
+      String extension = 'mp4';
+      if (path.contains('.')) {
+        final parts = path.split('.');
+        if (parts.length > 1) {
+          extension = parts.last.split('?').first; // Remove query params
+          // Validate extension
+          if (!['mp4', 'webm', '3gp', 'mkv', 'mov', 'm4v'].contains(extension)) {
+            extension = 'mp4';
+          }
+        }
+      }
+      
+      final tempFile = File('${tempDir.path}/temp_video_${DateTime.now().millisecondsSinceEpoch}.$extension');
       
       // Add headers for ngrok URLs (required for Android 10+)
       final headers = <String, String>{};
@@ -135,9 +190,30 @@ class _InAppVideoPlayerState extends State<InAppVideoPlayer> {
           ? 'Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) AppleWebKit/605.1.15'
           : 'Mozilla/5.0 (Linux; Android 10) Mobile';
       
-      final response = await http.get(Uri.parse(videoUrl), headers: headers);
+      // Download with timeout and progress tracking
+      final response = await http.get(
+        Uri.parse(videoUrl), 
+        headers: headers,
+      ).timeout(
+        const Duration(minutes: 5), // 5 minute timeout for large videos
+        onTimeout: () {
+          throw Exception('Video download timeout - file may be too large');
+        },
+      );
+      
+      if (response.statusCode != 200) {
+        throw Exception('Download failed: HTTP ${response.statusCode}');
+      }
+      
+      // Write to temp file
       await tempFile.writeAsBytes(response.bodyBytes);
       
+      // Verify file was written
+      if (!await tempFile.exists()) {
+        throw Exception('Failed to save video to temporary file');
+      }
+      
+      // Initialize video player from local file
       _videoPlayerController = VideoPlayerController.file(tempFile);
       await _videoPlayerController!.initialize();
       _createChewieController();
