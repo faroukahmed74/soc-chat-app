@@ -671,6 +671,43 @@ router.post('/broadcast', verifyAdminToken, async (req, res) => {
     
     console.log(`📢 Broadcast summary: ${connectedCount} users via rooms, ${allSockets.length} total connected sockets, ${disconnectedCount} offline users (message stored)`);
     
+    // Send FCM notifications to all users (including offline ones)
+    const sendFCMNotification = req.app.locals.sendFCMNotification;
+    if (sendFCMNotification) {
+      const title = '📢 Broadcast Message';
+      const body = message.length > 100 ? message.substring(0, 100) + '...' : message;
+      
+      let fcmSentCount = 0;
+      let fcmFailedCount = 0;
+      
+      // Send FCM to all users
+      for (const user of users) {
+        const userId = user._id.toString();
+        // Skip if user is the sender (admin)
+        if (userId === req.user.userId) continue;
+        
+        sendFCMNotification(
+          userId,
+          title,
+          body,
+          {
+            type: 'broadcast',
+            senderId: req.user.userId,
+            senderName: senderName,
+            message: message,
+            timestamp: new Date().toISOString(),
+          }
+        ).then(() => {
+          fcmSentCount++;
+        }).catch(err => {
+          fcmFailedCount++;
+          console.error(`Error sending FCM broadcast to user ${userId}:`, err.message);
+        });
+      }
+      
+      console.log(`📱 FCM broadcast: ${fcmSentCount} sent, ${fcmFailedCount} failed`);
+    }
+    
     res.json({
       message: 'Broadcast sent successfully',
       recipients: users.length

@@ -111,6 +111,75 @@ router.post('/', authenticateToken, async (req, res) => {
       }
     );
     
+    // Get sender's display name for notifications
+    const usersCollection = database.collection('users');
+    const sender = await usersCollection.findOne({ _id: new ObjectId(req.user.id) });
+    const senderName = sender?.displayName || sender?.username || 'Someone';
+    
+    // Get other chat members (not the sender) for FCM notifications
+    const otherMembers = chat.members
+      .filter(m => m.toString() !== req.user.id.toString())
+      .map(m => m.toString());
+    
+    // Determine if this is a group chat
+    const isGroupChat = chat.type === 'group' || chat.type === 'Group';
+    const chatName = chat.name || 'Group';
+    
+    // Send FCM notifications to other members (only if they're offline)
+    const sendFCMNotification = req.app.locals.sendFCMNotification;
+    const io = req.app.get('io');
+    
+    if (sendFCMNotification && otherMembers.length > 0) {
+      // Get list of online users via Socket.IO
+      const onlineUsers = new Set();
+      if (io) {
+        try {
+          const sockets = await io.fetchSockets();
+          for (const socket of sockets) {
+            if (socket.userId) {
+              onlineUsers.add(socket.userId.toString());
+            }
+          }
+        } catch (e) {
+          console.warn('Error fetching online users:', e?.message || e);
+        }
+      }
+      
+      const title = isGroupChat ? chatName : senderName;
+      const body = type === 'text' 
+        ? (isGroupChat ? `${senderName}: ${content}` : content)
+        : type === 'image' 
+          ? (isGroupChat ? `${senderName} sent a photo` : '📷 Photo')
+          : type === 'video'
+            ? (isGroupChat ? `${senderName} sent a video` : '🎥 Video')
+            : type === 'audio'
+              ? (isGroupChat ? `${senderName} sent a voice message` : '🎤 Voice message')
+              : (isGroupChat ? `${senderName} sent a ${type}` : `📎 ${type}`);
+      
+      for (const memberId of otherMembers) {
+        const isOnline = onlineUsers.has(memberId);
+        
+        // Only send FCM if user is offline (to avoid duplicates with Socket.IO)
+        if (!isOnline) {
+          sendFCMNotification(
+            memberId,
+            title,
+            body.length > 100 ? body.substring(0, 100) + '...' : body,
+            {
+              chatId: chatId.toString(),
+              senderId: req.user.id.toString(),
+              senderName: senderName,
+              messageType: type || 'text',
+              messageId: result.insertedId.toString(),
+              type: isGroupChat ? 'group_message' : 'chat_message',
+            }
+          ).catch(err => {
+            console.error(`Error sending FCM to user ${memberId}:`, err.message);
+          });
+        }
+      }
+    }
+    
     // Return the created message
     const createdMessage = await messagesCollection.findOne({ _id: result.insertedId });
     
@@ -490,6 +559,15 @@ router.post('/:messageId/reply', authenticateToken, async (req, res) => {
       }
     );
 
+    // Get other chat members (not the sender) for FCM notifications
+    const otherMembers = chat.members
+      .filter(m => m.toString() !== userId.toString())
+      .map(m => m.toString());
+    
+    // Determine if this is a group chat
+    const isGroupChat = chat.type === 'group' || chat.type === 'Group';
+    const chatName = chat.name || 'Group';
+    
     // Emit socket notification to ALL members (if io is available)
     try {
       const io = req.app.get('io');
@@ -534,6 +612,57 @@ router.post('/:messageId/reply', authenticateToken, async (req, res) => {
       }
     } catch (socketErr) {
       console.warn('Socket emission failed:', socketErr?.message || socketErr);
+    }
+    
+    // Send FCM notifications to other members (only if they're offline)
+    const sendFCMNotification = req.app.locals.sendFCMNotification;
+    const io = req.app.get('io');
+    
+    if (sendFCMNotification && otherMembers.length > 0) {
+      // Get list of online users via Socket.IO
+      const onlineUsers = new Set();
+      if (io) {
+        try {
+          const sockets = await io.fetchSockets();
+          for (const socket of sockets) {
+            if (socket.userId) {
+              onlineUsers.add(socket.userId.toString());
+            }
+          }
+        } catch (e) {
+          console.warn('Error fetching online users:', e?.message || e);
+        }
+      }
+      
+      const title = isGroupChat ? chatName : senderName;
+      const replyBody = content || (mediaUrl ? 'Media reply' : 'Reply');
+      const body = isGroupChat 
+        ? `${senderName}: ${replyBody}`
+        : replyBody;
+      
+      for (const memberId of otherMembers) {
+        const isOnline = onlineUsers.has(memberId);
+        
+        // Only send FCM if user is offline (to avoid duplicates with Socket.IO)
+        if (!isOnline) {
+          sendFCMNotification(
+            memberId,
+            title,
+            body.length > 100 ? body.substring(0, 100) + '...' : body,
+            {
+              chatId: originalMessage.chatId.toString(),
+              senderId: userId.toString(),
+              senderName: senderName,
+              messageType: replyMessage.messageType || 'text',
+              messageId: result.insertedId.toString(),
+              replyTo: messageId,
+              type: isGroupChat ? 'group_message' : 'chat_message',
+            }
+          ).catch(err => {
+            console.error(`Error sending FCM to user ${memberId}:`, err.message);
+          });
+        }
+      }
     }
 
     res.status(201).json({

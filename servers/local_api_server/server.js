@@ -357,6 +357,8 @@ async function connectToMongo(retryCount = 0) {
     db = client.db('soc_chat_app');
     // Expose database handle on app.locals for downstream routes (e.g., admin)
     app.locals.db = db;
+    // Expose FCM notification function for routes
+    app.locals.sendFCMNotification = sendFCMNotification;
     connectionStatus = 'connected';
     lastConnectionTime = new Date();
     
@@ -462,6 +464,8 @@ async function connectToMongo(retryCount = 0) {
         db = client.db('soc_chat_app');
         // Ensure app.locals has the db in fallback path as well
         app.locals.db = db;
+        // Ensure FCM function is also available
+        app.locals.sendFCMNotification = sendFCMNotification;
         // Set database connection for route modules
         if (typeof chatRoutes.setDatabase === 'function') {
           chatRoutes.setDatabase(db);
@@ -2346,56 +2350,62 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     
     for (const memberId of otherMembers) {
       // Determine title based on chat type
-      const title = (chat.type === 'group' || chat.type === 'Group') ? chat.name : senderName;
-      const body = messageType === 'text' ? content : messageType === 'image' ? '📷 Image' : '📎 ' + messageType;
+      const isGroupChat = chat.type === 'group' || chat.type === 'Group';
+      const title = isGroupChat ? `${chat.name}` : senderName;
+      const body = messageType === 'text' 
+        ? (isGroupChat ? `${senderName}: ${content}` : content)
+        : messageType === 'image' 
+          ? (isGroupChat ? `${senderName} sent a photo` : '📷 Photo')
+          : messageType === 'video'
+            ? (isGroupChat ? `${senderName} sent a video` : '🎥 Video')
+            : messageType === 'audio'
+              ? (isGroupChat ? `${senderName} sent a voice message` : '🎤 Voice message')
+              : (isGroupChat ? `${senderName} sent a ${messageType}` : `📎 ${messageType}`);
       
       console.log(`📤 Emitting chat_notification to room: "${memberId}" (sender: ${userId})`);
       console.log(`   Available rooms include memberId: ${allRooms.has(memberId)}`);
       
-      // Send socket notification
-      try {
-        io.to(memberId).emit('chat_notification', {
-          title: title,
-          body: body,
-          chatId: chatId,
-          senderId: userId,
-          senderName: senderName,
-          messageType: messageType || 'text',
-          timestamp: new Date(),
-        });
-      } catch (socketErr) {
-        console.warn(`Error sending socket notification to ${memberId}:`, socketErr?.message || socketErr);
+      // Check if user is online via Socket.IO
+      const isOnlineViaSocket = onlineUsers.has(memberId);
+      
+      // Send socket notification if user is online
+      if (isOnlineViaSocket) {
+        try {
+          io.to(memberId).emit('chat_notification', {
+            title: title,
+            body: body,
+            chatId: chatId,
+            senderId: userId,
+            senderName: senderName,
+            messageType: messageType || 'text',
+            timestamp: new Date(),
+          });
+          console.log(`✅ User ${memberId} is online, sent Socket.IO notification (skipping FCM to avoid duplicates)`);
+        } catch (socketErr) {
+          console.warn(`Error sending socket notification to ${memberId}:`, socketErr?.message || socketErr);
+        }
       }
       
-      // Determine if user is online using multiple methods
-      const isOnlineViaSocket = onlineUsers.has(memberId);
-      const hasActiveToken = usersWithActiveTokens.has(memberId);
-      
-      // User is considered offline if:
-      // 1. Not connected via Socket.IO AND
-      // 2. Either no active FCM token OR token is old (more than 5 minutes)
-      const isOffline = !isOnlineViaSocket && !hasActiveToken;
-      
-      if (isOffline) {
-        console.log(`📱 User ${memberId} is offline (socket: ${isOnlineViaSocket}, active token: ${hasActiveToken}), sending FCM notification`);
-        // Send FCM notification asynchronously (don't block response)
+      // Only send FCM notification if user is NOT online via Socket.IO
+      // This prevents duplicate notifications (Socket.IO + FCM)
+      // FCM will be sent when user is offline or app is in background
+      if (!isOnlineViaSocket) {
+        console.log(`📱 User ${memberId} is offline, sending FCM notification`);
         sendFCMNotification(
           memberId,
           title,
-          body,
+          body.length > 100 ? body.substring(0, 100) + '...' : body,
           {
             chatId: chatId.toString(),
             senderId: userId.toString(),
             senderName: senderName,
             messageType: messageType || 'text',
             messageId: result.insertedId.toString(),
-            type: 'chat_message',
+            type: isGroupChat ? 'group_message' : 'chat_message',
           }
         ).catch(err => {
           console.error(`Error sending FCM to user ${memberId}:`, err.message);
         });
-      } else {
-        console.log(`✅ User ${memberId} is online (socket: ${isOnlineViaSocket}, active token: ${hasActiveToken}), skipping FCM notification`);
       }
     }
     
