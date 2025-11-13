@@ -688,10 +688,16 @@ async function sendFCMNotification(userId, title, body, data = {}) {
             sound: process.env.APNS_SOUND || 'default',
             badge: 1,
             category: data?.category || 'default',
+            // contentAvailable: 1 is optional - helps with background delivery
+            // Firebase automatically creates 'alert' from 'notification' field above
           },
         },
         headers: {
-          'apns-priority': '10',
+          'apns-priority': '10', // High priority for immediate delivery
+          'apns-push-type': 'alert', // Required for iOS 13+
+        },
+        fcmOptions: {
+          analyticsLabel: 'ios_notification',
         },
       },
       webpush: {

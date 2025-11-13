@@ -56,11 +56,9 @@
     </array>
     <key>FirebaseAppDelegateProxyEnabled</key>
     <true/>
-    <key>UIApplicationSupportsIndirectInputEvents</key>
-    <true/>
-    <!-- Notification Permission Description -->
-    <key>NSUserNotificationUsageDescription</key>
-    <string>This app needs notification permission to alert you about new messages and important updates.</string>
+    <!-- Notification Permission Description (for iOS 10+) -->
+    <!-- Note: NSUserNotificationUsageDescription is deprecated, but kept for compatibility -->
+    <!-- Modern iOS uses UNUserNotificationCenter which doesn't require this key -->
 	
 	<!-- Essential Media Permissions for iOS -->
 	

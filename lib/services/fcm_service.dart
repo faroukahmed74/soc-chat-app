@@ -195,6 +195,8 @@ class FCMService {
   }
 
   /// Get current FCM token
+  /// On iOS, the token might not be available immediately after permission request.
+  /// This method retries up to 3 times with delays for iOS.
   Future<String?> _getToken() async {
     try {
       if (_firebaseMessaging == null) {
@@ -202,28 +204,60 @@ class FCMService {
         return null;
       }
 
-      String? token = await _firebaseMessaging!.getToken();
-      if (token != null) {
-        _currentToken = token;
-        Log.i(
-          'FCM token obtained: ${token.substring(0, 20)}...',
-          'FCM_SERVICE',
-        );
+      // On iOS, APNs token registration might take a moment
+      // Retry logic for iOS to handle timing issues
+      final isIOS = Platform.isIOS;
+      int maxRetries = isIOS ? 3 : 1;
+      int retryDelay = isIOS ? 2000 : 0; // 2 seconds for iOS
 
-        // Send token to server
-        await _sendTokenToServer(token);
-      } else {
-        Log.w('FCM token is null', 'FCM_SERVICE');
-        await _recordLastSendInfo(
-          success: false,
-          message:
-              'Firebase returned null token from FirebaseMessaging.getToken()',
-          error: 'token_null',
-        );
+      for (int attempt = 1; attempt <= maxRetries; attempt++) {
+        try {
+          String? token = await _firebaseMessaging!.getToken();
+          
+          if (token != null && token.isNotEmpty) {
+            _currentToken = token;
+            Log.i(
+              'FCM token obtained: ${token.substring(0, 20)}... (attempt $attempt/$maxRetries)',
+              'FCM_SERVICE',
+            );
+
+            // Send token to server
+            await _sendTokenToServer(token);
+            return token;
+          } else {
+            if (isIOS && attempt < maxRetries) {
+              Log.w(
+                'FCM token is null on iOS (attempt $attempt/$maxRetries), waiting for APNs token...',
+                'FCM_SERVICE',
+              );
+              await Future.delayed(Duration(milliseconds: retryDelay));
+              continue;
+            } else {
+              Log.w('FCM token is null', 'FCM_SERVICE');
+              await _recordLastSendInfo(
+                success: false,
+                message:
+                    'Firebase returned null token from FirebaseMessaging.getToken()',
+                error: 'token_null',
+              );
+            }
+          }
+        } catch (e) {
+          if (isIOS && attempt < maxRetries) {
+            Log.w(
+              'Error getting FCM token (attempt $attempt/$maxRetries): $e, retrying...',
+              'FCM_SERVICE',
+            );
+            await Future.delayed(Duration(milliseconds: retryDelay));
+            continue;
+          }
+          rethrow;
+        }
       }
-      return token;
+
+      return null;
     } catch (e) {
-      Log.e('Error getting FCM token', 'FCM_SERVICE', e);
+      Log.e('Error getting FCM token after retries', 'FCM_SERVICE', e);
       return null;
     }
   }
