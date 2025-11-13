@@ -250,7 +250,7 @@ function rewriteMediaUrlIfNeeded(originalUrl, reqOrHeaders) {
 // =========================================
 // Static uploads directory and multer setup
 // =========================================
-const UPLOADS_DIR = path.join(__dirname, 'uploads');
+const UPLOADS_DIR = process.env.UPLOADS_DIR || path.join(__dirname, 'uploads');
 try {
   fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 } catch (e) {
