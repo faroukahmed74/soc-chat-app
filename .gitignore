@@ -248,6 +248,12 @@ firebase_options.dart
 google-services.json
 GoogleService-Info.plist
 
+# Firebase Service Account Keys (contains secrets - DO NOT COMMIT)
+servers/assets/service-account/*.json
+**/service-account/*.json
+**/*-firebase-adminsdk-*.json
+**/*-ebf6280fb64f.json
+
 # Generated files
 generated_plugin_registrant.dart
 generated_plugin_registrant.h

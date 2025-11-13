@@ -30,19 +30,37 @@ class FCMService {
   Future<void> initialize() async {
     if (_isInitialized) {
       Log.i('FCM service already initialized', 'FCM_SERVICE');
+      // If already initialized but no token, try to get it
+      if (_currentToken == null) {
+        Log.i('FCM service initialized but no token, attempting to get token...', 'FCM_SERVICE');
+        await getToken();
+      }
       return;
     }
 
-    if (kIsWeb) {
-      // Web FCM initialization
-      await _initializeWeb();
-    } else {
-      // Mobile FCM initialization
-      await _initializeMobile();
-    }
+    try {
+      if (kIsWeb) {
+        // Web FCM initialization
+        await _initializeWeb();
+      } else {
+        // Mobile FCM initialization
+        await _initializeMobile();
+      }
 
-    _isInitialized = true;
-    Log.i('✅ FCM service initialized', 'FCM_SERVICE');
+      _isInitialized = true;
+      Log.i('✅ FCM service initialized', 'FCM_SERVICE');
+      
+      // If user is already logged in, send token to server
+      final userId = await _getCurrentUserId();
+      if (userId != null && _currentToken != null) {
+        Log.i('User already logged in, sending FCM token to server', 'FCM_SERVICE');
+        await _sendTokenToServer(_currentToken!);
+      }
+    } catch (e) {
+      Log.e('FCM service initialization failed', 'FCM_SERVICE', e);
+      _isInitialized = false;
+      rethrow;
+    }
   }
 
   /// Initialize FCM for mobile platforms (iOS and Android)
@@ -474,9 +492,35 @@ class FCMService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('user_id', userId);
 
-      // Resend token with new user ID
-      if (_currentToken != null) {
-        await _sendTokenToServer(_currentToken!);
+      // Get FCM token if not already available, then send to server
+      try {
+        String? token = _currentToken;
+        if (token == null) {
+          // Token not available yet, try to get it
+          Log.i('FCM token not available, attempting to get token...', 'FCM_SERVICE');
+          token = await getToken();
+        }
+        
+        if (token != null && token.isNotEmpty) {
+          Log.i('Sending FCM token to server after login for user: $userId', 'FCM_SERVICE');
+          await _sendTokenToServer(token);
+        } else {
+          Log.w('FCM token is null or empty, cannot send to server', 'FCM_SERVICE');
+          // Try again after a short delay in case Firebase is still initializing
+          Future.delayed(const Duration(seconds: 2), () async {
+            try {
+              final retryToken = await getToken();
+              if (retryToken != null && retryToken.isNotEmpty) {
+                Log.i('Retrying FCM token send after delay', 'FCM_SERVICE');
+                await _sendTokenToServer(retryToken);
+              }
+            } catch (e) {
+              Log.e('Failed to get FCM token on retry', 'FCM_SERVICE', e);
+            }
+          });
+        }
+      } catch (e) {
+        Log.e('Error getting/sending FCM token after login', 'FCM_SERVICE', e);
       }
     }
   }

@@ -402,8 +402,10 @@ async function connectToMongo(retryCount = 0) {
             const possiblePaths = [
               path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json'),
               path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-bc21fed17ba4.json'),
+              path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-ebf6280fb64f.json'),
               path.join(__dirname, 'assets', 'service-account', 'soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json'),
               path.join(__dirname, 'assets', 'service-account', 'soc-chat-app-ca57e-bc21fed17ba4.json'),
+              path.join(__dirname, 'assets', 'service-account', 'soc-chat-app-ca57e-ebf6280fb64f.json'),
             ];
             
             let serviceAccountPath = null;

@@ -39,6 +39,7 @@ import 'services/message_sound_service.dart';
 import 'services/background_service_manager.dart';
 import 'services/ios_notification_service.dart';
 import 'services/fcm_service.dart';
+import 'package:firebase_core/firebase_core.dart';
 import 'dart:io' if (dart.library.html) 'dart:html' as io;
 
 // =============================================================================
@@ -74,6 +75,17 @@ Future<void> main() async {
 
   // Physical Server Only - MongoDB/ngrok API mode
   Log.i('Using physical server only - MongoDB/ngrok API mode', 'MAIN');
+
+  // Initialize Firebase (required for FCM push notifications only)
+  // Note: We use MongoDB for database, but Firebase is needed for FCM
+  try {
+    Log.i('Initializing Firebase for FCM notifications...', 'MAIN');
+    await Firebase.initializeApp();
+    Log.i('✅ Firebase initialized successfully (for FCM only)', 'MAIN');
+  } catch (e) {
+    Log.e('Firebase initialization failed - FCM notifications will not work', 'MAIN', e);
+    // Continue without Firebase - app will work but no push notifications
+  }
 
   // Initialize app services for physical server
   try {

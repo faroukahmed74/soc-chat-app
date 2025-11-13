@@ -1,10 +1,10 @@
 {
-  "version": "1.0.21",
-  "build_number": "21",
+  "version": "1.0.22",
+  "build_number": "22",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.21 - UI Improvements & Bug Fixes:\n- Fixed dark mode toggle crash on web platform\n- Enhanced real-time chat sorting for individual and group chats\n- Improved unread message indicators (red dot with shadow, bold text)\n- Fixed Android 10 video playback issues (automatic download fallback)\n- Enhanced reply message UI with better visual context\n- Improved chat list real-time updates without manual refresh\n- Better error handling and state management\n- All features verified across Web, Android, and iOS platforms",
+  "release_notes": "SOC Chat App v1.0.22 - FCM Notifications & Data Migration:\n- Fixed FCM token registration - tokens now automatically register on login\n- Improved FCM service initialization with retry logic\n- Added Firebase initialization for FCM push notifications\n- Moved all app data to D drive (MongoDB, uploads)\n- Enhanced FCM token management with automatic retry\n- Better error handling for FCM token registration\n- All data now stored on D:\\soc-chat-data partition\n- FCM notifications ready for all platforms (Android, iOS, Web)",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": false,
-  "last_updated": "2025-01-15T12:00:00Z"
+  "last_updated": "2025-11-13T12:00:00Z"
 }

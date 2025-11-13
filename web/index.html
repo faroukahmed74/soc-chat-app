@@ -207,7 +207,10 @@
   </div>
 
   <style>
-    /* Prefer local/system fonts without overriding specialized icon fonts */
+    /* Arabic font support for web - Flutter will handle font loading automatically */
+    /* These @font-face declarations ensure fonts are available before Flutter loads */
+    /* Flutter web automatically includes fonts from pubspec.yaml, but we add fallback CSS */
+    
     /* Emoji font fallbacks for proper emoji rendering on web */
     @font-face {
       font-family: 'EmojiFont';
@@ -220,15 +223,15 @@
     }
     
     body {
-      font-family: Arial, Helvetica, 'Segoe UI', Tahoma, sans-serif;
+      font-family: 'NotoSansArabic', 'NotoNaskhArabic', Arial, Helvetica, 'Segoe UI', Tahoma, sans-serif;
       /* Enable emoji rendering with proper font fallback */
       font-feature-settings: 'liga', 'kern';
       text-rendering: optimizeLegibility;
     }
     
-    /* Ensure emojis render properly in all text elements */
+    /* Ensure emojis and Arabic text render properly in all text elements */
     * {
-      font-family: Arial, Helvetica, 'Segoe UI', Tahoma, 'EmojiFont', sans-serif;
+      font-family: 'NotoSansArabic', 'NotoNaskhArabic', Arial, Helvetica, 'Segoe UI', Tahoma, 'EmojiFont', sans-serif;
     }
     
     @keyframes spin {

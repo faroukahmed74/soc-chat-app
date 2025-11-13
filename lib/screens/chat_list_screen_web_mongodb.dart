@@ -497,7 +497,10 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
             Expanded(
               child: Text(
                 name,
-                style: const TextStyle(fontWeight: FontWeight.w500),
+                style: TextStyle(
+                  fontWeight: FontWeight.w500,
+                  fontFamilyFallback: kIsWeb ? const ['NotoNaskhArabic', 'NotoSansArabic'] : null,
+                ),
                 overflow: TextOverflow.ellipsis,
               ),
             ),
@@ -516,6 +519,7 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: _themeService.isDarkMode ? Colors.white70 : Colors.black87,
+            fontFamilyFallback: kIsWeb ? const ['NotoNaskhArabic', 'NotoSansArabic'] : null,
           ),
         ),
         trailing: Column(
@@ -587,7 +591,12 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('SOC Chat App - Web'),
+        title: Text(
+          'SOC Chat App - Web',
+          style: TextStyle(
+            fontFamilyFallback: kIsWeb ? const ['NotoNaskhArabic', 'NotoSansArabic'] : null,
+          ),
+        ),
         backgroundColor: _themeService.isDarkMode
             ? Colors.grey[900]
             : Colors.blue,
@@ -685,10 +694,11 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
                   const SizedBox(height: 8),
                   Text(
                     _currentUserName ?? 'User',
-                    style: const TextStyle(
+                    style: TextStyle(
                       color: Colors.white,
                       fontSize: 18,
                       fontWeight: FontWeight.bold,
+                      fontFamilyFallback: kIsWeb ? const ['NotoNaskhArabic', 'NotoSansArabic'] : null,
                     ),
                   ),
                   const SizedBox(height: 4),
