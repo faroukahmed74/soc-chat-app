@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
@@ -26,17 +27,26 @@ class FCMService {
   bool _isInitialized = false;
   StreamSubscription<String>? _tokenSubscription;
 
+  static const String _prefsLastSendInfoKey = 'fcm_last_send_info';
+  bool _debugInfoLoaded = false;
+  FcmSendInfo? _lastSendInfo;
+
   /// Initialize FCM service
   Future<void> initialize() async {
     if (_isInitialized) {
       Log.i('FCM service already initialized', 'FCM_SERVICE');
       // If already initialized but no token, try to get it
       if (_currentToken == null) {
-        Log.i('FCM service initialized but no token, attempting to get token...', 'FCM_SERVICE');
+        Log.i(
+          'FCM service initialized but no token, attempting to get token...',
+          'FCM_SERVICE',
+        );
         await getToken();
       }
       return;
     }
+
+    await _ensureDebugInfoLoaded();
 
     try {
       if (kIsWeb) {
@@ -49,11 +59,14 @@ class FCMService {
 
       _isInitialized = true;
       Log.i('✅ FCM service initialized', 'FCM_SERVICE');
-      
+
       // If user is already logged in, send token to server
       final userId = await _getCurrentUserId();
       if (userId != null && _currentToken != null) {
-        Log.i('User already logged in, sending FCM token to server', 'FCM_SERVICE');
+        Log.i(
+          'User already logged in, sending FCM token to server',
+          'FCM_SERVICE',
+        );
         await _sendTokenToServer(_currentToken!);
       }
     } catch (e) {
@@ -201,6 +214,12 @@ class FCMService {
         await _sendTokenToServer(token);
       } else {
         Log.w('FCM token is null', 'FCM_SERVICE');
+        await _recordLastSendInfo(
+          success: false,
+          message:
+              'Firebase returned null token from FirebaseMessaging.getToken()',
+          error: 'token_null',
+        );
       }
       return token;
     } catch (e) {
@@ -217,32 +236,51 @@ class FCMService {
     return await _getToken();
   }
 
+  String? get currentToken => _currentToken;
+  String? get currentUserId => _currentUserId;
+
   /// Send FCM token to MongoDB server
-  Future<void> _sendTokenToServer(String token) async {
+  Future<bool> _sendTokenToServer(String token, {bool isManual = false}) async {
+    final trimmedToken = token.trim();
+    if (trimmedToken.isEmpty) {
+      Log.w('FCM token is empty, skipping send', 'FCM_SERVICE');
+      await _recordLastSendInfo(
+        success: false,
+        message:
+            'Token is empty. Firebase has not provided a valid FCM token yet.',
+        error: 'token_empty',
+      );
+      return false;
+    }
+
     try {
       // Get current user ID
       final userId = await _getCurrentUserId();
-      if (userId == null) {
+      if (userId == null || userId.isEmpty) {
         Log.w('Cannot send FCM token: user not logged in', 'FCM_SERVICE');
-        return;
+        await _recordLastSendInfo(
+          success: false,
+          message: 'User not logged in. Token not sent to server.',
+          error: 'user_not_logged_in',
+        );
+        return false;
       }
+      _currentUserId = userId;
 
       // Get auth token
       final authToken = await _getAuthToken();
       if (authToken == null || authToken.isEmpty) {
         Log.w('Cannot send FCM token: no auth token', 'FCM_SERVICE');
-        return;
+        await _recordLastSendInfo(
+          success: false,
+          message: 'Missing authentication token. Please log in again.',
+          error: 'missing_auth_token',
+        );
+        return false;
       }
 
       // Determine platform
-      String platform = 'unknown';
-      if (kIsWeb) {
-        platform = 'web';
-      } else if (Platform.isIOS) {
-        platform = 'ios';
-      } else if (Platform.isAndroid) {
-        platform = 'android';
-      }
+      final platform = _detectPlatform();
 
       // Get server URL
       final baseUrl = DatabaseConfig.physicalServerUrl;
@@ -251,13 +289,13 @@ class FCMService {
       // Prepare request body
       final body = jsonEncode({
         'userId': userId,
-        'fcmToken': token,
+        'fcmToken': trimmedToken,
         'platform': platform,
         'timestamp': DateTime.now().toIso8601String(),
       });
 
       Log.i(
-        'Sending FCM token to server for user: $userId, platform: $platform',
+        'Sending FCM token to server for user: $userId, platform: $platform, manual: $isManual',
         'FCM_SERVICE',
       );
 
@@ -282,48 +320,200 @@ class FCMService {
                 },
               );
 
-          if (response.statusCode == 200 || response.statusCode == 201) {
+          final status = response.statusCode;
+          final responseBody = response.body;
+
+          if (status == 200 || status == 201) {
             Log.i('✅ FCM token sent to server successfully', 'FCM_SERVICE');
-            return; // Success, exit retry loop
-          } else if (response.statusCode == 401 || response.statusCode == 403) {
+            await _recordLastSendInfo(
+              success: true,
+              message:
+                  'FCM token stored successfully${isManual ? ' (manual retry)' : ''}.',
+              statusCode: status,
+              responseBody: responseBody,
+            );
+            return true;
+          } else if (status == 401 || status == 403) {
             Log.w(
-              'Authentication failed, cannot retry: ${response.statusCode}',
+              'Authentication failed, cannot retry: $status',
               'FCM_SERVICE',
             );
-            return; // Don't retry auth errors
+            await _recordLastSendInfo(
+              success: false,
+              message:
+                  'Authentication failed while sending FCM token (HTTP $status).',
+              statusCode: status,
+              responseBody: responseBody,
+              error: 'auth_$status',
+            );
+            return false;
           } else {
             Log.w(
-              'Failed to send FCM token: ${response.statusCode} - ${response.body}',
+              'Failed to send FCM token: $status - $responseBody',
               'FCM_SERVICE',
             );
             retries--;
-            if (retries > 0) {
-              await Future.delayed(
-                Duration(seconds: 3 - retries),
-              ); // Exponential backoff
+            if (retries <= 0) {
+              await _recordLastSendInfo(
+                success: false,
+                message:
+                    'Server responded with HTTP $status while sending FCM token.',
+                statusCode: status,
+                responseBody: responseBody,
+                error: 'http_$status',
+              );
+              return false;
             }
+            await Future.delayed(Duration(seconds: 3 - retries));
           }
         } catch (e) {
           retries--;
-          if (retries > 0) {
-            Log.w(
-              'Error sending FCM token, retrying... ($retries attempts left)',
-              'FCM_SERVICE',
-            );
-            await Future.delayed(Duration(seconds: 3 - retries));
-          } else {
+          if (retries <= 0) {
             Log.e(
               'Error sending FCM token to server after retries',
               'FCM_SERVICE',
               e,
             );
+            await _recordLastSendInfo(
+              success: false,
+              message: 'Network error while sending FCM token: $e',
+              error: e.toString(),
+            );
+            return false;
+          } else {
+            Log.w(
+              'Error sending FCM token, retrying... ($retries attempts left)',
+              'FCM_SERVICE',
+            );
+            await Future.delayed(Duration(seconds: 3 - retries));
           }
         }
       }
+    } catch (e, stackTrace) {
+      Log.e('Error sending FCM token to server', 'FCM_SERVICE', e, stackTrace);
+      await _recordLastSendInfo(
+        success: false,
+        message: 'Unexpected error when sending FCM token: $e',
+        error: e.toString(),
+      );
+    }
+
+    return false;
+  }
+
+  Future<void> _ensureDebugInfoLoaded() async {
+    if (_debugInfoLoaded) return;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final saved = prefs.getString(_prefsLastSendInfoKey);
+      if (saved != null && saved.isNotEmpty) {
+        final decoded = jsonDecode(saved);
+        if (decoded is Map<String, dynamic>) {
+          _lastSendInfo = FcmSendInfo.fromMap(decoded);
+        }
+      }
     } catch (e) {
-      Log.e('Error sending FCM token to server', 'FCM_SERVICE', e);
+      Log.e('Failed to load FCM debug info', 'FCM_SERVICE', e);
+    } finally {
+      _debugInfoLoaded = true;
     }
   }
+
+  Future<void> _recordLastSendInfo({
+    required bool success,
+    required String message,
+    int? statusCode,
+    String? responseBody,
+    String? error,
+  }) async {
+    await _ensureDebugInfoLoaded();
+    String? userId = _currentUserId;
+    userId ??= await _getCurrentUserId();
+
+    final info = FcmSendInfo(
+      token: _currentToken,
+      success: success,
+      message: message,
+      statusCode: statusCode,
+      timestamp: DateTime.now(),
+      error: error,
+      responseBody: responseBody,
+      platform: _detectPlatform(),
+      userId: userId,
+      baseUrl: DatabaseConfig.physicalServerUrl,
+    );
+
+    _lastSendInfo = info;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_prefsLastSendInfoKey, jsonEncode(info.toMap()));
+    } catch (e) {
+      Log.e('Failed to persist FCM debug info', 'FCM_SERVICE', e);
+    }
+  }
+
+  String _detectPlatform() {
+    if (kIsWeb) return 'web';
+    try {
+      if (Platform.isAndroid) return 'android';
+      if (Platform.isIOS) return 'ios';
+      if (Platform.isMacOS) return 'macos';
+      if (Platform.isWindows) return 'windows';
+      if (Platform.isLinux) return 'linux';
+    } catch (_) {
+      // Ignore - Platform may not be available
+    }
+    return 'unknown';
+  }
+
+  Future<FcmSendInfo> getDebugInfo({bool refreshToken = false}) async {
+    await _ensureDebugInfoLoaded();
+    if (refreshToken || (_currentToken == null && _firebaseMessaging != null)) {
+      await _getToken();
+    }
+    final userId = _currentUserId ?? await _getCurrentUserId();
+    return _lastSendInfo ??
+        FcmSendInfo.initial(
+          token: _currentToken,
+          userId: userId,
+          baseUrl: DatabaseConfig.physicalServerUrl,
+        );
+  }
+
+  Future<FcmSendInfo> forceSendToken({bool refreshToken = false}) async {
+    await _ensureDebugInfoLoaded();
+    if (refreshToken || _currentToken == null) {
+      await _getToken();
+    }
+
+    if (_currentToken == null || _currentToken!.isEmpty) {
+      await _recordLastSendInfo(
+        success: false,
+        message:
+            'FCM token is not available yet. Ensure notifications are enabled and try again.',
+        error: 'token_unavailable',
+      );
+      final userId = _currentUserId ?? await _getCurrentUserId();
+      return _lastSendInfo ??
+          FcmSendInfo.initial(
+            token: _currentToken,
+            userId: userId,
+            baseUrl: DatabaseConfig.physicalServerUrl,
+          );
+    }
+
+    await _sendTokenToServer(_currentToken!, isManual: true);
+    final userId = _currentUserId ?? await _getCurrentUserId();
+    return _lastSendInfo ??
+        FcmSendInfo.initial(
+          token: _currentToken,
+          userId: userId,
+          baseUrl: DatabaseConfig.physicalServerUrl,
+        );
+  }
+
+  FcmSendInfo? get lastSendInfo => _lastSendInfo;
 
   /// Handle foreground messages
   void _handleForegroundMessage(RemoteMessage message) {
@@ -386,9 +576,7 @@ class FCMService {
     try {
       // Extract relevant data
       final chatId = data['chatId']?.toString();
-      final senderId = data['senderId']?.toString();
       final senderName = data['senderName']?.toString() ?? 'Unknown';
-      final messageType = data['type']?.toString() ?? 'chat_message';
 
       if (chatId == null || chatId.isEmpty) {
         Log.w('No chatId in FCM message data, cannot navigate', 'FCM_SERVICE');
@@ -497,15 +685,24 @@ class FCMService {
         String? token = _currentToken;
         if (token == null) {
           // Token not available yet, try to get it
-          Log.i('FCM token not available, attempting to get token...', 'FCM_SERVICE');
+          Log.i(
+            'FCM token not available, attempting to get token...',
+            'FCM_SERVICE',
+          );
           token = await getToken();
         }
-        
+
         if (token != null && token.isNotEmpty) {
-          Log.i('Sending FCM token to server after login for user: $userId', 'FCM_SERVICE');
+          Log.i(
+            'Sending FCM token to server after login for user: $userId',
+            'FCM_SERVICE',
+          );
           await _sendTokenToServer(token);
         } else {
-          Log.w('FCM token is null or empty, cannot send to server', 'FCM_SERVICE');
+          Log.w(
+            'FCM token is null or empty, cannot send to server',
+            'FCM_SERVICE',
+          );
           // Try again after a short delay in case Firebase is still initializing
           Future.delayed(const Duration(seconds: 2), () async {
             try {
@@ -582,6 +779,101 @@ class FCMService {
     _tokenSubscription = null;
     _isInitialized = false;
   }
+}
+
+class FcmSendInfo {
+  final String? token;
+  final bool success;
+  final String message;
+  final int? statusCode;
+  final DateTime? timestamp;
+  final String? error;
+  final String? responseBody;
+  final String? platform;
+  final String? userId;
+  final String? baseUrl;
+
+  const FcmSendInfo({
+    required this.token,
+    required this.success,
+    required this.message,
+    this.statusCode,
+    this.timestamp,
+    this.error,
+    this.responseBody,
+    this.platform,
+    this.userId,
+    this.baseUrl,
+  });
+
+  String get tokenPreview {
+    if (token == null || token!.isEmpty) return 'Not available';
+    final previewLength = min(token!.length, 16);
+    if (token!.length <= previewLength) {
+      return token!;
+    }
+    return '${token!.substring(0, previewLength)}...';
+  }
+
+  String get statusSummary {
+    final statusText = success ? 'Success' : 'Failed';
+    final codeText = statusCode != null ? ' (HTTP $statusCode)' : '';
+    return '$statusText$codeText';
+  }
+
+  String get formattedTimestamp {
+    if (timestamp == null) return 'Never';
+    return timestamp!.toLocal().toString();
+  }
+
+  Map<String, dynamic> toMap() => {
+    'token': token,
+    'success': success,
+    'message': message,
+    'statusCode': statusCode,
+    'timestamp': timestamp?.toIso8601String(),
+    'error': error,
+    'responseBody': responseBody,
+    'platform': platform,
+    'userId': userId,
+    'baseUrl': baseUrl,
+  };
+
+  factory FcmSendInfo.fromMap(Map<String, dynamic> map) => FcmSendInfo(
+    token: map['token'] as String?,
+    success: map['success'] == true,
+    message: (map['message'] as String?) ?? '',
+    statusCode: map['statusCode'] is int
+        ? map['statusCode'] as int
+        : (map['statusCode'] is String
+              ? int.tryParse(map['statusCode'] as String)
+              : null),
+    timestamp: map['timestamp'] is String
+        ? DateTime.tryParse(map['timestamp'] as String)
+        : null,
+    error: map['error'] as String?,
+    responseBody: map['responseBody'] as String?,
+    platform: map['platform'] as String?,
+    userId: map['userId'] as String?,
+    baseUrl: map['baseUrl'] as String?,
+  );
+
+  static FcmSendInfo initial({
+    String? token,
+    String? userId,
+    String? baseUrl,
+  }) => FcmSendInfo(
+    token: token,
+    success: false,
+    message: 'No FCM token has been sent to the server yet.',
+    statusCode: null,
+    timestamp: null,
+    error: null,
+    responseBody: null,
+    platform: null,
+    userId: userId,
+    baseUrl: baseUrl,
+  );
 }
 
 /// Top-level function for background message handler (must be top-level)

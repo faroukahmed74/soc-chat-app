@@ -48,6 +48,7 @@
 	<true/>
 	<key>UIApplicationSupportsIndirectInputEvents</key>
 	<true/>
+	<!-- Background Modes for FCM -->
 	<key>UIBackgroundModes</key>
     <array>
         <string>remote-notification</string>
@@ -57,9 +58,9 @@
     <true/>
     <key>UIApplicationSupportsIndirectInputEvents</key>
     <true/>
-    <!-- Optional: description strings if you prompt from native -->
+    <!-- Notification Permission Description -->
     <key>NSUserNotificationUsageDescription</key>
-    <string>This app uses notifications to alert you about new messages.</string>
+    <string>This app needs notification permission to alert you about new messages and important updates.</string>
 	
 	<!-- Essential Media Permissions for iOS -->
 	
@@ -102,10 +103,6 @@
 	<!-- Location Always Permission -->
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app needs location access to share your location in chat conversations.</string>
-	
-	<!-- Notification Permission -->
-	<key>NSUserNotificationUsageDescription</key>
-	<string>This app needs notification permission to alert you about new messages and important updates.</string>
 	
 	<!-- Face ID Permission -->
 	<key>NSFaceIDUsageDescription</key>
@@ -169,12 +166,6 @@
 			</dict>
 		</dict>
 	</dict>
-	
-	<!-- Background Modes for FCM -->
-	<key>UIBackgroundModes</key>
-	<array>
-		<string>remote-notification</string>
-	</array>
 	
 	<!-- FCM Background App Refresh -->
 	<key>BGTaskSchedulerPermittedIdentifiers</key>

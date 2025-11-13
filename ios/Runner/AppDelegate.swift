@@ -34,6 +34,15 @@ class AppDelegate: FlutterAppDelegate, MessagingDelegate {
       }
   }
 
+  // Handle notification tap (when app is in background or terminated)
+  override func userNotificationCenter(_ center: UNUserNotificationCenter,
+    didReceive response: UNNotificationResponse,
+    withCompletionHandler completionHandler: @escaping () -> Void) {
+    // Let Flutter handle the notification tap
+    super.userNotificationCenter(center, didReceive: response, withCompletionHandler: completionHandler)
+    completionHandler()
+  }
+
   // APNs token to FCM
   override func application(_ application: UIApplication,
                    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
