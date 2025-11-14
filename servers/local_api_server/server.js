@@ -690,11 +690,13 @@ async function sendFCMNotification(userId, title, body, data = {}) {
             category: data?.category || 'default',
             // contentAvailable: 1 is optional - helps with background delivery
             // Firebase automatically creates 'alert' from 'notification' field above
+            // Do NOT add alert here - Firebase handles it from the 'notification' field
           },
         },
         headers: {
           'apns-priority': '10', // High priority for immediate delivery
-          'apns-push-type': 'alert', // Required for iOS 13+
+          'apns-push-type': 'alert', // Required for iOS 13+ (both dev and prod)
+          // apns-topic is automatically set by Firebase based on bundle ID
         },
         fcmOptions: {
           analyticsLabel: 'ios_notification',
@@ -2392,11 +2394,20 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
         }
       }
       
-      // Only send FCM notification if user is NOT online via Socket.IO
-      // This prevents duplicate notifications (Socket.IO + FCM)
-      // FCM will be sent when user is offline or app is in background
-      if (!isOnlineViaSocket) {
-        console.log(`📱 User ${memberId} is offline, sending FCM notification`);
+      // Send FCM notification for iOS (always) and Android (when offline)
+      // iOS requires FCM even when "online" because background/terminated apps
+      // need push notifications. Android can rely on Socket.IO when online.
+      const user = await db.collection('users').findOne({ _id: new ObjectId(memberId) });
+      const userPlatform = user?.fcmPlatform || 'unknown';
+      const isIOS = userPlatform === 'ios';
+      
+      // Always send FCM for iOS (needed for background/terminated state)
+      // For Android, only send if user is offline (to avoid duplicates)
+      if (isIOS || !isOnlineViaSocket) {
+        const reason = isIOS 
+          ? 'iOS device (always send FCM for background/terminated support)'
+          : 'offline';
+        console.log(`📱 User ${memberId} is ${reason}, sending FCM notification`);
         sendFCMNotification(
           memberId,
           title,

@@ -1,8 +1,8 @@
 {
-  "version": "1.0.23",
-  "build_number": "23",
+  "version": "1.0.24",
+  "build_number": "24",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.23 - iOS FCM Notifications Fix:\n- Fixed iOS FCM token retrieval with retry logic for APNs token registration\n- Improved iOS FCM service initialization with platform-specific retry mechanism\n- Enhanced AppDelegate error handling and logging for APNs token registration\n- Fixed Info.plist configuration (removed duplicate keys, cleaned deprecated entries)\n- Improved server APNs payload structure with proper headers\n- Better diagnostic logging for iOS FCM token registration\n- iOS notifications now properly handle APNs token timing issues\n- All iOS FCM configurations reviewed and optimized",
+  "release_notes": "SOC Chat App v1.0.24 - iOS Production FCM Notifications Complete Fix:\n- Fixed server to always send FCM notifications for iOS devices (even when online)\n- Uploaded Production APNs Authentication Key to Firebase Console\n- Enhanced iOS FCM notification handling for Release/TestFlight/App Store builds\n- Improved server-side platform detection for iOS vs Android\n- Fixed notification delivery for background and terminated app states\n- Enhanced logging for iOS FCM notification debugging\n- All iOS FCM configurations verified and optimized for production\n- Server now properly handles iOS notifications in all app states",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": false,

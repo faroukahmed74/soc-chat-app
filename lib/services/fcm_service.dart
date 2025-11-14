@@ -551,12 +551,26 @@ class FCMService {
 
   /// Handle foreground messages
   void _handleForegroundMessage(RemoteMessage message) {
+    final platform = _detectPlatform();
     Log.i(
-      'Received foreground FCM message: ${message.messageId}',
+      'Received foreground FCM message: ${message.messageId} (platform: $platform)',
+      'FCM_SERVICE',
+    );
+    
+    // Log message details for debugging
+    Log.i(
+      'Message notification: ${message.notification?.title ?? "N/A"} - ${message.notification?.body ?? "N/A"}',
+      'FCM_SERVICE',
+    );
+    Log.i(
+      'Message data: ${message.data}',
       'FCM_SERVICE',
     );
 
-    // Show local notification for foreground messages
+    // On iOS, notifications with 'notification' field are automatically displayed
+    // by the system when app is in foreground (via AppDelegate), but we still
+    // show a local notification as a fallback
+    // On Android, we always show local notification for foreground messages
     _showLocalNotification(message);
   }
 
@@ -911,14 +925,35 @@ class FcmSendInfo {
 }
 
 /// Top-level function for background message handler (must be top-level)
+/// This handler is called when:
+/// - App is in background (iOS/Android)
+/// - App is terminated (Android only - iOS handles terminated state differently)
+/// - For data-only messages (messages without 'notification' field)
 @pragma('vm:entry-point')
 Future<void> _firebaseBackgroundMessageHandler(RemoteMessage message) async {
+  final isIOS = Platform.isIOS;
   Log.i(
-    'Background FCM message received: ${message.messageId}',
+    'Background FCM message received: ${message.messageId} (iOS: $isIOS)',
+    'FCM_BACKGROUND',
+  );
+  
+  // Log message details
+  Log.i(
+    'Message notification: ${message.notification?.title ?? "N/A"} - ${message.notification?.body ?? "N/A"}',
+    'FCM_BACKGROUND',
+  );
+  Log.i(
+    'Message data: ${message.data}',
     'FCM_BACKGROUND',
   );
 
-  // Show local notification
+  // On iOS, if the message has a 'notification' field, iOS will automatically
+  // display it when the app is in background/terminated. This handler is mainly
+  // for data-only messages or when we need to process the message.
+  // However, we still show a local notification as a fallback to ensure
+  // the user sees it.
+  
+  // On Android, we always need to show a local notification for background messages.
   try {
     final notificationService = EnhancedNotificationService();
     if (!notificationService.isInitialized) {
@@ -936,7 +971,7 @@ Future<void> _firebaseBackgroundMessageHandler(RemoteMessage message) async {
       channelId: 'chat_notifications',
     );
 
-    Log.i('Background notification shown', 'FCM_BACKGROUND');
+    Log.i('Background notification shown (platform: ${isIOS ? "iOS" : "Android"})', 'FCM_BACKGROUND');
   } catch (e) {
     Log.e('Error showing background notification', 'FCM_BACKGROUND', e);
   }
