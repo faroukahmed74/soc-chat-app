@@ -12,19 +12,12 @@ class RealtimeService {
 
   IO.Socket? _socket;
   bool _connecting = false;
-  bool _authFailed = false; // Track if authentication failed to prevent reconnection loops
 
   bool get isConnected => _socket?.connected == true;
 
   Future<void> connect() async {
-    if (_connecting || isConnected || _authFailed) {
-      if (_authFailed) {
-        Log.w('Socket connection blocked - authentication previously failed. Please refresh token.', 'REALTIME');
-      }
-      return;
-    }
+    if (_connecting || isConnected) return;
     _connecting = true;
-    _authFailed = false; // Reset auth failure flag on new connection attempt
     try {
       // Get auth token from SharedPreferences
       final prefs = await SharedPreferences.getInstance();
@@ -47,92 +40,28 @@ class RealtimeService {
         path: '/',
       ).toString();
 
-      // Build socket options - conditionally enable reconnection
-      final optionBuilder = IO.OptionBuilder()
+      _socket = IO.io(wsUrl, IO.OptionBuilder()
           .setTransports(['websocket'])
-          .enableForceNew();
-      
-      // Only enable reconnection if auth hasn't failed
-      if (!_authFailed) {
-        optionBuilder.enableReconnection().setReconnectionDelay(1000);
-      }
-      
-      _socket = IO.io(wsUrl, optionBuilder
+          .enableForceNew()
+          .enableReconnection()
+          .setReconnectionDelay(1000)
           .setAuth({'token': token})  // Add authentication token
           .build());
 
       _socket!.on('connect', (_) {
         Log.i('Realtime connected', 'REALTIME');
-        _authFailed = false; // Reset on successful connection
       });
-      _socket!.on('disconnect', (reason) {
-        Log.w('Realtime disconnected: $reason', 'REALTIME');
-        // If disconnected due to auth error, don't reconnect
-        if (reason.toString().contains('Authentication error') || 
-            reason.toString().contains('Token expired')) {
-          _authFailed = true;
-          Log.w('Authentication failed - reconnection disabled. Please refresh token.', 'REALTIME');
-        }
+      _socket!.on('disconnect', (_) {
+        Log.w('Realtime disconnected', 'REALTIME');
       });
       _socket!.on('connect_error', (e) {
-        // Handle different error formats (Error object, Map, or String)
-        String errorStr = '';
-        if (e is Map) {
-          errorStr = e.toString().toLowerCase();
-        } else if (e is String) {
-          errorStr = e.toLowerCase();
-        } else {
-          errorStr = e.toString().toLowerCase();
-        }
-        
-        if (errorStr.contains('authentication') || 
-            errorStr.contains('token expired') ||
-            errorStr.contains('invalid token') ||
-            errorStr.contains('refresh your session')) {
-          _authFailed = true;
-          Log.w('Socket authentication failed - token may be expired. Please refresh token.', 'REALTIME');
-          // Disable reconnection to prevent spam
-          _socket?.disconnect();
-          _socket = null;
-        } else {
-          Log.e('Realtime connect error', 'REALTIME', e);
-        }
-      });
-      
-      // Handle authentication errors from Socket.IO middleware (if emitted as 'error' event)
-      _socket!.on('error', (error) {
-        String errorStr = '';
-        if (error is Map) {
-          errorStr = error.toString().toLowerCase();
-        } else if (error is String) {
-          errorStr = error.toLowerCase();
-        } else {
-          errorStr = error.toString().toLowerCase();
-        }
-        
-        if (errorStr.contains('authentication') || 
-            errorStr.contains('token expired') ||
-            errorStr.contains('invalid token') ||
-            errorStr.contains('refresh your session')) {
-          _authFailed = true;
-          Log.w('Socket authentication error received - token may be expired. Please refresh token.', 'REALTIME');
-          _socket?.disconnect();
-          _socket = null;
-        }
+        Log.e('Realtime connect error', 'REALTIME', e);
       });
     } catch (e) {
       Log.e('Realtime connect exception', 'REALTIME', e);
     } finally {
       _connecting = false;
     }
-  }
-  
-  /// Reset authentication failure flag and attempt to reconnect
-  /// Call this after refreshing the token
-  Future<void> reconnectAfterTokenRefresh() async {
-    _authFailed = false;
-    dispose();
-    await connect();
   }
 
   void joinChat(String chatId) {

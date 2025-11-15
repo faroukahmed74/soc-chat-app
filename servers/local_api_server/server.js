@@ -345,10 +345,6 @@ let failedQueries = 0;
 // JWT Secret
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_here';
 
-// Rate limiting for expired token logs (prevent log spam)
-const expiredTokenLogs = new Map(); // token hash -> last log time
-const EXPIRED_TOKEN_LOG_INTERVAL = 60000; // Log at most once per minute per token
-
 // Connect to MongoDB with retry logic and enhanced monitoring
 async function connectToMongo(retryCount = 0) {
   const maxRetries = 5;
@@ -2859,8 +2855,7 @@ io.use(async (socket, next) => {
   }
   
   try {
-    // Use the same JWT_SECRET constant as the rest of the application
-    const decoded = jwt.verify(token, JWT_SECRET);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
     // Handle both uid and id for compatibility, ensure it's always a string
     const userId = decoded.uid || decoded.id;
     socket.userId = userId ? userId.toString() : null;
@@ -2887,35 +2882,8 @@ io.use(async (socket, next) => {
     
     next();
   } catch (error) {
-    // Provide more specific error messages
-    if (error.name === 'TokenExpiredError') {
-      // Rate limit expired token logs to prevent spam
-      const tokenHash = token.substring(0, 20); // Use first 20 chars as identifier
-      const now = Date.now();
-      const lastLogTime = expiredTokenLogs.get(tokenHash) || 0;
-      
-      if (now - lastLogTime > EXPIRED_TOKEN_LOG_INTERVAL) {
-        console.error(`Socket authentication error: Token expired (expired at: ${error.expiredAt}). Client should refresh token.`);
-        expiredTokenLogs.set(tokenHash, now);
-        
-        // Clean up old entries (keep map size reasonable)
-        if (expiredTokenLogs.size > 1000) {
-          const cutoff = now - EXPIRED_TOKEN_LOG_INTERVAL * 10;
-          for (const [key, time] of expiredTokenLogs.entries()) {
-            if (time < cutoff) {
-              expiredTokenLogs.delete(key);
-            }
-          }
-        }
-      }
-      return next(new Error('Authentication error: Token expired. Please refresh your session.'));
-    } else if (error.name === 'JsonWebTokenError') {
-      console.error('Socket authentication error: Invalid token signature', error.message);
-      return next(new Error('Authentication error: Invalid token signature'));
-    } else {
-      console.error('Socket authentication error:', error);
-      return next(new Error('Authentication error: Invalid token'));
-    }
+    console.error('Socket authentication error:', error);
+    return next(new Error('Authentication error: Invalid token'));
   }
 });
 
