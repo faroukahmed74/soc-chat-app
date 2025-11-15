@@ -287,8 +287,17 @@ router.get('/verify', async (req, res) => {
 
     return res.status(200).json({ valid: true });
   } catch (error) {
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ message: 'Invalid token' });
+    if (error.name === 'TokenExpiredError') {
+      return res.status(401).json({ 
+        valid: false,
+        message: 'Token expired',
+        expiredAt: error.expiredAt 
+      });
+    } else if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ 
+        valid: false,
+        message: 'Invalid token' 
+      });
     }
     console.error('Verify token error:', error);
     return res.status(500).json({ message: 'Server error' });
