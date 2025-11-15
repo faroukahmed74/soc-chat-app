@@ -100,6 +100,32 @@ class FCMService {
         );
       } else {
         Log.w('❌ FCM notification permission denied', 'FCM_SERVICE');
+        return; // Can't proceed without permission
+      }
+
+      // On iOS, wait for APNs token before requesting FCM token
+      if (Platform.isIOS) {
+        Log.i('Waiting for APNs token on iOS...', 'FCM_SERVICE');
+        // Wait up to 10 seconds for APNs token to be available
+        int maxWaitTime = 10; // seconds
+        int waited = 0;
+        while (waited < maxWaitTime) {
+          try {
+            final apnsToken = await _firebaseMessaging!.getAPNSToken();
+            if (apnsToken != null) {
+              Log.i('✅ APNs token available: ${apnsToken.substring(0, 20)}...', 'FCM_SERVICE');
+              break;
+            }
+          } catch (e) {
+            Log.w('APNs token not available yet, waiting... ($waited/$maxWaitTime seconds)', 'FCM_SERVICE');
+          }
+          await Future.delayed(const Duration(seconds: 1));
+          waited++;
+        }
+        
+        if (waited >= maxWaitTime) {
+          Log.w('⚠️ APNs token not available after $maxWaitTime seconds, proceeding anyway...', 'FCM_SERVICE');
+        }
       }
 
       // Get initial token
@@ -207,17 +233,38 @@ class FCMService {
       // On iOS, APNs token registration might take a moment
       // Retry logic for iOS to handle timing issues
       final isIOS = Platform.isIOS;
-      int maxRetries = isIOS ? 3 : 1;
-      int retryDelay = isIOS ? 2000 : 0; // 2 seconds for iOS
+      int maxRetries = isIOS ? 5 : 1; // Increased retries for iOS
+      int retryDelay = isIOS ? 3000 : 0; // 3 seconds for iOS
 
       for (int attempt = 1; attempt <= maxRetries; attempt++) {
         try {
+          // On iOS, check if APNs token is available first
+          if (isIOS) {
+            try {
+              final apnsToken = await _firebaseMessaging!.getAPNSToken();
+              if (apnsToken == null) {
+                Log.w(
+                  'APNs token not available yet (attempt $attempt/$maxRetries), waiting...',
+                  'FCM_SERVICE',
+                );
+                if (attempt < maxRetries) {
+                  await Future.delayed(Duration(milliseconds: retryDelay));
+                  continue;
+                }
+              } else {
+                Log.i('APNs token available: ${apnsToken.substring(0, 20)}...', 'FCM_SERVICE');
+              }
+            } catch (e) {
+              Log.w('Error checking APNs token: $e', 'FCM_SERVICE');
+            }
+          }
+          
           String? token = await _firebaseMessaging!.getToken();
           
           if (token != null && token.isNotEmpty) {
             _currentToken = token;
             Log.i(
-              'FCM token obtained: ${token.substring(0, 20)}... (attempt $attempt/$maxRetries)',
+              '✅ FCM token obtained: ${token.substring(0, 20)}... (attempt $attempt/$maxRetries)',
               'FCM_SERVICE',
             );
 
@@ -233,11 +280,11 @@ class FCMService {
               await Future.delayed(Duration(milliseconds: retryDelay));
               continue;
             } else {
-              Log.w('FCM token is null', 'FCM_SERVICE');
+              Log.w('FCM token is null after all retries', 'FCM_SERVICE');
               await _recordLastSendInfo(
                 success: false,
                 message:
-                    'Firebase returned null token from FirebaseMessaging.getToken()',
+                    'Firebase returned null token from FirebaseMessaging.getToken(). On iOS, this usually means APNs token is not available. Check: 1) Push Notifications capability enabled in Xcode, 2) APNs Authentication Key uploaded to Firebase Console, 3) Valid provisioning profile, 4) Testing on real device (not simulator)',
                 error: 'token_null',
               );
             }
@@ -251,6 +298,12 @@ class FCMService {
             await Future.delayed(Duration(milliseconds: retryDelay));
             continue;
           }
+          Log.e('Error getting FCM token after retries', 'FCM_SERVICE', e);
+          await _recordLastSendInfo(
+            success: false,
+            message: 'Error getting FCM token: $e',
+            error: e.toString(),
+          );
           rethrow;
         }
       }
