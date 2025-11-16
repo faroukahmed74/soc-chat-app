@@ -40,26 +40,53 @@ class RealtimeService {
         path: '/',
       ).toString();
 
-      _socket = IO.io(wsUrl, IO.OptionBuilder()
-          .setTransports(['websocket'])
-          .enableForceNew()
-          .enableReconnection()
-          .setReconnectionDelay(1000)
-          .setAuth({'token': token})  // Add authentication token
-          .build());
+      // For web, add connection timeout to avoid blocking
+      if (kIsWeb) {
+        // On web, use a shorter timeout and don't block
+        _socket = IO.io(wsUrl, IO.OptionBuilder()
+            .setTransports(['websocket'])
+            .enableForceNew()
+            .enableReconnection()
+            .setReconnectionDelay(1000)
+            .setReconnectionAttempts(5)
+            .setTimeout(3000) // 3 second timeout for web
+            .setAuth({'token': token})  // Add authentication token
+            .build());
+      } else {
+        // On mobile, use longer timeout
+        _socket = IO.io(wsUrl, IO.OptionBuilder()
+            .setTransports(['websocket'])
+            .enableForceNew()
+            .enableReconnection()
+            .setReconnectionDelay(1000)
+            .setAuth({'token': token})  // Add authentication token
+            .build());
+      }
 
       _socket!.on('connect', (_) {
         Log.i('Realtime connected', 'REALTIME');
+        _connecting = false;
       });
       _socket!.on('disconnect', (_) {
         Log.w('Realtime disconnected', 'REALTIME');
+        _connecting = false;
       });
       _socket!.on('connect_error', (e) {
         Log.e('Realtime connect error', 'REALTIME', e);
+        _connecting = false;
       });
+      
+      // For web, set a timeout to prevent indefinite blocking
+      if (kIsWeb) {
+        Future.delayed(const Duration(seconds: 5), () {
+          if (_connecting && !isConnected) {
+            Log.w('Realtime connection timeout (web)', 'REALTIME');
+            _connecting = false;
+          }
+        });
+      }
     } catch (e) {
       Log.e('Realtime connect exception', 'REALTIME', e);
-    } finally {
       _connecting = false;
     }
   }

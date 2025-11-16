@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:developer' as developer;
+import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 // Avoid direct dart:io on web; use conditional imports for io-heavy services
@@ -66,8 +67,16 @@ Future<void> main() async {
     Log.i('DatabaseConfig initialized (server URL override ready)', 'MAIN');
     // Log resolved server URL for visibility in logcat
     Log.i('Resolved server URL: ' + DatabaseConfig.physicalServerUrl, 'MAIN');
-    // Ping API health to verify reachability from device
-    await _pingApiHealth();
+    // Ping API health to verify reachability from device (non-blocking for web)
+    if (kIsWeb) {
+      // For web, don't block startup - ping in background
+      _pingApiHealth().catchError((e) {
+        Log.e('API health ping failed (non-blocking)', 'MAIN', e);
+      });
+    } else {
+      // For mobile, ping synchronously but don't block if it fails
+      await _pingApiHealth();
+    }
   } catch (e, st) {
     Log.e('DatabaseConfig initialization failed', 'MAIN', e, st);
     // Continue anyway - app should still work with defaults
@@ -78,13 +87,31 @@ Future<void> main() async {
 
   // Initialize Firebase (required for FCM push notifications only)
   // Note: We use MongoDB for database, but Firebase is needed for FCM
-  try {
-    Log.i('Initializing Firebase for FCM notifications...', 'MAIN');
-    await Firebase.initializeApp();
-    Log.i('✅ Firebase initialized successfully (for FCM only)', 'MAIN');
-  } catch (e) {
-    Log.e('Firebase initialization failed - FCM notifications will not work', 'MAIN', e);
-    // Continue without Firebase - app will work but no push notifications
+  // For web offline mode, Firebase is optional and non-blocking
+  if (kIsWeb) {
+    // On web, initialize Firebase in background (non-blocking)
+    Firebase.initializeApp().then((_) {
+      Log.i('✅ Firebase initialized successfully (for FCM only)', 'MAIN');
+    }).catchError((e) {
+      Log.e('Firebase initialization failed - FCM notifications will not work', 'MAIN', e);
+      // Continue without Firebase - app will work but no push notifications
+    });
+  } else {
+    // On mobile, initialize Firebase with timeout
+    try {
+      Log.i('Initializing Firebase for FCM notifications...', 'MAIN');
+      await Firebase.initializeApp().timeout(
+        const Duration(seconds: 5),
+        onTimeout: () {
+          Log.e('Firebase initialization timeout - continuing without FCM', 'MAIN');
+          throw TimeoutException('Firebase initialization timeout');
+        },
+      );
+      Log.i('✅ Firebase initialized successfully (for FCM only)', 'MAIN');
+    } catch (e) {
+      Log.e('Firebase initialization failed - FCM notifications will not work', 'MAIN', e);
+      // Continue without Firebase - app will work but no push notifications
+    }
   }
 
   // Initialize app services for physical server
@@ -299,20 +326,28 @@ class _AuthGateState extends State<AuthGate> {
       final token = await DatabaseConfig.getStoredAuthToken();
       print('AuthGate: Stored token exists: ${token.isNotEmpty}');
       
+      // For web offline mode, don't verify token immediately - show login screen
+      // Token verification can happen later when user tries to use the app
+      if (kIsWeb) {
+        // On web, if we have a token, assume it's valid for now (will verify on first API call)
+        // This allows the app to start immediately without waiting for network
+        if (mounted) {
+          setState(() {
+            _isAuthenticated = token.isNotEmpty; // Assume valid for offline mode
+            _isLoading = false;
+          });
+        }
+        print('AuthGate: Web mode - showing ${token.isNotEmpty ? "MainApp" : "LoginScreen"}');
+        return;
+      }
+      
+      // For mobile, verify token with server
       bool isValid = false;
       if (token.isNotEmpty) {
         try {
-          // For web, use the proxy through the web server. For mobile, use direct API access.
-          String verifyUrl;
-          if (kIsWeb) {
-            // On web, go through the same origin proxy (no CORS issues)
-            final origin = Uri.base.origin;
-            verifyUrl = '$origin/api/auth/verify';
-          } else {
-            // On mobile, use the configured server URL
-            final base = DatabaseConfig.physicalServerUrl;
-            verifyUrl = base.endsWith('/') ? '${base}api/auth/verify' : '$base/api/auth/verify';
-          }
+          // On mobile, use the configured server URL
+          final base = DatabaseConfig.physicalServerUrl;
+          final verifyUrl = base.endsWith('/') ? '${base}api/auth/verify' : '$base/api/auth/verify';
           
           print('AuthGate: Verifying token at: $verifyUrl');
           final resp = await http
@@ -445,7 +480,16 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       // Initialize global realtime listener for notifications
       try {
         final realtime = RealtimeService.instance;
-        await realtime.connect();
+        // For web offline mode, connect in background (non-blocking)
+        if (kIsWeb) {
+          // On web, connect in background - don't block app initialization
+          realtime.connect().catchError((e) {
+            Log.e('Realtime connect failed (non-blocking)', 'MAIN_APP', e);
+          });
+        } else {
+          // On mobile, connect synchronously
+          await realtime.connect();
+        }
         // Join all chats after login: lightweight approach is to rely on message events
         realtime.onNewMessage((msg) async {
           try {

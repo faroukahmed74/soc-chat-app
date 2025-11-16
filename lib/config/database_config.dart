@@ -105,7 +105,23 @@ class DatabaseConfig {
     try {
       final prefs = await SharedPreferences.getInstance();
       _cachedOverrideUrl = prefs.getString(_serverUrlOverrideKey) ?? '';
-      // Validate existing override: clear if invalid or unreachable
+      
+      // For web offline mode, skip network validation to avoid blocking startup
+      if (kIsWeb) {
+        // On web, just validate URL format, don't ping server
+        if (_cachedOverrideUrl.isNotEmpty) {
+          final override = _cachedOverrideUrl.trim();
+          if (!_isValidUrl(override)) {
+            await prefs.remove(_serverUrlOverrideKey);
+            _cachedOverrideUrl = '';
+          }
+        }
+        // Skip remote discovery for web to avoid blocking
+        _initialized = true;
+        return;
+      }
+      
+      // For mobile, validate existing override: clear if invalid or unreachable
       if (_cachedOverrideUrl.isNotEmpty) {
         final override = _cachedOverrideUrl.trim();
         if (!_isValidUrl(override)) {

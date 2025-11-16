@@ -2397,20 +2397,41 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
         }
       }
       
-      // Send FCM notification for iOS (always) and Android (when offline)
-      // iOS requires FCM even when "online" because background/terminated apps
-      // need push notifications. Android can rely on Socket.IO when online.
+      // Send FCM notification for both iOS and Android (always)
+      // Both platforms require FCM even when "online" because:
+      // - Background apps need push notifications
+      // - Terminated apps can only receive push notifications
+      // - Socket.IO doesn't work when app is terminated
       const user = await db.collection('users').findOne({ _id: new ObjectId(memberId) });
       const userPlatform = user?.fcmPlatform || 'unknown';
       const isIOS = userPlatform === 'ios';
+      const isAndroid = userPlatform === 'android';
       
-      // Always send FCM for iOS (needed for background/terminated state)
-      // For Android, only send if user is offline (to avoid duplicates)
-      if (isIOS || !isOnlineViaSocket) {
+      // Always send FCM for both iOS and Android (needed for background/terminated state)
+      // Socket.IO notifications are sent separately for real-time updates when app is active
+      if (isIOS || isAndroid) {
         const reason = isIOS 
           ? 'iOS device (always send FCM for background/terminated support)'
-          : 'offline';
+          : 'Android device (always send FCM for background/terminated support)';
         console.log(`📱 User ${memberId} is ${reason}, sending FCM notification`);
+        sendFCMNotification(
+          memberId,
+          title,
+          body.length > 100 ? body.substring(0, 100) + '...' : body,
+          {
+            chatId: chatId.toString(),
+            senderId: userId.toString(),
+            senderName: senderName,
+            messageType: messageType || 'text',
+            messageId: result.insertedId.toString(),
+            type: isGroupChat ? 'group_message' : 'chat_message',
+          }
+        ).catch(err => {
+          console.error(`Error sending FCM to user ${memberId}:`, err.message);
+        });
+      } else if (!isOnlineViaSocket) {
+        // For other platforms (web, etc.), only send if offline
+        console.log(`📱 User ${memberId} is offline, sending FCM notification`);
         sendFCMNotification(
           memberId,
           title,

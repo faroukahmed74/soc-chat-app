@@ -112,12 +112,47 @@
     const serviceWorkerVersion = null;
   </script>
   
-  <!-- Firebase SDK for Web FCM -->
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js"></script>
+  <!-- Firebase SDK for Web FCM - Load conditionally for offline support -->
+  <!-- Only load Firebase if online, app works offline without it -->
   <script>
-    // Firebase configuration will be initialized by Flutter firebase_messaging plugin
-    // The plugin will handle Firebase initialization automatically
+    // Conditionally load Firebase only when online (for web notifications)
+    // App works completely offline without Firebase
+    (function() {
+      function loadFirebaseIfOnline() {
+        // Check if online
+        if (navigator.onLine) {
+          // Try to load Firebase, but don't block if it fails
+          const firebaseApp = document.createElement('script');
+          firebaseApp.src = 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js';
+          firebaseApp.onerror = function() {
+            console.log('Firebase not available (offline mode)');
+          };
+          
+          const firebaseMessaging = document.createElement('script');
+          firebaseMessaging.src = 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js';
+          firebaseMessaging.onerror = function() {
+            console.log('Firebase messaging not available (offline mode)');
+          };
+          
+          document.head.appendChild(firebaseApp);
+          firebaseApp.onload = function() {
+            document.head.appendChild(firebaseMessaging);
+          };
+        } else {
+          console.log('Offline mode: Firebase not loaded');
+        }
+      }
+      
+      // Load Firebase if online
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', loadFirebaseIfOnline);
+      } else {
+        loadFirebaseIfOnline();
+      }
+      
+      // Also try to load when coming back online
+      window.addEventListener('online', loadFirebaseIfOnline);
+    })();
   </script>
   
   <!-- This script adds the flutter initialization JS code -->
@@ -247,21 +282,98 @@
   </style>
 
   <script>
-    window.addEventListener('load', function(ev) {
-      // Download main.dart.js
-      _flutter.loader.loadEntrypoint({
-        serviceWorker: {
-          serviceWorkerVersion: serviceWorkerVersion,
-        },
-        onEntrypointLoaded: function(engineInitializer) {
-          engineInitializer.initializeEngine().then(function(appRunner) {
-            // Hide loading screen
-            document.getElementById('loading').style.display = 'none';
-            appRunner.runApp();
+    // Register service worker for offline support (non-blocking)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function() {
+        navigator.serviceWorker.register('/firebase-messaging-sw.js')
+          .then(function(registration) {
+            console.log('Service Worker registered successfully:', registration.scope);
+          })
+          .catch(function(error) {
+            console.log('Service Worker registration failed:', error);
           });
-        }
       });
+    }
+    
+    // Initialize Flutter app when ready
+    function initializeFlutterApp() {
+      try {
+        // Wait for Flutter loader to be available
+        if (typeof _flutter === 'undefined' || !_flutter.loader) {
+          console.log('Waiting for Flutter loader...');
+          setTimeout(initializeFlutterApp, 100);
+          return;
+        }
+        
+        console.log('Flutter loader available, initializing app...');
+        
+        // Try new Flutter loader API first, fallback to old API for compatibility
+        if (typeof _flutter.loader.load === 'function') {
+          // New API (Flutter 3.16+)
+          console.log('Using new Flutter loader API');
+          _flutter.loader.load({
+            serviceWorkerSettings: {
+              serviceWorkerVersion: serviceWorkerVersion,
+            },
+            onEntrypointLoaded: function(engineInitializer) {
+              console.log('Flutter entrypoint loaded, initializing engine...');
+              engineInitializer.initializeEngine().then(function(appRunner) {
+                console.log('Flutter engine initialized, running app...');
+                document.getElementById('loading').style.display = 'none';
+                appRunner.runApp();
+              }).catch(function(error) {
+                console.error('Flutter engine initialization error:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);"><h2>Error Loading App</h2><p>Please check the browser console for details.</p></div>';
+              });
+            },
+            onError: function(error) {
+              console.error('Flutter loader error:', error);
+              document.getElementById('loading').style.display = 'none';
+            }
+          });
+        } else if (typeof _flutter.loader.loadEntrypoint === 'function') {
+          // Old API (Flutter < 3.16) - fallback for compatibility
+          console.log('Using old Flutter loader API');
+          _flutter.loader.loadEntrypoint({
+            serviceWorker: {
+              serviceWorkerVersion: serviceWorkerVersion,
+            },
+            onEntrypointLoaded: function(engineInitializer) {
+              console.log('Flutter entrypoint loaded, initializing engine...');
+              engineInitializer.initializeEngine().then(function(appRunner) {
+                console.log('Flutter engine initialized, running app...');
+                document.getElementById('loading').style.display = 'none';
+                appRunner.runApp();
+              }).catch(function(error) {
+                console.error('Flutter engine initialization error:', error);
+                document.getElementById('loading').style.display = 'none';
+                document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);"><h2>Error Loading App</h2><p>Please check the browser console for details.</p></div>';
+              });
+            }
+          });
+        } else {
+          console.error('Flutter loader API not available');
+          document.getElementById('loading').style.display = 'none';
+          document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);"><h2>Error: Flutter Loader Not Available</h2><p>Please refresh the page.</p></div>';
+        }
+      } catch (error) {
+        console.error('Error initializing Flutter app:', error);
+        document.getElementById('loading').style.display = 'none';
+        document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);"><h2>Error Loading App</h2><p>' + error.message + '</p><p>Please check the browser console for details.</p></div>';
+      }
+    }
+    
+    // Start initialization when page loads
+    window.addEventListener('load', function(ev) {
+      console.log('Page loaded, initializing Flutter app...');
+      initializeFlutterApp();
     });
+    
+    // Also try immediately in case flutter.js is already loaded
+    if (document.readyState === 'complete' || document.readyState === 'interactive') {
+      setTimeout(initializeFlutterApp, 100);
+    }
   </script>
 </body>
 </html>

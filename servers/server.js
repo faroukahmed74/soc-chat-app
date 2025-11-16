@@ -104,20 +104,36 @@ app.get('/offline-status', (req, res) => {
   try {
     const root = path.join(__dirname, '..', 'build', 'web');
     const ckDir = path.join(root, 'canvaskit');
-    const hasIndex = fsExists(path.join(root, 'index.html'));
-    const hasMain = fsExists(path.join(root, 'main.dart.js'));
-    const hasSW = fsExists(path.join(root, 'flutter_service_worker.js'));
-    const hasCK = fsExists(path.join(ckDir, 'canvaskit.wasm')) && fsExists(path.join(ckDir, 'canvaskit.js'));
+    const checks = {
+      buildDir: fsExists(root),
+      indexHtml: fsExists(path.join(root, 'index.html')),
+      mainDartJs: fsExists(path.join(root, 'main.dart.js')),
+      flutterJs: fsExists(path.join(root, 'flutter.js')),
+      serviceWorker: fsExists(path.join(root, 'firebase-messaging-sw.js')) || fsExists(path.join(root, 'flutter_service_worker.js')),
+      canvaskitDir: fsExists(ckDir),
+      canvaskitJs: fsExists(path.join(ckDir, 'canvaskit.js')),
+      canvaskitWasm: fsExists(path.join(ckDir, 'canvaskit.wasm')),
+    };
+    
+    const allOk = Object.values(checks).every(v => v === true);
+    
     res.json({
-      ok: hasIndex && hasMain,
+      ok: allOk,
+      offline: allOk,
       buildRoot: root,
-      indexHtml: hasIndex,
-      mainDartJs: hasMain,
-      serviceWorker: hasSW,
-      canvasKitLocal: hasCK,
+      buildDir: root,
+      checks: checks,
+      // Legacy fields for backward compatibility
+      indexHtml: checks.indexHtml,
+      mainDartJs: checks.mainDartJs,
+      serviceWorker: checks.serviceWorker,
+      canvasKitLocal: checks.canvaskitJs && checks.canvaskitWasm,
+      message: allOk 
+        ? 'All offline assets are available' 
+        : 'Some offline assets are missing',
     });
   } catch (e) {
-    res.status(500).json({ ok: false, error: e?.message || String(e) });
+    res.status(500).json({ ok: false, offline: false, error: e?.message || String(e) });
   }
 });
 

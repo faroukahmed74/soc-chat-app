@@ -159,8 +159,37 @@ router.post('/', authenticateToken, async (req, res) => {
       for (const memberId of otherMembers) {
         const isOnline = onlineUsers.has(memberId);
         
-        // Only send FCM if user is offline (to avoid duplicates with Socket.IO)
-        if (!isOnline) {
+        // Get user platform to determine FCM sending strategy
+        const user = await usersCollection.findOne({ _id: new ObjectId(memberId) });
+        const userPlatform = user?.fcmPlatform || 'unknown';
+        const isIOS = userPlatform === 'ios';
+        const isAndroid = userPlatform === 'android';
+        
+        // Always send FCM for iOS and Android (needed for background/terminated state)
+        // Socket.IO notifications are sent separately for real-time updates when app is active
+        if (isIOS || isAndroid) {
+          const reason = isIOS 
+            ? 'iOS device (always send FCM for background/terminated support)'
+            : 'Android device (always send FCM for background/terminated support)';
+          console.log(`📱 User ${memberId} is ${reason}, sending FCM notification`);
+          sendFCMNotification(
+            memberId,
+            title,
+            body.length > 100 ? body.substring(0, 100) + '...' : body,
+            {
+              chatId: chatId.toString(),
+              senderId: req.user.id.toString(),
+              senderName: senderName,
+              messageType: type || 'text',
+              messageId: result.insertedId.toString(),
+              type: isGroupChat ? 'group_message' : 'chat_message',
+            }
+          ).catch(err => {
+            console.error(`Error sending FCM to user ${memberId}:`, err.message);
+          });
+        } else if (!isOnline) {
+          // For other platforms (web, etc.), only send if offline
+          console.log(`📱 User ${memberId} is offline, sending FCM notification`);
           sendFCMNotification(
             memberId,
             title,
@@ -643,8 +672,38 @@ router.post('/:messageId/reply', authenticateToken, async (req, res) => {
       for (const memberId of otherMembers) {
         const isOnline = onlineUsers.has(memberId);
         
-        // Only send FCM if user is offline (to avoid duplicates with Socket.IO)
-        if (!isOnline) {
+        // Get user platform to determine FCM sending strategy
+        const user = await usersCollection.findOne({ _id: new ObjectId(memberId) });
+        const userPlatform = user?.fcmPlatform || 'unknown';
+        const isIOS = userPlatform === 'ios';
+        const isAndroid = userPlatform === 'android';
+        
+        // Always send FCM for iOS and Android (needed for background/terminated state)
+        // Socket.IO notifications are sent separately for real-time updates when app is active
+        if (isIOS || isAndroid) {
+          const reason = isIOS 
+            ? 'iOS device (always send FCM for background/terminated support)'
+            : 'Android device (always send FCM for background/terminated support)';
+          console.log(`📱 User ${memberId} is ${reason}, sending FCM notification`);
+          sendFCMNotification(
+            memberId,
+            title,
+            body.length > 100 ? body.substring(0, 100) + '...' : body,
+            {
+              chatId: originalMessage.chatId.toString(),
+              senderId: userId.toString(),
+              senderName: senderName,
+              messageType: replyMessage.messageType || 'text',
+              messageId: result.insertedId.toString(),
+              replyTo: messageId,
+              type: isGroupChat ? 'group_message' : 'chat_message',
+            }
+          ).catch(err => {
+            console.error(`Error sending FCM to user ${memberId}:`, err.message);
+          });
+        } else if (!isOnline) {
+          // For other platforms (web, etc.), only send if offline
+          console.log(`📱 User ${memberId} is offline, sending FCM notification`);
           sendFCMNotification(
             memberId,
             title,
