@@ -13,6 +13,7 @@ import 'package:socket_io_client/socket_io_client.dart' as IO;
 import '../config/database_config.dart';
 import 'logger_service.dart';
 import 'enhanced_notification_service.dart';
+import 'notification_delivery_coordinator.dart';
 import 'local_auth_service.dart';
 
 class ForegroundChatService {
@@ -97,6 +98,7 @@ class ForegroundChatService {
       if (result == true) {
         _isRunning = true;
         Log.i('✅ Foreground chat service started successfully', 'FOREGROUND_SERVICE');
+        await NotificationDeliveryCoordinator.setBackgroundAuthority(true);
         
         // Update notification after a short delay to confirm it's running
         Future.delayed(const Duration(seconds: 2), () {
@@ -106,10 +108,12 @@ class ForegroundChatService {
         return true;
       } else {
         Log.e('❌ Failed to start foreground service - result: $result', 'FOREGROUND_SERVICE');
+        await NotificationDeliveryCoordinator.setBackgroundAuthority(false);
         return false;
       }
     } catch (e, stackTrace) {
       Log.e('❌ Error starting foreground service', 'FOREGROUND_SERVICE', e, stackTrace);
+      await NotificationDeliveryCoordinator.setBackgroundAuthority(false);
       return false;
     }
   }
@@ -121,6 +125,7 @@ class ForegroundChatService {
     try {
       await FlutterForegroundTask.stopService();
       _isRunning = false;
+      await NotificationDeliveryCoordinator.setBackgroundAuthority(false);
       Log.i('Foreground chat service stopped', 'FOREGROUND_SERVICE');
     } catch (e) {
       Log.e('Error stopping foreground service', 'FOREGROUND_SERVICE', e);
@@ -151,10 +156,12 @@ class FirstTaskHandler extends TaskHandler {
   Timer? _timer;
   IO.Socket? _socket;
   bool _isConnected = false;
+  bool _handlingTokenExpiry = false;
 
   @override
   Future<void> onStart(DateTime timestamp, TaskStarter starter) async {
     Log.i('Foreground task handler started', 'FOREGROUND_TASK');
+    await NotificationDeliveryCoordinator.setBackgroundAuthority(true);
     
     // Connect to socket in background
     await _connectSocket();
@@ -186,6 +193,7 @@ class FirstTaskHandler extends TaskHandler {
     _timer?.cancel();
     _socket?.dispose();
     _isConnected = false;
+    await NotificationDeliveryCoordinator.setBackgroundAuthority(false);
     Log.i('Foreground task handler destroyed', 'FOREGROUND_TASK');
   }
 
@@ -244,6 +252,8 @@ class FirstTaskHandler extends TaskHandler {
           .setAuth({'token': token})
           .build());
 
+      _registerTokenRefreshHandler();
+
       _socket!.on('connect', (_) {
         _isConnected = true;
         Log.i('✅ Background socket connected successfully', 'FOREGROUND_TASK');
@@ -257,9 +267,12 @@ class FirstTaskHandler extends TaskHandler {
         Log.w('⚠️ Background socket disconnected: $reason', 'FOREGROUND_TASK');
       });
 
-      _socket!.on('connect_error', (error) {
+      _socket!.on('connect_error', (error) async {
         _isConnected = false;
         Log.e('❌ Background socket connection error', 'FOREGROUND_TASK', error);
+        if (_isTokenExpiredError(error)) {
+          await _handleTokenExpired();
+        }
       });
 
       // Listen for new messages and trigger notifications
@@ -303,6 +316,30 @@ class FirstTaskHandler extends TaskHandler {
       }
     } catch (e) {
       Log.e('Error joining user room', 'FOREGROUND_TASK', e);
+    }
+  }
+
+  bool _isTokenExpiredError(dynamic error) {
+    try {
+      final message = error?.toString().toLowerCase();
+      if (message == null || message.isEmpty) return false;
+      return message.contains('token expired') || message.contains('jwt expired');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _handleTokenExpired() async {
+    if (_handlingTokenExpiry) return;
+    _handlingTokenExpiry = true;
+    try {
+      Log.w('Auth token expired in foreground service - logging out user', 'FOREGROUND_TASK');
+      await LocalAuthService.logout();
+      await FlutterForegroundTask.stopService();
+    } catch (e) {
+      Log.e('Failed to handle token expiry in foreground service', 'FOREGROUND_TASK', e);
+    } finally {
+      _handlingTokenExpiry = false;
     }
   }
 
@@ -424,6 +461,35 @@ class FirstTaskHandler extends TaskHandler {
     } catch (e) {
       Log.e('Error handling notification in background', 'FOREGROUND_TASK', e);
     }
+  }
+
+  void _registerTokenRefreshHandler() {
+    _socket?.off('auth:token_refreshed');
+    _socket?.on('auth:token_refreshed', (payload) async {
+      try {
+        final token = _extractToken(payload);
+        if (token == null || token.isEmpty) {
+          return;
+        }
+        await DatabaseConfig.setAuthToken(token);
+        Log.i('Background socket stored refreshed auth token', 'FOREGROUND_TASK');
+      } catch (e) {
+        Log.e('Failed to persist refreshed auth token (background)', 'FOREGROUND_TASK', e);
+      }
+    });
+  }
+
+  String? _extractToken(dynamic payload) {
+    if (payload is String && payload.isNotEmpty) {
+      return payload;
+    }
+    if (payload is Map) {
+      final token = payload['token'];
+      if (token is String && token.isNotEmpty) {
+        return token;
+      }
+    }
+    return null;
   }
 }
 

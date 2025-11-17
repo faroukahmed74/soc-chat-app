@@ -9,6 +9,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:image_cropper/image_cropper.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:firebase_storage/firebase_storage.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -55,15 +56,15 @@ class ImprovedMediaService {
       );
 
       if (image != null) {
-        final bytes = await image.readAsBytes();
-        final optimizedBytes = await _optimizeImage(bytes);
+        final processedBytes = await _prepareImageBytes(context, image);
+        Log.i('Image captured successfully: ${processedBytes.length} bytes (pre-optimize)', 'IMPROVED_MEDIA');
         
-        Log.i('Image captured successfully: ${bytes.length} bytes', 'IMPROVED_MEDIA');
+        final optimizedBytes = await _optimizeImage(processedBytes);
         
         return MediaResult(
           bytes: optimizedBytes,
           type: 'image',
-          originalSize: bytes.length,
+          originalSize: processedBytes.length,
           optimizedSize: optimizedBytes.length,
           fileName: 'camera_${DateTime.now().millisecondsSinceEpoch}.jpg',
           mimeType: 'image/jpeg',
@@ -109,15 +110,15 @@ class ImprovedMediaService {
       );
 
       if (image != null) {
-        final bytes = await image.readAsBytes();
-        final optimizedBytes = await _optimizeImage(bytes);
+        final processedBytes = await _prepareImageBytes(context, image);
+        Log.i('Image selected successfully: ${processedBytes.length} bytes (pre-optimize)', 'IMPROVED_MEDIA');
         
-        Log.i('Image selected successfully: ${bytes.length} bytes', 'IMPROVED_MEDIA');
+        final optimizedBytes = await _optimizeImage(processedBytes);
         
         return MediaResult(
           bytes: optimizedBytes,
           type: 'image',
-          originalSize: bytes.length,
+          originalSize: processedBytes.length,
           optimizedSize: optimizedBytes.length,
           fileName: image.name,
           mimeType: 'image/jpeg',
@@ -365,6 +366,62 @@ class ImprovedMediaService {
     } catch (e) {
       Log.e('Error optimizing image', 'IMPROVED_MEDIA', e);
       return originalBytes; // Return original if optimization fails
+    }
+  }
+
+  static Future<Uint8List> _prepareImageBytes(BuildContext context, XFile image) async {
+    try {
+      if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
+        final editedBytes = await _launchImageEditor(context, image.path);
+        if (editedBytes != null) {
+          Log.i('Image edited via cropper (size: ${editedBytes.length})', 'IMPROVED_MEDIA');
+          return editedBytes;
+        }
+        Log.i('Image editing skipped, using original bytes', 'IMPROVED_MEDIA');
+        return await image.readAsBytes();
+      } else {
+        return await image.readAsBytes();
+      }
+    } catch (e) {
+      Log.e('Error preparing image bytes', 'IMPROVED_MEDIA', e);
+      return await image.readAsBytes();
+    }
+  }
+
+  static Future<Uint8List?> _launchImageEditor(BuildContext context, String sourcePath) async {
+    try {
+      final cropper = ImageCropper();
+      final theme = Theme.of(context);
+      final cropped = await cropper.cropImage(
+        sourcePath: sourcePath,
+        compressFormat: ImageCompressFormat.jpg,
+        compressQuality: 95,
+        uiSettings: [
+          AndroidUiSettings(
+            toolbarTitle: 'Edit photo',
+            toolbarColor: theme.colorScheme.primary,
+            toolbarWidgetColor: Colors.white,
+            activeControlsWidgetColor: theme.colorScheme.primary,
+            initAspectRatio: CropAspectRatioPreset.original,
+            lockAspectRatio: false,
+            hideBottomControls: false,
+            showCropGrid: true,
+          ),
+          IOSUiSettings(
+            title: 'Edit Photo',
+            aspectRatioLockEnabled: false,
+            rotateButtonsHidden: false,
+            rotateClockwiseButtonHidden: false,
+          ),
+        ],
+      );
+      if (cropped == null) {
+        return null;
+      }
+      return await cropped.readAsBytes();
+    } catch (e) {
+      Log.e('Image editing error', 'IMPROVED_MEDIA', e);
+      return null;
     }
   }
 

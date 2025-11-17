@@ -9,6 +9,7 @@ let db;
 const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app';
 // Ensure we use the same JWT secret as the main server
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_here';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 // Connect to MongoDB
 async function connectDB() {
@@ -109,7 +110,7 @@ router.post('/register', async (req, res) => {
     const token = jwt.sign(
       { id: result.insertedId.toString(), role: 'user', email, displayName: finalDisplayName },
       JWT_SECRET,
-      { expiresIn: '1d' }
+      { expiresIn: JWT_EXPIRES_IN }
     );
     
     res.status(201).json({
@@ -188,7 +189,7 @@ router.post('/login', async (req, res) => {
     const token = jwt.sign(
       { id: user._id.toString(), role: user.role || 'user', email: user.email },
       JWT_SECRET,
-      { expiresIn: '1d' }
+      { expiresIn: JWT_EXPIRES_IN }
     );
     
     res.status(200).json({

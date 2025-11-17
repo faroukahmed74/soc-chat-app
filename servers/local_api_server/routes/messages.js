@@ -69,6 +69,7 @@ router.post('/', authenticateToken, async (req, res) => {
     const database = await connectDB();
     const messagesCollection = database.collection('messages');
     const chatsCollection = database.collection('chats');
+    const userObjectId = new ObjectId(req.user.id);
     
     // Check if user is a member of the chat
     const chat = await chatsCollection.findOne({
@@ -91,7 +92,11 @@ router.post('/', authenticateToken, async (req, res) => {
       updatedAt: new Date(),
       edited: false,
       readBy: [], // Initialize empty readBy array
-      status: 'sent' // Initialize status as 'sent'
+      status: 'sent', // Initialize status as 'sent'
+      deletedFor: [],
+      isDeletedForEveryone: false,
+      deletedAt: null,
+      deletedBy: null
     };
     
     const result = await messagesCollection.insertOne(newMessage);
@@ -107,6 +112,9 @@ router.post('/', authenticateToken, async (req, res) => {
             createdAt: new Date()
           },
           updatedAt: new Date()
+        },
+        $pull: {
+          deletedFor: { $in: chat.members }
         }
       }
     );
@@ -226,11 +234,97 @@ router.post('/', authenticateToken, async (req, res) => {
         updatedAt: createdMessage.updatedAt,
         edited: createdMessage.edited || false,
         readBy: createdMessage.readBy ? createdMessage.readBy.map(id => id.toString()) : [],
-        status: createdMessage.status || (createdMessage.readBy && createdMessage.readBy.length > 0 ? 'read' : 'sent')
+        status: createdMessage.status || (createdMessage.readBy && createdMessage.readBy.length > 0 ? 'read' : 'sent'),
+        isDeletedForEveryone: createdMessage.isDeletedForEveryone || false,
+        deletedFor: createdMessage.deletedFor ? createdMessage.deletedFor.map(id => id.toString()) : [],
+        deletedAt: createdMessage.deletedAt,
+        deletedBy: createdMessage.deletedBy ? createdMessage.deletedBy.toString() : null
       }
     });
   } catch (error) {
     console.error('Send message error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Media summary for a chat
+router.get('/:chatId/media-summary', authenticateToken, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    if (!ObjectId.isValid(chatId)) {
+      return res.status(400).json({ message: 'Invalid chat ID' });
+    }
+
+    const database = await connectDB();
+    const chatsCollection = database.collection('chats');
+    const messagesCollection = database.collection('messages');
+    const userObjectId = new ObjectId(req.user.id);
+    const chatObjectId = new ObjectId(chatId);
+
+    const chat = await chatsCollection.findOne({
+      _id: chatObjectId,
+      members: userObjectId
+    });
+
+    if (!chat) {
+      return res.status(404).json({ message: 'Chat not found or access denied' });
+    }
+
+    const pipeline = [
+      {
+        $match: {
+          chatId: chatObjectId,
+          deletedFor: { $ne: userObjectId },
+          isDeletedForEveryone: { $ne: true }
+        }
+      },
+      {
+        $addFields: {
+          normalizedType: {
+            $toLower: {
+              $ifNull: ['$messageType', '$type']
+            }
+          },
+          normalizedMediaUrl: {
+            $ifNull: ['$mediaUrl', '$media_url']
+          }
+        }
+      },
+      {
+        $match: {
+          normalizedType: { $ne: null },
+          normalizedType: { $ne: '' }
+        }
+      },
+      { $sort: { createdAt: -1 } },
+      {
+        $group: {
+          _id: '$normalizedType',
+          count: { $sum: 1 },
+          latestMediaAt: { $first: '$createdAt' },
+          sampleMediaUrl: { $first: '$normalizedMediaUrl' },
+          sampleContent: { $first: '$content' }
+        }
+      },
+      { $sort: { latestMediaAt: -1 } }
+    ];
+
+    const summary = await messagesCollection.aggregate(pipeline).toArray();
+
+    res.status(200).json({
+      chatId,
+      mediaSummary: summary.map(item => ({
+        type: item._id,
+        count: item.count,
+        latestMediaAt: item.latestMediaAt,
+        sampleMediaUrl: item.sampleMediaUrl
+          ? rewriteMediaUrlIfNeeded(item.sampleMediaUrl, req)
+          : '',
+        sampleContent: item.sampleContent || ''
+      }))
+    });
+  } catch (error) {
+    console.error('Media summary error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
@@ -240,6 +334,7 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
   try {
     const cid = (req.params.chatId ?? '').toString().trim();
     const { page = 1, limit = 50 } = req.query;
+    const typeParamRaw = ((req.query.type || req.query.types || '') ?? '').toString().trim();
     console.log('Messages GET debug:', {
       raw: req.params.chatId,
       cid,
@@ -259,11 +354,28 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
     const database = await connectDB();
     const messagesCollection = database.collection('messages');
     const chatsCollection = database.collection('chats');
+    const userObjectId = new ObjectId(req.user.id);
+
+    let typeFilters = [];
+    if (typeParamRaw.length > 0) {
+      typeFilters = typeParamRaw
+        .split(',')
+        .map(t => t.trim())
+        .filter(Boolean);
+    }
+    const normalizedTypes = Array.from(new Set([
+      ...typeFilters,
+      ...typeFilters.map(t => t.toLowerCase())
+    ]));
     
     // Check if user is a member of the chat
     const chat = await chatsCollection.findOne({
       _id: chatObjectId,
-      members: new ObjectId(req.user.id)
+      members: userObjectId,
+      $or: [
+        { deletedFor: { $exists: false } },
+        { deletedFor: { $ne: userObjectId } }
+      ]
     });
     
     if (!chat) {
@@ -273,16 +385,32 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
     // Calculate pagination
     const skip = (parseInt(page) - 1) * parseInt(limit);
     
+    const messageQuery = { 
+      chatId: chatObjectId,
+      deletedFor: { $ne: userObjectId }
+    };
+    
+    if (normalizedTypes.length > 0) {
+      messageQuery.$and = [
+        {
+          $or: [
+            { messageType: { $in: normalizedTypes } },
+            { type: { $in: normalizedTypes } }
+          ]
+        }
+      ];
+    }
+    
     // Get messages for the chat
     const messages = await messagesCollection
-      .find({ chatId: chatObjectId })
+      .find(messageQuery)
       .sort({ createdAt: -1 })
       .skip(skip)
       .limit(parseInt(limit))
       .toArray();
     
     // Get total count for pagination
-    const totalMessages = await messagesCollection.countDocuments({ chatId: chatObjectId });
+    const totalMessages = await messagesCollection.countDocuments(messageQuery);
     
     // Format the response - ensure all fields are included
     const formattedMessages = messages.map(msg => {
@@ -298,20 +426,36 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
         updatedAt: msg.updatedAt,
         edited: msg.edited || false,
         readBy: msg.readBy ? msg.readBy.map(id => id.toString()) : [],
-        status: msg.status || (msg.readBy && msg.readBy.length > 0 ? 'read' : 'sent')
+        status: msg.status || (msg.readBy && msg.readBy.length > 0 ? 'read' : 'sent'),
+        isDeletedForEveryone: msg.isDeletedForEveryone || false,
+        deletedFor: msg.deletedFor ? msg.deletedFor.map(id => id.toString()) : [],
+        deletedAt: msg.deletedAt,
+        deletedBy: msg.deletedBy ? msg.deletedBy.toString() : null,
+        replyTo: msg.replyTo ? msg.replyTo.toString() : null,
+        replyToContent: msg.replyToContent || '',
+        replyToSenderName: msg.replyToSenderName || ''
       };
       
-      // Ensure mediaUrl is included - check multiple possible field names
-      // Always include mediaUrl field, even if empty, so the client can handle it
-      if (msg.mediaUrl) {
-        formatted.mediaUrl = rewriteMediaUrlIfNeeded(msg.mediaUrl, req);
-      } else if (msg.media_url) {
-        formatted.mediaUrl = rewriteMediaUrlIfNeeded(msg.media_url, req);
-      } else if (msg.url) {
-        formatted.mediaUrl = rewriteMediaUrlIfNeeded(msg.url, req);
-      } else {
-        // Include empty string so client knows mediaUrl field exists but is empty
+      if (msg.isDeletedForEveryone) {
+        formatted.content = '';
         formatted.mediaUrl = '';
+      }
+      
+      if (msg.isDeletedForEveryone) {
+        formatted.mediaUrl = '';
+      } else {
+        // Ensure mediaUrl is included - check multiple possible field names
+        // Always include mediaUrl field, even if empty, so the client can handle it
+        if (msg.mediaUrl) {
+          formatted.mediaUrl = rewriteMediaUrlIfNeeded(msg.mediaUrl, req);
+        } else if (msg.media_url) {
+          formatted.mediaUrl = rewriteMediaUrlIfNeeded(msg.media_url, req);
+        } else if (msg.url) {
+          formatted.mediaUrl = rewriteMediaUrlIfNeeded(msg.url, req);
+        } else {
+          // Include empty string so client knows mediaUrl field exists but is empty
+          formatted.mediaUrl = '';
+        }
       }
       
       return formatted;
@@ -429,20 +573,36 @@ router.put('/:messageId', authenticateToken, async (req, res) => {
     // Get the updated message
     const updatedMessage = await messagesCollection.findOne({ _id: new ObjectId(messageId) });
     
+    const responsePayload = {
+      _id: updatedMessage._id.toString(),
+      id: updatedMessage._id.toString(),
+      chatId: updatedMessage.chatId.toString(),
+      senderId: updatedMessage.senderId.toString(),
+      content: updatedMessage.content,
+      type: updatedMessage.type,
+      mediaUrl: rewriteMediaUrlIfNeeded(updatedMessage.mediaUrl || null, req),
+      createdAt: updatedMessage.createdAt,
+      updatedAt: updatedMessage.updatedAt,
+      edited: updatedMessage.edited,
+      isDeletedForEveryone: updatedMessage.isDeletedForEveryone || false,
+      deletedFor: updatedMessage.deletedFor ? updatedMessage.deletedFor.map(id => id.toString()) : [],
+      deletedAt: updatedMessage.deletedAt,
+      deletedBy: updatedMessage.deletedBy ? updatedMessage.deletedBy.toString() : null
+    };
+
+    // Emit socket update
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(updatedMessage.chatId.toString()).emit('message_updated', responsePayload);
+      }
+    } catch (socketErr) {
+      console.warn('Socket emission failed (message_updated):', socketErr?.message || socketErr);
+    }
+
     res.status(200).json({
       message: 'Message updated successfully',
-      messageData: {
-        _id: updatedMessage._id.toString(),
-        id: updatedMessage._id.toString(),
-        chatId: updatedMessage.chatId.toString(),
-        senderId: updatedMessage.senderId.toString(),
-        content: updatedMessage.content,
-        type: updatedMessage.type,
-        mediaUrl: rewriteMediaUrlIfNeeded(updatedMessage.mediaUrl || null, req),
-        createdAt: updatedMessage.createdAt,
-        updatedAt: updatedMessage.updatedAt,
-        edited: updatedMessage.edited
-      }
+      messageData: responsePayload
     });
   } catch (error) {
     console.error('Update message error:', error);
@@ -450,34 +610,118 @@ router.put('/:messageId', authenticateToken, async (req, res) => {
   }
 });
 
-// Delete a message
-router.delete('/:messageId', authenticateToken, async (req, res) => {
+async function performMessageDeletion(req, res, scopeOverride) {
   try {
     const { messageId } = req.params;
-    
-    // Validate ObjectId
+    const scope = scopeOverride || (req.body?.scope ?? 'self');
+    const normalizedScope = scope === 'everyone' ? 'everyone' : 'self';
+
     if (!ObjectId.isValid(messageId)) {
       return res.status(400).json({ message: 'Invalid message ID' });
     }
-    
+
     const database = await connectDB();
     const messagesCollection = database.collection('messages');
-    
-    // Delete the message (only if user is the sender)
-    const result = await messagesCollection.deleteOne({
-      _id: new ObjectId(messageId),
-      senderId: new ObjectId(req.user.id)
-    });
-    
-    if (result.deletedCount === 0) {
-      return res.status(404).json({ message: 'Message not found or you are not authorized to delete it' });
+    const chatsCollection = database.collection('chats');
+
+    const message = await messagesCollection.findOne({ _id: new ObjectId(messageId) });
+
+    if (!message) {
+      return res.status(404).json({ message: 'Message not found' });
     }
-    
-    res.status(200).json({ message: 'Message deleted successfully' });
+
+    const userObjectId = new ObjectId(req.user.id);
+    const chatObjectId = typeof message.chatId === 'string'
+      ? new ObjectId(message.chatId)
+      : message.chatId;
+
+    if (normalizedScope === 'self') {
+      await messagesCollection.updateOne(
+        { _id: message._id },
+        {
+          $addToSet: { deletedFor: userObjectId },
+          $set: { updatedAt: new Date() }
+        }
+      );
+
+      return res.status(200).json({
+        message: 'Message hidden for you',
+        scope: 'self',
+        messageId: messageId
+      });
+    }
+
+    // Ensure only sender can delete for everyone
+    if (message.senderId.toString() !== req.user.id.toString()) {
+      return res.status(403).json({ message: 'Only the sender can delete this message for everyone' });
+    }
+
+    const updateResult = await messagesCollection.updateOne(
+      { _id: message._id },
+      {
+        $set: {
+          content: '',
+          mediaUrl: '',
+          updatedAt: new Date(),
+          isDeletedForEveryone: true,
+          deletedAt: new Date(),
+          deletedBy: userObjectId
+        }
+      }
+    );
+
+    if (updateResult.matchedCount === 0) {
+      return res.status(404).json({ message: 'Message not found' });
+    }
+
+    // When a new deletion happens, ensure chat is visible again to members (in case it was hidden)
+    try {
+      await chatsCollection.updateOne(
+        { _id: chatObjectId },
+        {
+          $pull: { deletedFor: userObjectId }
+        }
+      );
+    } catch (_) {
+      // Non-critical
+    }
+
+    // Emit socket event
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to(chatObjectId.toString()).emit('message_deleted', {
+          id: message._id.toString(),
+          messageId: message._id.toString(),
+          chatId: chatObjectId.toString(),
+          scope: 'everyone',
+          deletedBy: req.user.id.toString(),
+          deletedAt: new Date().toISOString()
+        });
+      }
+    } catch (socketErr) {
+      console.warn('Socket emission failed (message_deleted):', socketErr?.message || socketErr);
+    }
+
+    return res.status(200).json({
+      message: 'Message deleted for everyone',
+      scope: 'everyone',
+      messageId: messageId
+    });
   } catch (error) {
     console.error('Delete message error:', error);
-    res.status(500).json({ message: 'Server error' });
+    return res.status(500).json({ message: 'Server error' });
   }
+}
+
+// Delete/hide a message via PATCH
+router.patch('/:messageId/delete', authenticateToken, async (req, res) => {
+  await performMessageDeletion(req, res);
+});
+
+// Backward compatibility: DELETE performs a delete-for-everyone when sender issues it
+router.delete('/:messageId', authenticateToken, async (req, res) => {
+  await performMessageDeletion(req, res, 'everyone');
 });
 
 // Reply to a message
@@ -548,6 +792,10 @@ router.post('/:messageId/reply', authenticateToken, async (req, res) => {
       replyTo: messageId,
       replyToContent: originalMessage.content?.substring(0, 100) || '',
       replyToSenderName: originalSenderName,
+      deletedFor: [],
+      isDeletedForEveryone: false,
+      deletedAt: null,
+      deletedBy: null
     };
 
     const result = await messagesCollection.insertOne(replyMessage);
@@ -584,7 +832,8 @@ router.post('/:messageId/reply', authenticateToken, async (req, res) => {
             timestamp: now.toISOString(),
             createdAt: now,
           },
-        }
+        },
+        $pull: { deletedFor: { $in: chat.members } }
       }
     );
 

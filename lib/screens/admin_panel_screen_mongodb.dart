@@ -18,6 +18,7 @@ import '../services/logger_service.dart';
 import '../theme/app_design_system.dart';
 import '../config/database_config.dart';
 import '../utils/responsive_utils.dart';
+import '../utils/cairo_time_utils.dart';
 
 class AdminPanelScreenMongoDB extends StatefulWidget {
   const AdminPanelScreenMongoDB({Key? key}) : super(key: key);
@@ -131,29 +132,29 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
         if (serverTimeStr != null) {
           // Parse server time and convert to Cairo timezone (UTC+2)
           final utcTime = DateTime.parse(serverTimeStr).toUtc();
-          final cairoTime = utcTime.add(const Duration(hours: 2)); // Cairo is UTC+2
+          final cairoTime = CairoTimeUtils.toCairo(utcTime); // Cairo timezone
           setState(() {
             _serverTime = cairoTime;
           });
         } else {
           // Use local time and convert to Cairo if needed
-          final now = DateTime.now().toUtc();
-          final cairoTime = now.add(const Duration(hours: 2));
+          final now = DateTime.now();
+          final cairoTime = CairoTimeUtils.toCairo(now);
           setState(() {
             _serverTime = cairoTime;
           });
         }
       } else {
-        final now = DateTime.now().toUtc();
-        final cairoTime = now.add(const Duration(hours: 2));
+        final now = DateTime.now();
+        final cairoTime = CairoTimeUtils.toCairo(now);
         setState(() {
           _serverTime = cairoTime;
         });
       }
     } catch (e) {
       // Fallback to Cairo time
-      final now = DateTime.now().toUtc();
-      final cairoTime = now.add(const Duration(hours: 2));
+      final now = DateTime.now();
+      final cairoTime = CairoTimeUtils.toCairo(now);
       setState(() {
         _serverTime = cairoTime;
       });
@@ -4614,8 +4615,8 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                     String createdAtDisplay = '';
                     if (createdAt != null) {
                       try {
-                        final dt = DateTime.parse(createdAt.toString()).toUtc();
-                        final cairo = dt.add(const Duration(hours: 2));
+                        final dt = DateTime.parse(createdAt.toString());
+                        final cairo = CairoTimeUtils.toCairo(dt);
                         createdAtDisplay = DateFormat('yyyy-MM-dd HH:mm').format(cairo);
                       } catch (_) {
                         createdAtDisplay = createdAt.toString();
@@ -5448,7 +5449,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
         if (timestampRaw is String && timestampRaw.isNotEmpty) {
           try {
             final dt = DateTime.parse(timestampRaw);
-            final cairo = dt.toUtc().add(const Duration(hours: 2));
+            final cairo = CairoTimeUtils.toCairo(dt);
             timestampDisplay = DateFormat('yyyy-MM-dd HH:mm:ss').format(cairo);
           } catch (_) {
             timestampDisplay = timestampRaw.toString();
@@ -5775,7 +5776,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
         if (timestampRaw is String && timestampRaw.isNotEmpty) {
           try {
             final dt = DateTime.parse(timestampRaw);
-            final cairo = dt.toUtc().add(const Duration(hours: 2));
+            final cairo = CairoTimeUtils.toCairo(dt);
             timestampDisplay = DateFormat('yyyy-MM-dd HH:mm:ss').format(cairo);
           } catch (_) {
             timestampDisplay = timestampRaw.toString();
@@ -5930,7 +5931,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
         if (timestampRaw is String && timestampRaw.isNotEmpty) {
           try {
             final dt = DateTime.parse(timestampRaw);
-            final cairo = dt.toUtc().add(const Duration(hours: 2));
+            final cairo = CairoTimeUtils.toCairo(dt);
             timestampDisplay = DateFormat('yyyy-MM-dd HH:mm:ss').format(cairo);
           } catch (_) {
             timestampDisplay = timestampRaw.toString();

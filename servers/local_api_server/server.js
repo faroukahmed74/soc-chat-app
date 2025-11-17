@@ -342,8 +342,15 @@ let connectionAttempts = 0;
 let totalQueries = 0;
 let failedQueries = 0;
 
-// JWT Secret
+// JWT configuration
 const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_here';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+const SOCKET_TOKEN_REFRESH_GRACE_DAYS = parseInt(
+  process.env.SOCKET_TOKEN_REFRESH_GRACE_DAYS || '30',
+  10
+);
+const SOCKET_TOKEN_REFRESH_GRACE_MS = SOCKET_TOKEN_REFRESH_GRACE_DAYS * 24 * 60 * 60 * 1000;
+const SOCKET_TOKEN_REFRESH_EVENT = 'auth:token_refreshed';
 
 // Connect to MongoDB with retry logic and enhanced monitoring
 async function connectToMongo(retryCount = 0) {
@@ -931,7 +938,7 @@ app.post('/api/auth/register', async (req, res) => {
         const token = jwt.sign(
           { id: existingUser._id, email, displayName: existingUser.displayName || finalDisplayName, role: 'user' },
           JWT_SECRET,
-          { expiresIn: '7d' }
+          { expiresIn: JWT_EXPIRES_IN }
         );
         return res.status(200).json({
           token,
@@ -973,7 +980,7 @@ app.post('/api/auth/register', async (req, res) => {
     const token = jwt.sign(
       { id: result.insertedId, email, displayName: finalDisplayName, role: 'user' },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: JWT_EXPIRES_IN }
     );
     
     res.status(201).json({
@@ -1042,7 +1049,7 @@ app.post('/api/auth/login', async (req, res) => {
     const token = jwt.sign(
       { id: user._id.toString(), email: user.email, displayName: user.displayName, role: user.role || 'user' },
       JWT_SECRET,
-      { expiresIn: '7d' }
+      { expiresIn: JWT_EXPIRES_IN }
     );
     
     res.json({
@@ -2867,7 +2874,7 @@ app.patch('/api/chats/:chatId/read', authenticateToken, async (req, res) => {
   }
 });
 
-// Socket.IO authentication middleware
+// Socket.IO authentication middleware with graceful token refresh
 io.use(async (socket, next) => {
   const token = socket.handshake.auth.token;
   
@@ -2875,37 +2882,108 @@ io.use(async (socket, next) => {
     return next(new Error('Authentication error: Token required'));
   }
   
+  let decoded;
+  let refreshedToken = null;
+  let tokenExpiredAt = null;
+  
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your_secure_jwt_secret_key_change_this_in_production');
-    // Handle both uid and id for compatibility, ensure it's always a string
-    const userId = decoded.uid || decoded.id;
-    socket.userId = userId ? userId.toString() : null;
-    socket.user = decoded;
-    
-    if (!socket.userId) {
-      return next(new Error('Authentication error: No user ID in token'));
-    }
-    
-    console.log(`Socket authenticated for user: ${socket.userId} (type: ${typeof socket.userId})`);
-    
-    // Update user's online status
-    if (db) {
-      try {
-        await db.collection('users').updateOne(
-          { _id: new ObjectId(socket.userId) },
-          { $set: { isOnline: true, lastSeen: new Date() } }
-        );
-      } catch (updateError) {
-        console.error(`Failed to update online status for user ${socket.userId}:`, updateError);
-        // Don't fail authentication if update fails
-      }
-    }
-    
-    next();
+    decoded = jwt.verify(token, JWT_SECRET);
   } catch (error) {
-    console.error('Socket authentication error:', error);
-    return next(new Error('Authentication error: Invalid token'));
+    if (error && error.name === 'TokenExpiredError') {
+      tokenExpiredAt = error.expiredAt ? new Date(error.expiredAt) : null;
+      const decodedForLog = jwt.decode(token);
+      console.warn(
+        `Socket token expired for user: ${decodedForLog?.id || decodedForLog?.uid || 'unknown'} (expired at ${tokenExpiredAt?.toISOString() || 'unknown'})`
+      );
+      const expiredAgeMs = tokenExpiredAt ? Date.now() - tokenExpiredAt.getTime() : Number.MAX_SAFE_INTEGER;
+      
+      if (expiredAgeMs > SOCKET_TOKEN_REFRESH_GRACE_MS) {
+        return next(new Error('Authentication error: Token expired'));
+      }
+      
+      try {
+        decoded = jwt.verify(token, JWT_SECRET, { ignoreExpiration: true });
+      } catch (decodeError) {
+        console.error('Failed to decode expired socket token for refresh:', decodeError);
+        return next(new Error('Authentication error: Token expired'));
+      }
+      
+      const userIdForRefresh = decoded?.uid || decoded?.id;
+      if (!userIdForRefresh) {
+        return next(new Error('Authentication error: Token expired'));
+      }
+      
+      if (!db) {
+        return next(new Error('Authentication error: Token expired'));
+      }
+      
+      try {
+        const userRecord = await db.collection('users').findOne(
+          { _id: new ObjectId(userIdForRefresh) },
+          { projection: { email: 1, displayName: 1, role: 1 } }
+        );
+        
+        if (!userRecord) {
+          return next(new Error('Authentication error: Token expired'));
+        }
+        
+        refreshedToken = jwt.sign(
+          {
+            id: userRecord._id.toString(),
+            email: userRecord.email,
+            displayName: userRecord.displayName,
+            role: userRecord.role || 'user'
+          },
+          JWT_SECRET,
+          { expiresIn: JWT_EXPIRES_IN }
+        );
+        
+        decoded = {
+          ...decoded,
+          id: userRecord._id.toString(),
+          uid: undefined,
+        };
+        
+      } catch (refreshError) {
+        console.error('Socket token refresh failed:', refreshError);
+        return next(new Error('Authentication error: Token expired'));
+      }
+    } else {
+      console.error('Socket authentication error:', error);
+      return next(new Error('Authentication error: Invalid token'));
+    }
   }
+  
+  const userId = decoded?.uid || decoded?.id;
+  socket.userId = userId ? userId.toString() : null;
+  socket.user = decoded;
+  
+  if (!socket.userId) {
+    return next(new Error('Authentication error: No user ID in token'));
+  }
+  
+  if (refreshedToken) {
+    socket.refreshedAuthToken = refreshedToken;
+    socket.tokenRefreshedAt = new Date();
+    socket.tokenExpiredAt = tokenExpiredAt;
+  }
+  
+  console.log(`Socket authenticated for user: ${socket.userId} (type: ${typeof socket.userId})`);
+  
+  // Update user's online status
+  if (db) {
+    try {
+      await db.collection('users').updateOne(
+        { _id: new ObjectId(socket.userId) },
+        { $set: { isOnline: true, lastSeen: new Date() } }
+      );
+    } catch (updateError) {
+      console.error(`Failed to update online status for user ${socket.userId}:`, updateError);
+      // Don't fail authentication if update fails
+    }
+  }
+  
+  next();
 });
 
 // Socket.IO
@@ -2914,6 +2992,17 @@ io.on('connection', async (socket) => {
   console.log(`   Socket ID: ${socket.id}`);
   console.log(`   User ID type: ${typeof socket.userId}`);
   console.log(`   User ID value: "${socket.userId}"`);
+  
+  if (socket.refreshedAuthToken) {
+    const expiredAtIso = socket.tokenExpiredAt instanceof Date ? socket.tokenExpiredAt.toISOString() : undefined;
+    socket.emit(SOCKET_TOKEN_REFRESH_EVENT, {
+      token: socket.refreshedAuthToken,
+      expiresIn: JWT_EXPIRES_IN,
+      refreshedAt: new Date().toISOString(),
+      expiredAt: expiredAtIso,
+    });
+    console.log(`🔁 Issued refreshed auth token for user ${socket.userId} after socket connection`);
+  }
   
   // Join user to their personal room using socket.userId
   socket.join(socket.userId);

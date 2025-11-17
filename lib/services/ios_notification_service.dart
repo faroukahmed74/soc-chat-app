@@ -119,6 +119,8 @@ class IOSNotificationService {
           .setAuth({'token': token})
           .build());
 
+      _registerTokenRefreshHandler();
+
       _socket!.on('connect', (_) {
         _isConnected = true;
         Log.i('✅ iOS socket connected', 'IOS_NOTIF');
@@ -314,6 +316,35 @@ class IOSNotificationService {
     } catch (e) {
       Log.e('Error syncing missed messages (iOS)', 'IOS_NOTIF', e);
     }
+  }
+
+  void _registerTokenRefreshHandler() {
+    _socket?.off('auth:token_refreshed');
+    _socket?.on('auth:token_refreshed', (payload) async {
+      try {
+        final token = _extractToken(payload);
+        if (token == null || token.isEmpty) {
+          return;
+        }
+        await DatabaseConfig.setAuthToken(token);
+        Log.i('iOS socket stored refreshed auth token', 'IOS_NOTIF');
+      } catch (e) {
+        Log.e('Failed to persist refreshed auth token (iOS)', 'IOS_NOTIF', e);
+      }
+    });
+  }
+
+  String? _extractToken(dynamic payload) {
+    if (payload is String && payload.isNotEmpty) {
+      return payload;
+    }
+    if (payload is Map) {
+      final token = payload['token'];
+      if (token is String && token.isNotEmpty) {
+        return token;
+      }
+    }
+    return null;
   }
 
   /// Dispose service

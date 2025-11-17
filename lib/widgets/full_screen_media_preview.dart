@@ -12,6 +12,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:html' if (dart.library.io) '../widgets/html_stub.dart' as html;
 import '../services/logger_service.dart';
+import '../services/media_download_service.dart';
 import '../utils/responsive_utils.dart';
 
 /// Enhanced full-screen media preview widget
@@ -464,59 +465,11 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
   }
 
   Future<void> _downloadMediaMobile(String url) async {
-    try {
-      // Import path_provider for mobile downloads
-      if (kIsWeb) return;
-      
-      // Add headers for ngrok URLs
-      final headers = <String, String>{
-        'ngrok-skip-browser-warning': 'true',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10) Mobile',
-      };
-      
-      final response = await http.get(Uri.parse(url), headers: headers);
-      if (response.statusCode != 200) {
-        throw Exception('Failed to download: HTTP ${response.statusCode}');
-      }
-
-      // Get file name from URL or use default
-      String fileName = widget.fileName ?? 'download';
-      final uri = Uri.parse(url);
-      final pathSegments = uri.pathSegments;
-      if (pathSegments.isNotEmpty) {
-        final lastSegment = pathSegments.last;
-        if (lastSegment.contains('.')) {
-          fileName = lastSegment;
-        } else {
-          // Add extension based on media type
-          final extension = widget.mediaType == 'video' 
-              ? '.mp4' 
-              : widget.mediaType == 'image' 
-                  ? '.jpg' 
-                  : widget.mediaType == 'audio' || widget.mediaType == 'voice'
-                      ? '.mp3'
-                      : widget.mediaType == 'document'
-                          ? '.pdf'
-                          : '.bin';
-          fileName = '$fileName$extension';
-        }
-      }
-
-      // Use path_provider to get Downloads directory (or Documents on iOS)
-      final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/$fileName';
-      final file = File(filePath);
-      
-      await file.writeAsBytes(response.bodyBytes);
-      
-      // Try to open the file or show location
-      if (await file.exists()) {
-        Log.i('File downloaded to: $filePath', 'FULL_SCREEN_MEDIA_PREVIEW');
-      }
-    } catch (e) {
-      Log.e('Error in mobile download', 'FULL_SCREEN_MEDIA_PREVIEW', e);
-      rethrow;
-    }
+    await MediaDownloadService.saveToDevice(
+      url: url,
+      mediaType: widget.mediaType,
+      fileName: widget.fileName,
+    );
   }
 
   String _getFileNameFromUrl(String url) {

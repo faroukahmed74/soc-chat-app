@@ -15,6 +15,7 @@ import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../utils/responsive_utils.dart';
 import '../services/enhanced_unified_media_service.dart';
+import '../services/media_download_service.dart';
 
 /// Enhanced responsive media preview widget
 class EnhancedResponsiveMediaPreview extends StatefulWidget {
@@ -238,23 +239,31 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
   }
 
   void _downloadMedia() async {
+    final resolvedUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
     try {
-      final uri = Uri.parse(_resolveWebSameOriginUrl(widget.mediaUrl));
-      
-      // For documents, try to open in browser first
-      if (widget.mediaType == 'document') {
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } else {
-          _showErrorSnackBar('Cannot open document. Please try downloading manually.');
-        }
-      } else {
-        // For images and videos, try to open in browser
+      if (kIsWeb) {
+        final uri = Uri.parse(resolvedUrl);
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
         } else {
           _showErrorSnackBar('Cannot open media');
         }
+        return;
+      }
+
+      await MediaDownloadService.saveToDevice(
+        url: resolvedUrl,
+        mediaType: widget.mediaType,
+        fileName: widget.fileName,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Saved to device'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       Log.e('Error downloading media', 'ENHANCED_RESPONSIVE_MEDIA_PREVIEW', e);
@@ -926,23 +935,31 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
   }
 
   void _downloadMedia() async {
+    final resolvedUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
     try {
-      final uri = Uri.parse(_resolveWebSameOriginUrl(widget.mediaUrl));
-      
-      // For documents, try to open in browser first
-      if (widget.mediaType == 'document') {
-        if (await canLaunchUrl(uri)) {
-          await launchUrl(uri, mode: LaunchMode.externalApplication);
-        } else {
-          _showErrorSnackBar('Cannot open document. Please try downloading manually.');
-        }
-      } else {
-        // For images and videos, try to open in browser
+      if (kIsWeb) {
+        final uri = Uri.parse(resolvedUrl);
         if (await canLaunchUrl(uri)) {
           await launchUrl(uri, mode: LaunchMode.externalApplication);
         } else {
           _showErrorSnackBar('Cannot open media');
         }
+        return;
+      }
+
+      await MediaDownloadService.saveToDevice(
+        url: resolvedUrl,
+        mediaType: widget.mediaType,
+        fileName: widget.fileName,
+      );
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Saved to device'),
+            backgroundColor: Colors.green,
+          ),
+        );
       }
     } catch (e) {
       Log.e('Error downloading media', 'ENHANCED_FULL_SCREEN_MEDIA_PREVIEW', e);
@@ -1282,3 +1299,5 @@ String _resolveWebSameOriginUrl(String url) {
     return url;
   }
 }
+
+

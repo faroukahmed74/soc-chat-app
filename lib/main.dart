@@ -633,17 +633,9 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           Log.w('⚠️ Notification permission not granted via service', 'MAIN_APP');
         }
         
-        // Send a test notification to verify setup (only if permission granted)
-        if (hasNotificationPermission) {
-          try {
-            await Future.delayed(const Duration(seconds: 2));
-            await enhanced.sendTestNotification();
-            Log.i('✅ Test notification sent', 'MAIN_APP');
-          } catch (e) {
-            Log.e('Failed to send test notification', 'MAIN_APP', e);
-          }
-        } else {
-          Log.w('Skipping test notification - permission not granted', 'MAIN_APP');
+        // Previously we sent a test notification automatically; disable for production
+        if (!hasNotificationPermission) {
+          Log.w('Skipping notification tests - permission not granted', 'MAIN_APP');
         }
       } catch (e) {
         Log.e('Enhanced notification service failed', 'MAIN_APP', e);

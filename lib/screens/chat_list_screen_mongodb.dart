@@ -17,6 +17,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:io';
+import '../utils/cairo_time_utils.dart';
 import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/physical_auth_service.dart';
@@ -679,9 +680,8 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
 
   String _formatTimestamp(DateTime? timestamp) {
     if (timestamp == null) return '';
-    // Convert to Cairo time (UTC+2)
-    final cairo = timestamp.toUtc().add(const Duration(hours: 2));
-    final nowCairo = DateTime.now().toUtc().add(const Duration(hours: 2));
+    final cairo = CairoTimeUtils.toCairo(timestamp);
+    final nowCairo = CairoTimeUtils.now();
     final difference = nowCairo.difference(cairo);
 
     // Today - just show time

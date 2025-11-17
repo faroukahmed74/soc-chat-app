@@ -2,6 +2,7 @@ import 'package:socket_io_client/socket_io_client.dart' as IO;
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/database_config.dart';
+import 'local_auth_service.dart';
 import 'logger_service.dart';
 
 typedef MessageCallback = void Function(Map<String, dynamic> message);
@@ -12,6 +13,7 @@ class RealtimeService {
 
   IO.Socket? _socket;
   bool _connecting = false;
+  bool _handlingTokenExpiry = false;
 
   bool get isConnected => _socket?.connected == true;
 
@@ -63,6 +65,8 @@ class RealtimeService {
             .build());
       }
 
+      _registerTokenRefreshHandler();
+
       _socket!.on('connect', (_) {
         Log.i('Realtime connected', 'REALTIME');
         _connecting = false;
@@ -71,8 +75,11 @@ class RealtimeService {
         Log.w('Realtime disconnected', 'REALTIME');
         _connecting = false;
       });
-      _socket!.on('connect_error', (e) {
+      _socket!.on('connect_error', (e) async {
         Log.e('Realtime connect error', 'REALTIME', e);
+        if (_isTokenExpiredError(e)) {
+          await _handleTokenExpired();
+        }
         _connecting = false;
       });
       
@@ -137,11 +144,93 @@ class RealtimeService {
     });
   }
 
+  void onMessageUpdated(MessageCallback handler) {
+    _socket?.off('message_updated');
+    _socket?.on('message_updated', (data) {
+      try {
+        if (data is Map) {
+          handler(Map<String, dynamic>.from(data));
+        } else if (data is Map<dynamic, dynamic>) {
+          handler(Map<String, dynamic>.from(data));
+        }
+      } catch (e) {
+        Log.e('Realtime message update parse error', 'REALTIME', e);
+      }
+    });
+  }
+
+  void onMessageDeleted(MessageCallback handler) {
+    _socket?.off('message_deleted');
+    _socket?.on('message_deleted', (data) {
+      try {
+        if (data is Map) {
+          handler(Map<String, dynamic>.from(data));
+        } else if (data is Map<dynamic, dynamic>) {
+          handler(Map<String, dynamic>.from(data));
+        }
+      } catch (e) {
+        Log.e('Realtime message delete parse error', 'REALTIME', e);
+      }
+    });
+  }
+
   void dispose() {
     try {
       _socket?.dispose();
       _socket = null;
     } catch (_) {}
+  }
+
+  bool _isTokenExpiredError(dynamic error) {
+    try {
+      final message = error?.toString().toLowerCase();
+      if (message == null || message.isEmpty) return false;
+      return message.contains('token expired') || message.contains('jwt expired');
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> _handleTokenExpired() async {
+    if (_handlingTokenExpiry) return;
+    _handlingTokenExpiry = true;
+    try {
+      Log.w('Auth token expired - clearing stored credentials to force re-login', 'REALTIME');
+      await LocalAuthService.logout();
+    } catch (e) {
+      Log.e('Failed to clear credentials after token expiry', 'REALTIME', e);
+    } finally {
+      _handlingTokenExpiry = false;
+    }
+  }
+
+  void _registerTokenRefreshHandler() {
+    _socket?.off('auth:token_refreshed');
+    _socket?.on('auth:token_refreshed', (payload) async {
+      try {
+        final token = _extractToken(payload);
+        if (token == null || token.isEmpty) {
+          return;
+        }
+        await DatabaseConfig.setAuthToken(token);
+        Log.i('Realtime received refreshed auth token from server', 'REALTIME');
+      } catch (e) {
+        Log.e('Failed to persist refreshed auth token', 'REALTIME', e);
+      }
+    });
+  }
+
+  String? _extractToken(dynamic payload) {
+    if (payload is String) {
+      return payload;
+    }
+    if (payload is Map) {
+      final token = payload['token'];
+      if (token is String) {
+        return token;
+      }
+    }
+    return null;
   }
 }
 

@@ -1,10 +1,10 @@
 {
-  "version": "1.0.24",
-  "build_number": "24",
+  "version": "1.0.25",
+  "build_number": "25",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.24 - Android & iOS Production FCM Notifications Complete Fix:\n- Fixed server to always send FCM notifications for iOS devices (even when online)\n- Uploaded Production APNs Authentication Key to Firebase Console\n- Enhanced iOS FCM notification handling for Release/TestFlight/App Store builds\n- Improved server-side platform detection for iOS vs Android\n- Fixed notification delivery for background and terminated app states\n- Enhanced logging for iOS FCM notification debugging\n- All iOS FCM configurations verified and optimized for production\n- Server now properly handles iOS notifications in all app states",
+  "release_notes": "SOC Chat App v1.0.25 - Media Hub & Image Editing:\n- Added in-app media hub per chat with tabs for images, videos, and documents\n- Enabled photo editing (crop / rotate) before sending via camera or gallery\n- Fixed Android camera/gallery crashes by bundling UCrop activity and FileProvider\n- Unified media download handling with runtime storage permissions\n- Various stability fixes and logging improvements",
   "force_update": false,
   "minimum_version": "1.0.5",
-  "update_available": false,
-  "last_updated": "2025-11-16T12:12:00Z"
+  "update_available": true,
+  "last_updated": "2025-11-17T12:00:00Z"
 }

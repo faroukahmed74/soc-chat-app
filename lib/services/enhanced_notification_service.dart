@@ -13,6 +13,7 @@ import '../config/database_config.dart';
 import 'logger_service.dart';
 import 'local_auth_service.dart';
 import '../main.dart' show navigatorKey;
+import 'notification_delivery_coordinator.dart';
 import 'web_notification_adapter_stub.dart'
     if (dart.library.html) 'web_notification_adapter.dart' as web_notif;
 
@@ -183,6 +184,8 @@ class EnhancedNotificationService {
           .setAuth({'token': _authToken})
           .build());
 
+      _registerTokenRefreshHandler();
+
       _socket!.on('connect', (_) {
         _socketConnected = true;
         Log.i('✅ Socket connected to notification server', 'ENHANCED_NOTIF');
@@ -232,6 +235,10 @@ class EnhancedNotificationService {
 
   Future<void> _handleSocketNotification(dynamic data) async {
     try {
+      if (await _shouldDeferToBackgroundService()) {
+        Log.i('Skipping socket notification - background service delivering notifications', 'ENHANCED_NOTIF');
+        return;
+      }
       if (data is Map<String, dynamic>) {
         final title = data['title'] ?? 'New Notification';
         final body = data['body'] ?? '';
@@ -251,6 +258,10 @@ class EnhancedNotificationService {
 
   Future<void> _handleChatNotification(dynamic data) async {
     try {
+      if (await _shouldDeferToBackgroundService()) {
+        Log.i('Skipping chat notification - background service delivering notifications', 'ENHANCED_NOTIF');
+        return;
+      }
       if (data is Map<String, dynamic>) {
         final title = data['title'] ?? 'New Chat Message';
         final body = data['body'] ?? '';
@@ -291,6 +302,10 @@ class EnhancedNotificationService {
 
   Future<void> _handleBroadcastNotification(dynamic data) async {
     try {
+      if (await _shouldDeferToBackgroundService()) {
+        Log.i('Skipping broadcast notification - background service delivering notifications', 'ENHANCED_NOTIF');
+        return;
+      }
       print('📢 [BROADCAST] _handleBroadcastNotification called with data: $data');
       if (data is Map<String, dynamic>) {
         final title = data['title'] ?? '📢 Broadcast';
@@ -951,5 +966,43 @@ class EnhancedNotificationService {
   /// Dispose service
   void dispose() {
     disconnect();
+  }
+
+  Future<bool> _shouldDeferToBackgroundService() async {
+    try {
+      return await NotificationDeliveryCoordinator.isBackgroundAuthorityActive();
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _registerTokenRefreshHandler() {
+    _socket?.off('auth:token_refreshed');
+    _socket?.on('auth:token_refreshed', (payload) async {
+      try {
+        final token = _extractToken(payload);
+        if (token == null || token.isEmpty) {
+          return;
+        }
+        await DatabaseConfig.setAuthToken(token);
+        _authToken = token;
+        Log.i('Notification socket stored refreshed auth token', 'ENHANCED_NOTIF');
+      } catch (e) {
+        Log.e('Failed to persist refreshed auth token (notification service)', 'ENHANCED_NOTIF', e);
+      }
+    });
+  }
+
+  String? _extractToken(dynamic payload) {
+    if (payload is String && payload.isNotEmpty) {
+      return payload;
+    }
+    if (payload is Map) {
+      final token = payload['token'];
+      if (token is String && token.isNotEmpty) {
+        return token;
+      }
+    }
+    return null;
   }
 }

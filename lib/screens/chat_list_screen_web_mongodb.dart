@@ -13,6 +13,7 @@ import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
 import '../services/version_check_service.dart';
 import '../utils/group_chat_naming_utility.dart';
+import '../utils/cairo_time_utils.dart';
 import 'chat_screen_mongodb.dart';
 
 class ChatListScreenWebMongoDB extends StatefulWidget {
@@ -379,9 +380,8 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
 
   String _formatTimestamp(DateTime? timestamp) {
     if (timestamp == null) return '';
-    // Convert to Cairo time (UTC+2)
-    final cairo = timestamp.toUtc().add(const Duration(hours: 2));
-    final nowCairo = DateTime.now().toUtc().add(const Duration(hours: 2));
+    final cairo = CairoTimeUtils.toCairo(timestamp);
+    final nowCairo = CairoTimeUtils.now();
     final difference = nowCairo.difference(cairo);
 
     if (difference.inDays > 0) {

@@ -109,6 +109,7 @@ router.post('/', authenticateToken, async (req, res) => {
     
     const database = await connectDB(req);
     const chatsCollection = database.collection('chats');
+    const userObjectId = new ObjectId(req.user.id);
     
     // For private chats, check if chat already exists
     if (type === 'private' && members.length === 2) {
@@ -147,7 +148,8 @@ router.post('/', authenticateToken, async (req, res) => {
       createdAt: new Date(),
       updatedAt: new Date(),
       lastMessage: null,
-      lastMessageTime: null
+      lastMessageTime: null,
+      deletedFor: []
     };
     
     console.log('[routes/chats.js] Creating chat:', JSON.stringify({
@@ -188,11 +190,16 @@ router.get('/', authenticateToken, async (req, res) => {
   try {
     const database = await connectDB(req);
     const chatsCollection = database.collection('chats');
+    const userObjectId = new ObjectId(req.user.id);
     
     // Find chats where the user is a member
     // Sort by lastMessageTime descending (newest first) at database level
     const chats = await chatsCollection.find({
-      members: new ObjectId(req.user.id)
+      members: userObjectId,
+      $or: [
+        { deletedFor: { $exists: false } },
+        { deletedFor: { $ne: userObjectId } }
+      ]
     })
     .sort({ lastMessageTime: -1, updatedAt: -1, createdAt: -1 }) // Sort by lastMessageTime first, then updatedAt, then createdAt
     .toArray();
@@ -234,11 +241,16 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
     
     const database = await connectDB(req);
     const chatsCollection = database.collection('chats');
+    const userObjectId = new ObjectId(req.user.id);
     
     // Find the chat and check if user is a member
     const chat = await chatsCollection.findOne({
       _id: new ObjectId(chatId),
-      members: new ObjectId(req.user.id)
+      members: userObjectId,
+      $or: [
+        { deletedFor: { $exists: false } },
+        { deletedFor: { $ne: userObjectId } }
+      ]
     });
     
     if (!chat) {
@@ -320,6 +332,49 @@ router.put('/:chatId', authenticateToken, async (req, res) => {
     });
   } catch (error) {
     console.error('Update chat error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Hide/unhide a chat for the current user
+router.patch('/:chatId/hide', authenticateToken, async (req, res) => {
+  try {
+    const { chatId } = req.params;
+    const action = (req.body?.action || 'hide').toLowerCase();
+
+    if (!ObjectId.isValid(chatId)) {
+      return res.status(400).json({ message: 'Invalid chat ID' });
+    }
+
+    const database = await connectDB(req);
+    const chatsCollection = database.collection('chats');
+    const userObjectId = new ObjectId(req.user.id);
+
+    const filter = {
+      _id: new ObjectId(chatId),
+      members: userObjectId
+    };
+
+    const update = action === 'unhide'
+      ? { $pull: { deletedFor: userObjectId } }
+      : {
+          $addToSet: { deletedFor: userObjectId },
+          $set: { updatedAt: new Date() }
+        };
+
+    const result = await chatsCollection.updateOne(filter, update);
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: 'Chat not found or access denied' });
+    }
+
+    res.status(200).json({
+      message: action === 'unhide' ? 'Chat restored' : 'Chat hidden',
+      chatId,
+      action: action === 'unhide' ? 'restore' : 'hide'
+    });
+  } catch (error) {
+    console.error('Hide chat error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });

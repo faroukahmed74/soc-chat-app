@@ -480,20 +480,23 @@ class MongoDBChatService {
     }).asyncMap((future) => future);
   }
 
-  /// Delete a message
-  Future<bool> deleteMessage(String chatId, String messageId) async {
+  /// Delete or hide a message
+  Future<bool> deleteMessage(String chatId, String messageId, {bool deleteForEveryone = false}) async {
     try {
       final token = await _getAuthToken();
       if (token == null) throw Exception('No auth token');
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
-      final response = await http.delete(
-        Uri.parse('$baseUrl/api/messages/$messageId'),
+      final response = await http.patch(
+        Uri.parse('$baseUrl/api/messages/$messageId/delete'),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
+        body: json.encode({
+          'scope': deleteForEveryone ? 'everyone' : 'self',
+        }),
       );
 
       return response.statusCode == 200;
@@ -525,6 +528,32 @@ class MongoDBChatService {
       return response.statusCode == 200;
     } catch (e) {
       Log.e('Error updating message', 'MONGODB_CHAT_SERVICE', e);
+      return false;
+    }
+  }
+
+  /// Hide chat for current user
+  Future<bool> hideChat(String chatId, {bool hide = true}) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.patch(
+        Uri.parse('$baseUrl/api/chats/$chatId/hide'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        body: json.encode({
+          'action': hide ? 'hide' : 'unhide',
+        }),
+      );
+
+      return response.statusCode == 200;
+    } catch (e) {
+      Log.e('Error hiding chat', 'MONGODB_CHAT_SERVICE', e);
       return false;
     }
   }
@@ -673,6 +702,140 @@ class MongoDBChatService {
     } catch (e) {
       Log.e('Error getting message replies', 'MONGODB_CHAT_SERVICE', e);
       return [];
+    }
+  }
+
+  Future<List<MediaCategorySummary>> fetchMediaSummary(String chatId) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/messages/$chatId/media-summary'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body);
+        final list = (body['mediaSummary'] as List?) ?? [];
+        return list
+            .map((item) => MediaCategorySummary.fromJson(Map<String, dynamic>.from(item)))
+            .toList();
+      }
+      throw Exception('Failed to load media summary (${response.statusCode})');
+    } catch (e) {
+      Log.e('Error fetching media summary', 'MONGODB_CHAT_SERVICE', e);
+      rethrow;
+    }
+  }
+
+  Future<MediaPageResult> fetchMediaByType(
+    String chatId, {
+    required String type,
+    int page = 1,
+    int limit = 50,
+  }) async {
+    try {
+      final token = await _getAuthToken();
+      if (token == null) throw Exception('No auth token');
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final uri = Uri.parse('$baseUrl/api/messages/$chatId').replace(
+        queryParameters: {
+          'type': type,
+          'page': page.toString(),
+          'limit': limit.toString(),
+        },
+      );
+
+      final response = await http.get(
+        uri,
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          'ngrok-skip-browser-warning': 'true',
+        },
+      ).timeout(const Duration(seconds: 30));
+
+      if (response.statusCode == 200) {
+        final body = json.decode(response.body) as Map<String, dynamic>;
+        final messages = (body['messages'] as List?) ?? [];
+        final pagination = body['pagination'] as Map<String, dynamic>? ?? {};
+        final hasMore = pagination['hasMore'] == true;
+
+        final mapped = messages
+            .map((item) => Map<String, dynamic>.from(item))
+            .toList();
+        return MediaPageResult(messages: mapped, hasMore: hasMore);
+      }
+      throw Exception('Failed to load media (${response.statusCode})');
+    } catch (e) {
+      Log.e('Error fetching media by type', 'MONGODB_CHAT_SERVICE', e);
+      rethrow;
+    }
+  }
+}
+
+class MediaPageResult {
+  final List<Map<String, dynamic>> messages;
+  final bool hasMore;
+
+  MediaPageResult({
+    required this.messages,
+    required this.hasMore,
+  });
+}
+
+class MediaCategorySummary {
+  final String type;
+  final String label;
+  final int count;
+  final DateTime? latestMediaAt;
+  final String sampleMediaUrl;
+  final String sampleContent;
+
+  MediaCategorySummary({
+    required this.type,
+    required this.label,
+    required this.count,
+    this.latestMediaAt,
+    required this.sampleMediaUrl,
+    required this.sampleContent,
+  });
+
+  factory MediaCategorySummary.fromJson(Map<String, dynamic> json) {
+    final type = (json['type'] ?? '').toString().toLowerCase();
+    return MediaCategorySummary(
+      type: type,
+      label: json['label']?.toString() ?? _labelForType(type),
+      count: json['count'] is int ? json['count'] as int : 0,
+      latestMediaAt: json['latestMediaAt'] != null
+          ? DateTime.tryParse(json['latestMediaAt'].toString())
+          : null,
+      sampleMediaUrl: json['sampleMediaUrl']?.toString() ?? '',
+      sampleContent: json['sampleContent']?.toString() ?? '',
+    );
+  }
+
+  static String _labelForType(String type) {
+    switch (type) {
+      case 'image':
+        return 'Images';
+      case 'video':
+        return 'Videos';
+      case 'document':
+        return 'Documents';
+      case 'audio':
+        return 'Audio';
+      default:
+        return type.isNotEmpty
+            ? '${type[0].toUpperCase()}${type.substring(1)}'
+            : 'Media';
     }
   }
 }

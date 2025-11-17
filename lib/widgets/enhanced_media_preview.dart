@@ -9,7 +9,6 @@ import 'package:flutter/foundation.dart';
 import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import 'package:video_player/video_player.dart';
 // Conditional import: web_pdf_thumbnail handles web/mobile conditional internally
 import 'web_pdf_thumbnail.dart';
@@ -17,6 +16,7 @@ import 'mobile_pdf_thumbnail.dart';
 import '../services/theme_service.dart';
 import '../services/logger_service.dart';
 import '../services/media_cache_service.dart';
+import '../services/media_download_service.dart';
 import '../utils/responsive_utils.dart';
 import 'dart:html' if (dart.library.io) '../widgets/html_stub.dart' as html;
 
@@ -931,57 +931,11 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   }
 
   Future<void> _downloadMediaMobile(String url) async {
-    try {
-      if (kIsWeb) return;
-      
-      // Add headers for ngrok URLs
-      final headers = <String, String>{
-        'ngrok-skip-browser-warning': 'true',
-        'User-Agent': 'Mozilla/5.0 (Linux; Android 10) Mobile',
-      };
-      
-      final response = await http.get(Uri.parse(url), headers: headers);
-      if (response.statusCode != 200) {
-        throw Exception('Failed to download: HTTP ${response.statusCode}');
-      }
-
-      // Get file name from URL or use default
-      String fileName = widget.fileName ?? 'download';
-      final uri = Uri.parse(url);
-      final pathSegments = uri.pathSegments;
-      if (pathSegments.isNotEmpty) {
-        final lastSegment = pathSegments.last;
-        if (lastSegment.contains('.')) {
-          fileName = lastSegment;
-        } else {
-          // Add extension based on media type
-          final extension = widget.mediaType == 'video' 
-              ? '.mp4' 
-              : widget.mediaType == 'image' 
-                  ? '.jpg' 
-                  : widget.mediaType == 'audio' || widget.mediaType == 'voice'
-                      ? '.mp3'
-                      : widget.mediaType == 'document'
-                          ? '.pdf'
-                          : '.bin';
-          fileName = '$fileName$extension';
-        }
-      }
-
-      // Use path_provider to get Documents directory
-      final directory = await getApplicationDocumentsDirectory();
-      final filePath = '${directory.path}/$fileName';
-      final file = File(filePath);
-      
-      await file.writeAsBytes(response.bodyBytes);
-      
-      if (await file.exists()) {
-        Log.i('File downloaded to: $filePath', 'ENHANCED_MEDIA_PREVIEW');
-      }
-    } catch (e) {
-      Log.e('Error in mobile download', 'ENHANCED_MEDIA_PREVIEW', e);
-      rethrow;
-    }
+    await MediaDownloadService.saveToDevice(
+      url: url,
+      mediaType: widget.mediaType,
+      fileName: widget.fileName,
+    );
   }
 
   String _getFileNameFromUrl(String url) {

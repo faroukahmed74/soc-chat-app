@@ -19,6 +19,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:characters/characters.dart';
 import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
@@ -32,7 +33,9 @@ import '../services/active_chat_service.dart';
 import '../services/message_sound_service.dart';
 import '../theme/app_design_system.dart';
 import '../config/database_config.dart';
+import '../widgets/chat_media_gallery.dart';
 import '../utils/responsive_utils.dart';
+import '../utils/cairo_time_utils.dart';
 
 class ChatScreenMongoDB extends StatefulWidget {
   final String chatId;
@@ -72,6 +75,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   // Reply and reaction state
   Map<String, dynamic>? _replyingToMessage;
   final Map<String, Map<String, List<String>>> _messageReactions = {}; // messageId -> {emoji: [userId1, userId2]}
+  bool _isProcessingMessageAction = false;
   
   // Offline reactions cache key (for web platform)
   String get _reactionsCacheKey => 'reactions_cache_${widget.chatId}';
@@ -81,6 +85,14 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   DateTime? _otherUserLastSeen;
   String? _otherUserId;
   List<String>? _memberIds; // Store member IDs for status checking
+  double _dynamicTitleFontSize(TextStyle baseStyle) {
+    final baseSize = baseStyle.fontSize ?? 18.0;
+    final nameLength = widget.chatName.characters.length;
+    if (nameLength > 40) return baseSize * 0.72;
+    if (nameLength > 30) return baseSize * 0.8;
+    if (nameLength > 22) return baseSize * 0.9;
+    return baseSize;
+  }
   
   // Track previous message IDs for sound detection
   final Set<String> _previousMessageIds = {};
@@ -101,6 +113,16 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       }
     }
     return v?.toString();
+  }
+
+  Map<String, dynamic> _safeStringMap(dynamic value) {
+    if (value is Map<String, dynamic>) {
+      return value;
+    }
+    if (value is Map) {
+      return value.map((key, val) => MapEntry(key.toString(), val));
+    }
+    return {};
   }
 
   String _extractSenderName(Map<String, dynamic> m) {
@@ -300,7 +322,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       _realtime.onMessageReaction((data) {
         final messageId = data['messageId']?.toString();
         if (messageId != null) {
-          final reactions = data['reactions'] as Map<String, dynamic>? ?? {};
+          final reactions = _safeStringMap(data['reactions']);
           setState(() {
             // Update reactions map
             _messageReactions[messageId] = Map<String, List<String>>.from(
@@ -325,6 +347,53 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           // Don't reload messages here - the state update above is sufficient
           // Reloading would cause flickering and might overwrite the reactions
         }
+      });
+
+      _realtime.onMessageUpdated((data) {
+        final chatId = (data['chatId'] ?? data['chat_id'] ?? '').toString();
+        if (chatId != widget.chatId) return;
+        final messageId = (data['id'] ?? data['_id'] ?? data['messageId'])?.toString();
+        if (messageId == null) return;
+        if (!mounted) return;
+
+        setState(() {
+          final index = _messages.indexWhere((m) => _extractMessageId(m) == messageId);
+          final normalized = {
+            ...data,
+            'id': messageId,
+            '_id': messageId,
+            'chatId': chatId,
+          };
+          if (index != -1) {
+            _messages[index] = {
+              ..._messages[index],
+              ...normalized,
+            };
+          }
+        });
+      });
+
+      _realtime.onMessageDeleted((data) {
+        final chatId = (data['chatId'] ?? data['chat_id'] ?? '').toString();
+        if (chatId != widget.chatId) return;
+        final messageId = (data['id'] ?? data['messageId'])?.toString();
+        if (messageId == null) return;
+        final scope = (data['scope'] ?? 'everyone').toString();
+        if (scope != 'everyone' || !mounted) return;
+
+        setState(() {
+          final index = _messages.indexWhere((m) => _extractMessageId(m) == messageId);
+          if (index != -1) {
+            _messages[index] = {
+              ..._messages[index],
+              'content': '',
+              'mediaUrl': '',
+              'isDeletedForEveryone': true,
+              'deletedAt': data['deletedAt'] ?? DateTime.now().toIso8601String(),
+              'deletedBy': data['deletedBy'] ?? '',
+            };
+          }
+        });
       });
     } catch (e) {
       Log.e('Error initializing chat', 'CHAT_SCREEN_MONGODB', e);
@@ -383,7 +452,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         for (final message in messages) {
           final messageId = _extractMessageId(message);
           if (messageId != null) {
-            final serverReactions = message['reactions'] as Map<String, dynamic>? ?? {};
+            final serverReactions = _safeStringMap(message['reactions']);
             if (serverReactions.isNotEmpty) {
               // Server has reactions, use them
               _messageReactions[messageId] = Map<String, List<String>>.from(
@@ -511,7 +580,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           for (final message in messages) {
             final messageId = _extractMessageId(message);
             if (messageId != null) {
-              final serverReactions = message['reactions'] as Map<String, dynamic>? ?? {};
+              final serverReactions = _safeStringMap(message['reactions']);
               if (serverReactions.isNotEmpty) {
                 _messageReactions[messageId] = Map<String, List<String>>.from(
                   serverReactions.map((key, value) => MapEntry(
@@ -726,7 +795,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       final result = await _chatService.reactToMessage(messageId, emoji);
       if (result != null) {
         // Update local reactions cache immediately
-        final reactions = result['reactions'] as Map<String, dynamic>? ?? {};
+        final reactions = _safeStringMap(result['reactions']);
         setState(() {
           _messageReactions[messageId] = Map<String, List<String>>.from(
             reactions.map((key, value) => MapEntry(
@@ -802,10 +871,228 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     );
   }
 
+  bool _isMessageDeletedForEveryone(Map<String, dynamic> message) {
+    return message['isDeletedForEveryone'] == true ||
+        message['deletedForEveryone'] == true ||
+        message['status'] == 'deleted_for_everyone';
+  }
+
+  Future<void> _deleteMessageForSelf(Map<String, dynamic> message) async {
+    final messageId = _extractMessageId(message);
+    if (messageId == null) return;
+    if (_isProcessingMessageAction) return;
+
+    setState(() {
+      _isProcessingMessageAction = true;
+    });
+
+    try {
+      final success = await _chatService.deleteMessage(
+        widget.chatId,
+        messageId,
+        deleteForEveryone: false,
+      );
+      if (success && mounted) {
+        setState(() {
+          _messages.removeWhere((m) => _extractMessageId(m) == messageId);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Message removed for you')),
+        );
+      }
+    } catch (e) {
+      Log.e('Delete message (self) failed', 'CHAT_SCREEN_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete message: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessingMessageAction = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _deleteMessageForEveryone(Map<String, dynamic> message) async {
+    final messageId = _extractMessageId(message);
+    if (messageId == null) return;
+    if (_isProcessingMessageAction) return;
+
+    setState(() {
+      _isProcessingMessageAction = true;
+    });
+
+    try {
+      final success = await _chatService.deleteMessage(
+        widget.chatId,
+        messageId,
+        deleteForEveryone: true,
+      );
+      if (success && mounted) {
+        setState(() {
+          final index = _messages.indexWhere((m) => _extractMessageId(m) == messageId);
+          if (index != -1) {
+            _messages[index] = {
+              ..._messages[index],
+              'content': '',
+              'mediaUrl': '',
+              'isDeletedForEveryone': true,
+              'deletedAt': DateTime.now().toIso8601String(),
+              'deletedBy': _currentUserId,
+            };
+          }
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Message deleted for everyone')),
+        );
+      }
+    } catch (e) {
+      Log.e('Delete message (everyone) failed', 'CHAT_SCREEN_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete message: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessingMessageAction = false;
+        });
+      }
+    }
+  }
+
+  void _showEditMessageDialog(Map<String, dynamic> message) {
+    final messageId = _extractMessageId(message);
+    if (messageId == null) return;
+    final controller = TextEditingController(text: _extractContent(message));
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Edit message'),
+        content: TextField(
+          controller: controller,
+          minLines: 1,
+          maxLines: 5,
+          decoration: const InputDecoration(
+            hintText: 'Update your message',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newContent = controller.text.trim();
+              if (newContent.isEmpty) return;
+              Navigator.pop(context);
+              setState(() {
+                _isProcessingMessageAction = true;
+              });
+              try {
+                final success = await _chatService.updateMessage(
+                  widget.chatId,
+                  messageId,
+                  newContent,
+                );
+                if (success && mounted) {
+                  setState(() {
+                    final index = _messages.indexWhere((m) => _extractMessageId(m) == messageId);
+                    if (index != -1) {
+                      _messages[index] = {
+                        ..._messages[index],
+                        'content': newContent,
+                        'edited': true,
+                        'updatedAt': DateTime.now().toIso8601String(),
+                      };
+                    }
+                  });
+                }
+              } catch (e) {
+                Log.e('Edit message failed', 'CHAT_SCREEN_MONGODB', e);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Failed to edit message: $e')),
+                  );
+                }
+              } finally {
+                if (mounted) {
+                  setState(() {
+                    _isProcessingMessageAction = false;
+                  });
+                }
+              }
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _deleteChatForMe() async {
+    if (_isProcessingMessageAction) return;
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Delete chat for me?'),
+        content: const Text('This will remove the conversation from your chat list. Others will still see it.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirm != true) return;
+
+    setState(() {
+      _isProcessingMessageAction = true;
+    });
+
+    try {
+      final success = await _chatService.hideChat(widget.chatId, hide: true);
+      if (success && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Chat deleted for you')),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      Log.e('Delete chat failed', 'CHAT_SCREEN_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to delete chat: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessingMessageAction = false;
+        });
+      }
+    }
+  }
+
   /// Show message options menu
   void _showMessageOptions(Map<String, dynamic> message) {
     final messageId = _extractMessageId(message);
     if (messageId == null) return;
+    final senderId = _extractSenderId(message);
+    final isCurrentUser = senderId == _currentUserId;
+    final isDeleted = _isMessageDeletedForEveryone(message);
+    final messageType = _extractType(message);
 
     showModalBottomSheet(
       context: context,
@@ -833,6 +1120,15 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                 _showReactionPicker(messageId);
               },
             ),
+            if (!isDeleted && isCurrentUser && messageType == 'text')
+              ListTile(
+                leading: const Icon(Icons.edit),
+                title: const Text('Edit message'),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showEditMessageDialog(message);
+                },
+              ),
             if (message['replies'] != null && (message['replies'] as List).isNotEmpty)
               ListTile(
                 leading: const Icon(Icons.chat_bubble_outline),
@@ -840,6 +1136,42 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                 onTap: () {
                   Navigator.pop(context);
                   _showReplies(messageId);
+                },
+              ),
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete for me'),
+              onTap: () {
+                Navigator.pop(context);
+                _deleteMessageForSelf(message);
+              },
+            ),
+            if (isCurrentUser && !isDeleted)
+              ListTile(
+                leading: const Icon(Icons.delete_forever),
+                title: const Text('Delete for everyone'),
+                onTap: () async {
+                  Navigator.pop(context);
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (context) => AlertDialog(
+                      title: const Text('Delete for everyone?'),
+                      content: const Text('This will remove the message for all participants.'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(context, false),
+                          child: const Text('Cancel'),
+                        ),
+                        ElevatedButton(
+                          onPressed: () => Navigator.pop(context, true),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    _deleteMessageForEveryone(message);
+                  }
                 },
               ),
           ],
@@ -1249,8 +1581,8 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   String _formatLastSeen(DateTime? lastSeen) {
     if (lastSeen == null) return 'Last seen recently';
     
-    final now = DateTime.now();
-    final difference = now.difference(lastSeen);
+    final cairoLastSeen = CairoTimeUtils.toCairo(lastSeen);
+    final difference = CairoTimeUtils.now().difference(cairoLastSeen);
     
     if (difference.inMinutes < 1) {
       return 'Last seen just now';
@@ -1263,15 +1595,14 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     } else {
       // Format date: "Jan 15, 2024"
       final months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-      final month = months[lastSeen.month - 1];
-      return 'Last seen $month ${lastSeen.day}, ${lastSeen.year}';
+      final month = months[cairoLastSeen.month - 1];
+      return 'Last seen $month ${cairoLastSeen.day}, ${cairoLastSeen.year}';
     }
   }
 
   String _formatTimestamp(DateTime timestamp) {
-    // Convert to Cairo time (UTC+2)
-    final cairo = timestamp.toUtc().add(const Duration(hours: 2));
-    final nowCairo = DateTime.now().toUtc().add(const Duration(hours: 2));
+    final cairo = CairoTimeUtils.toCairo(timestamp);
+    final nowCairo = CairoTimeUtils.now();
     final difference = nowCairo.difference(cairo);
 
     if (difference.inDays > 0) {
@@ -1291,6 +1622,11 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     final timestamp = _extractTimestamp(message);
     final senderName = _extractSenderName(message);
     final mediaUrl = _extractMediaUrl(message) ?? '';
+    final isDeletedForEveryone = _isMessageDeletedForEveryone(message);
+    final displayContent = isDeletedForEveryone
+        ? (isCurrentUser ? 'You deleted this message' : 'This message was deleted')
+        : content;
+    final isEdited = message['edited'] == true;
     
     // Responsive values
     final avatarRadius = ResponsiveUtils.getResponsiveValue(
@@ -1338,7 +1674,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     final replyToSenderName = message['replyToSenderName']?.toString() ?? '';
     
     // Extract reactions
-    final serverReactions = message['reactions'] as Map<String, dynamic>? ?? {};
+    final serverReactions = _safeStringMap(message['reactions']);
     final messageId = _extractMessageId(message);
     
     // Determine which reactions to use: prefer server, fallback to cached (for offline support)
@@ -1400,8 +1736,8 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                  // Show reply preview if this is a reply
-                  if (replyTo != null && replyToContent.isNotEmpty)
+                  // Show reply preview if this is a reply and message isn't deleted
+                  if (!isDeletedForEveryone && replyTo != null && replyToContent.isNotEmpty)
                     Container(
                       margin: EdgeInsets.only(bottom: spacing * 0.5),
                       padding: EdgeInsets.all(spacing * 0.5),
@@ -1463,9 +1799,19 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                         ),
                       ),
                     ),
-                  if (messageType == 'text')
+                  if (isDeletedForEveryone)
                     Text(
-                      content,
+                      displayContent,
+                      style: ResponsiveUtils.getResponsiveBodyStyle(
+                        context,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ).copyWith(
+                        fontStyle: FontStyle.italic,
+                      ),
+                    )
+                  else if (messageType == 'text')
+                    Text(
+                      displayContent,
                       style: ResponsiveUtils.getResponsiveBodyStyle(
                         context,
                         color: isCurrentUser
@@ -1517,7 +1863,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                           Padding(
                             padding: EdgeInsets.only(top: spacing * 0.67),
                             child: Text(
-                              content,
+                              displayContent,
                               style: ResponsiveUtils.getResponsiveCaptionStyle(
                                 context,
                                 color: isCurrentUser
@@ -1572,7 +1918,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                           Padding(
                             padding: EdgeInsets.only(top: spacing * 0.67),
                             child: Text(
-                              content,
+                              displayContent,
                               style: ResponsiveUtils.getResponsiveCaptionStyle(
                                 context,
                                 color: isCurrentUser
@@ -1627,7 +1973,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                           Padding(
                             padding: EdgeInsets.only(top: spacing * 0.67),
                             child: Text(
-                              content,
+                              displayContent,
                               style: ResponsiveUtils.getResponsiveCaptionStyle(
                                 context,
                                 color: isCurrentUser
@@ -1657,11 +2003,11 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                       child: EnhancedMediaPreview(
                         mediaUrl: mediaUrl ?? '',
                         mediaType: 'document',
-                        fileName: content.isNotEmpty ? content : 'Document',
+                        fileName: displayContent.isNotEmpty ? displayContent : 'Document',
                         fileSize: message['fileSize'] as String?,
                         isCurrentUser: isCurrentUser,
                         onTap: () {
-                          _showFullScreenMedia(mediaUrl ?? '', 'document', content, fileSize: message['fileSize'] as String?);
+                          _showFullScreenMedia(mediaUrl ?? '', 'document', displayContent, fileSize: message['fileSize'] as String?);
                         },
                         maxWidth: ResponsiveUtils.getResponsiveValue(
                           context,
@@ -1694,7 +2040,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       Text(
-                        _formatTimestamp(timestamp),
+                        '${_formatTimestamp(timestamp)}${isEdited && !isDeletedForEveryone ? ' • Edited' : ''}',
                         style: TextStyle(
                           fontSize: ResponsiveUtils.getResponsiveFontSize(
                             context,
@@ -1718,11 +2064,13 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                   Builder(
                     builder: (context) {
                       // Priority: 1) reactionsToDisplay (from server), 2) _messageReactions cache
-                      final displayReactions = reactionsToDisplay.isNotEmpty
-                          ? reactionsToDisplay
-                          : (messageId != null && _messageReactions[messageId] != null
-                              ? _messageReactions[messageId]!
-                              : <String, List<String>>{});
+                      final displayReactions = isDeletedForEveryone
+                          ? <String, List<String>>{}
+                          : (reactionsToDisplay.isNotEmpty
+                              ? reactionsToDisplay
+                              : (messageId != null && _messageReactions[messageId] != null
+                                  ? _messageReactions[messageId]!
+                                  : <String, List<String>>{}));
                       if (displayReactions.isEmpty) return const SizedBox.shrink();
                       return Padding(
                         padding: EdgeInsets.only(top: spacing * 0.33),
@@ -2170,13 +2518,22 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              widget.chatName,
-              style: ResponsiveUtils.getResponsiveHeadingStyle(
-                context,
-                color: Theme.of(context).colorScheme.onPrimary,
-                weight: FontWeight.bold,
-              ),
+            Builder(
+              builder: (context) {
+                final baseStyle = ResponsiveUtils.getResponsiveHeadingStyle(
+                  context,
+                  color: Theme.of(context).colorScheme.onPrimary,
+                  weight: FontWeight.bold,
+                );
+                return Text(
+                  widget.chatName,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: baseStyle.copyWith(
+                    fontSize: _dynamicTitleFontSize(baseStyle),
+                  ),
+                );
+              },
             ),
             if (!widget.isGroupChat) ...[
               SizedBox(height: spacing * 0.17),
@@ -2246,11 +2603,44 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         elevation: 0,
         centerTitle: false,
         actions: [
+          IconButton(
+            tooltip: 'Media',
+            icon: const Icon(Icons.perm_media_outlined),
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ChatMediaGallery(
+                    chatId: widget.chatId,
+                    chatName: widget.chatName,
+                  ),
+                ),
+              );
+            },
+          ),
           if (widget.isGroupChat)
             IconButton(
               icon: const Icon(Icons.group),
               onPressed: () => _showGroupInfo(),
             ),
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'delete_chat') {
+                _deleteChatForMe();
+              }
+            },
+            itemBuilder: (context) => const [
+              PopupMenuItem(
+                value: 'delete_chat',
+                child: Row(
+                  children: [
+                    Icon(Icons.delete_outline, size: 18),
+                    SizedBox(width: 8),
+                    Text('Delete chat for me'),
+                  ],
+                ),
+              ),
+            ],
+          ),
         ],
       ),
       body: Column(

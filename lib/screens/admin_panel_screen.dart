@@ -28,6 +28,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:http/http.dart' as http;
+import '../utils/cairo_time_utils.dart';
 import 'dart:convert';
 import '../services/theme_service.dart';
 import '../services/logger_service.dart';
@@ -92,7 +93,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> with TickerProvider
   bool _isLoadingStats = false;
   
   DateTime _toCairo(DateTime dt) {
-    return dt.toUtc().add(const Duration(hours: 2));
+    return CairoTimeUtils.toCairo(dt);
   }
 
   String _formatCairo(DateTime dt, String pattern) {
