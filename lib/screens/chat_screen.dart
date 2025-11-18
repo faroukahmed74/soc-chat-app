@@ -28,6 +28,8 @@ import '../utils/responsive_utils.dart';
 import '../utils/group_chat_naming_utility.dart';
 import '../widgets/enhanced_media_preview.dart';
 import '../widgets/voice_message_player.dart';
+import '../services/enhanced_voice_service.dart';
+import '../services/web_voice_service.dart';
 
 
 
@@ -97,6 +99,11 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
   String? _selectedMediaType;
   String? _selectedMediaFileName;
   bool _isUploadingMedia = false;
+  
+  // Voice recording state
+  bool _isRecordingVoice = false;
+  Timer? _recordingTimer;
+  Duration _recordingDuration = Duration.zero;
   final Map<String, String> _messageStatuses = {};
   final Map<String, Map<String, dynamic>> _messageCache = {};
   StreamSubscription<QuerySnapshot>? _messagesSubscription;
@@ -169,6 +176,12 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
 
     _messagesSubscription?.cancel();
     _localPollingTimer?.cancel();
+    _recordingTimer?.cancel();
+    
+    // Cancel any ongoing recording
+    if (_isRecordingVoice) {
+      _cancelVoiceRecording();
+    }
     
     // Dispose animation controllers
     _fadeController.dispose();
@@ -1239,6 +1252,28 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
                             ),
                           ),
                           const SizedBox(width: 8),
+                          // Microphone button
+                          Container(
+                            decoration: BoxDecoration(
+                              color: _isRecordingVoice 
+                                  ? Colors.red.withOpacity(0.2)
+                                  : (isDark ? Colors.grey[700] : Colors.grey[100]),
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: IconButton(
+                              onPressed: _isRecordingVoice ? _stopVoiceRecording : _startVoiceRecording,
+                              onLongPress: null,
+                              icon: Icon(
+                                _isRecordingVoice ? Icons.stop : Icons.mic,
+                                color: _isRecordingVoice 
+                                    ? Colors.red 
+                                    : (isDark ? Colors.grey[300] : Colors.grey[600]),
+                                size: 20,
+                              ),
+                              tooltip: _isRecordingVoice ? 'Stop Recording' : 'Record Voice Message',
+                            ),
+                          ),
+                          const SizedBox(width: 8),
                           Expanded(
                             child: TextField(
                               controller: _messageController,
@@ -1349,6 +1384,78 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
               },
             ),
           ),
+          
+          // Voice Recording UI Overlay
+          if (_isRecordingVoice)
+            Positioned(
+              bottom: 100,
+              left: 0,
+              right: 0,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 12,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                  border: Border.all(
+                    color: Colors.red.withOpacity(0.3),
+                    width: 2,
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    // Recording indicator
+                    Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    // Duration
+                    Text(
+                      _formatDuration(_recordingDuration),
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const Spacer(),
+                    // Cancel button
+                    IconButton(
+                      onPressed: _cancelVoiceRecording,
+                      icon: const Icon(Icons.close),
+                      color: Colors.grey,
+                      tooltip: 'Cancel',
+                    ),
+                    const SizedBox(width: 8),
+                    // Send button
+                    Container(
+                      decoration: BoxDecoration(
+                        color: theme.colorScheme.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: IconButton(
+                        onPressed: _stopVoiceRecording,
+                        icon: const Icon(Icons.send),
+                        color: Colors.white,
+                        tooltip: 'Send',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           
           // Enhanced Floating Action Button for quick media access
           Positioned(
@@ -2402,6 +2509,130 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         SnackBar(content: Text('Failed to pick document: $e')),
       );
     }
+  }
+
+  Future<void> _startVoiceRecording() async {
+    try {
+      if (kIsWeb) {
+        final started = await WebVoiceService.startRecording();
+        if (!started) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to start recording. Please check microphone permissions.')),
+          );
+          return;
+        }
+      } else {
+        final started = await EnhancedVoiceService.startRecording(context);
+        if (!started) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to start recording. Please check microphone permissions.')),
+          );
+          return;
+        }
+      }
+
+      setState(() {
+        _isRecordingVoice = true;
+        _recordingDuration = Duration.zero;
+      });
+
+      // Start timer to update recording duration
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (mounted) {
+          setState(() {
+            if (kIsWeb) {
+              final duration = WebVoiceService.currentRecordingDuration;
+              if (duration != null) {
+                _recordingDuration = duration;
+              }
+            } else {
+              final duration = EnhancedVoiceService.currentRecordingDuration;
+              if (duration != null) {
+                _recordingDuration = duration;
+              }
+            }
+          });
+        }
+      });
+    } catch (e) {
+      Log.e('Error starting voice recording', 'CHAT_SCREEN', e);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error starting recording: $e')),
+      );
+    }
+  }
+
+  Future<void> _stopVoiceRecording() async {
+    try {
+      _recordingTimer?.cancel();
+      _recordingTimer = null;
+
+      VoiceRecordingResult? result;
+      if (kIsWeb) {
+        result = await WebVoiceService.stopRecording();
+      } else {
+        result = await EnhancedVoiceService.stopRecording();
+      }
+
+      setState(() {
+        _isRecordingVoice = false;
+        _recordingDuration = Duration.zero;
+      });
+
+      if (result != null && result.bytes.isNotEmpty) {
+        // Send the voice message
+        await _uploadAndSendMedia(
+          result.bytes,
+          'voice',
+          '🎤 Voice Message',
+          mimeType: result.mimeType,
+        );
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Recording failed or was too short.')),
+        );
+      }
+    } catch (e) {
+      Log.e('Error stopping voice recording', 'CHAT_SCREEN', e);
+      setState(() {
+        _isRecordingVoice = false;
+        _recordingDuration = Duration.zero;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Error stopping recording: $e')),
+      );
+    }
+  }
+
+  Future<void> _cancelVoiceRecording() async {
+    try {
+      _recordingTimer?.cancel();
+      _recordingTimer = null;
+
+      if (kIsWeb) {
+        await WebVoiceService.cancelRecording();
+      } else {
+        await EnhancedVoiceService.cancelRecording();
+      }
+
+      setState(() {
+        _isRecordingVoice = false;
+        _recordingDuration = Duration.zero;
+      });
+    } catch (e) {
+      Log.e('Error cancelling voice recording', 'CHAT_SCREEN', e);
+      setState(() {
+        _isRecordingVoice = false;
+        _recordingDuration = Duration.zero;
+      });
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
   }
 
   Future<void> _uploadAndSendMedia(

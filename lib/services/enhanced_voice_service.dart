@@ -5,11 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:record/record.dart';
 import 'logger_service.dart';
 
 /// Enhanced voice service with real audio recording capabilities
 class EnhancedVoiceService {
   static AudioPlayer? _audioPlayer;
+  static AudioRecorder? _audioRecorder;
   static bool _isRecording = false;
   static String? _recordingPath;
   static DateTime? _recordingStartTime;
@@ -52,6 +54,12 @@ class EnhancedVoiceService {
     try {
       Log.i('Starting voice recording...', 'ENHANCED_VOICE');
       
+      if (kIsWeb) {
+        // Web recording handled separately via WebVoiceService
+        Log.w('Web recording should use WebVoiceService', 'ENHANCED_VOICE');
+        return false;
+      }
+      
       // Check permission first
       final hasPermission = await requestMicrophonePermission(context);
       if (!hasPermission) {
@@ -59,17 +67,40 @@ class EnhancedVoiceService {
         return false;
       }
       
+      // Initialize recorder if needed
+      _audioRecorder ??= AudioRecorder();
+      
+      // Check if recorder is available
+      if (!await _audioRecorder!.hasPermission()) {
+        Log.w('Audio recorder permission denied', 'ENHANCED_VOICE');
+        return false;
+      }
+      
       // Get temporary directory for recording
       final tempDir = await getTemporaryDirectory();
-      _recordingPath = '${tempDir.path}/voice_message_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      
+      // Use appropriate format for each platform
+      if (Platform.isIOS) {
+        _recordingPath = '${tempDir.path}/voice_message_$timestamp.m4a';
+      } else if (Platform.isAndroid) {
+        _recordingPath = '${tempDir.path}/voice_message_$timestamp.m4a';
+      } else {
+        _recordingPath = '${tempDir.path}/voice_message_$timestamp.wav';
+      }
       
       Log.i('Recording path: $_recordingPath', 'ENHANCED_VOICE');
       
-      // For now, we'll create a simulated recording
-      // In a real implementation, you'd use a proper audio recording package
-      // like record, flutter_sound, or just_audio
+      // Start recording
+      await _audioRecorder!.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc, // Use AAC for better compression
+          bitRate: 128000,
+          sampleRate: 44100,
+        ),
+        path: _recordingPath!,
+      );
       
-      // Simulate recording by creating a file and starting timer
       _isRecording = true;
       _recordingStartTime = DateTime.now();
       
@@ -78,6 +109,9 @@ class EnhancedVoiceService {
       
     } catch (e) {
       Log.e('Error starting voice recording', 'ENHANCED_VOICE', e);
+      _isRecording = false;
+      _recordingPath = null;
+      _recordingStartTime = null;
       return false;
     }
   }
@@ -85,84 +119,129 @@ class EnhancedVoiceService {
   /// Stop voice recording and get audio data
   static Future<VoiceRecordingResult?> stopRecording() async {
     try {
-      if (!_isRecording) {
+      print('[ENHANCED_VOICE] stopRecording called, _isRecording: $_isRecording, _audioRecorder: ${_audioRecorder != null}');
+      
+      if (!_isRecording || _audioRecorder == null) {
         Log.w('No recording in progress', 'ENHANCED_VOICE');
+        print('[ENHANCED_VOICE] Cannot stop: isRecording=$_isRecording, recorder=${_audioRecorder != null}');
         return null;
       }
       
       Log.i('Stopping voice recording...', 'ENHANCED_VOICE');
+      print('[ENHANCED_VOICE] Calling recorder.stop()...');
       
+      // Stop the recorder
+      final path = await _audioRecorder!.stop();
       _isRecording = false;
       
-      if (_recordingStartTime == null) {
-        Log.w('No recording start time found', 'ENHANCED_VOICE');
+      print('[ENHANCED_VOICE] Recorder stopped, path: $path');
+      
+      if (path == null || path.isEmpty) {
+        Log.w('No recording path returned', 'ENHANCED_VOICE');
+        print('[ENHANCED_VOICE] ERROR: No path returned from recorder.stop()');
+        _recordingPath = null;
+        _recordingStartTime = null;
         return null;
       }
       
+      // Update recording path with actual path returned
+      _recordingPath = path;
+      
       // Calculate recording duration
-      final duration = DateTime.now().difference(_recordingStartTime!);
-      final durationInSeconds = duration.inMilliseconds / 1000;
+      Duration? duration;
+      if (_recordingStartTime != null) {
+        duration = DateTime.now().difference(_recordingStartTime!);
+      }
+      
+      // Try to get duration from the recorder
+      final durationInSeconds = duration != null 
+          ? duration.inMilliseconds / 1000.0
+          : 0.0;
       
       Log.i('Recording duration: ${durationInSeconds.toStringAsFixed(1)}s', 'ENHANCED_VOICE');
       
-      // Create a simulated audio file with the actual duration
-      // In a real implementation, this would be the actual recorded audio
-      final result = await _createSimulatedAudioFile(durationInSeconds);
+      // Read the recorded file
+      final file = File(path);
+      print('[ENHANCED_VOICE] Checking if file exists: $path');
+      if (!await file.exists()) {
+        Log.e('Recorded file does not exist: $path', 'ENHANCED_VOICE', null);
+        print('[ENHANCED_VOICE] ERROR: File does not exist at path: $path');
+        _recordingPath = null;
+        _recordingStartTime = null;
+        return null;
+      }
+      
+      print('[ENHANCED_VOICE] Reading file bytes...');
+      final bytes = await file.readAsBytes();
+      print('[ENHANCED_VOICE] File read successfully, size: ${bytes.length} bytes');
+      
+      // Determine mime type based on file extension
+      String mimeType = 'audio/m4a';
+      String fileName = 'voice_message_${DateTime.now().millisecondsSinceEpoch}';
+      if (path.endsWith('.m4a')) {
+        mimeType = 'audio/m4a';
+        fileName += '.m4a';
+      } else if (path.endsWith('.aac')) {
+        mimeType = 'audio/aac';
+        fileName += '.aac';
+      } else if (path.endsWith('.wav')) {
+        mimeType = 'audio/wav';
+        fileName += '.wav';
+      } else if (path.endsWith('.mp3')) {
+        mimeType = 'audio/mp3';
+        fileName += '.mp3';
+      }
+      
+      // Clean up temporary file after reading (optional - you might want to keep it)
+      // await file.delete();
+      
+      final result = VoiceRecordingResult(
+        bytes: bytes,
+        duration: durationInSeconds,
+        fileName: fileName,
+        mimeType: mimeType,
+      );
       
       // Clean up
       _recordingPath = null;
       _recordingStartTime = null;
       
-      Log.i('Voice recording stopped successfully', 'ENHANCED_VOICE');
+      Log.i('Voice recording stopped successfully, size: ${bytes.length} bytes', 'ENHANCED_VOICE');
       return result;
       
     } catch (e) {
       Log.e('Error stopping voice recording', 'ENHANCED_VOICE', e);
+      _isRecording = false;
+      _recordingPath = null;
+      _recordingStartTime = null;
       return null;
     }
   }
   
-  /// Create a simulated audio file for testing
-  static Future<VoiceRecordingResult?> _createSimulatedAudioFile(double durationInSeconds) async {
+  /// Cancel recording without saving
+  static Future<void> cancelRecording() async {
     try {
-      if (_recordingPath == null) return null;
+      if (_isRecording && _audioRecorder != null) {
+        await _audioRecorder!.stop();
+        _isRecording = false;
+        
+        // Delete the recording file if it exists
+        if (_recordingPath != null) {
+          final file = File(_recordingPath!);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        }
+      }
       
-      // Create a simulated audio file with the recorded duration
-      // This is just for testing - in production you'd have real audio data
-      final file = File(_recordingPath!);
-      
-      // Create a simple audio file header (WAV format simulation)
-      final sampleRate = 44100;
-      final channels = 1; // Mono
-      final bitsPerSample = 16;
-      final bytesPerSample = bitsPerSample ~/ 8;
-      final bytesPerSecond = sampleRate * channels * bytesPerSample;
-      final totalBytes = (durationInSeconds * bytesPerSecond).round();
-      
-      // Create audio data (simulated)
-      final audioData = List<int>.filled(totalBytes, 0);
-      
-      // Write the file
-      await file.writeAsBytes(audioData);
-      
-      // Read the file as bytes
-      final bytes = await file.readAsBytes();
-      
-      // Clean up the temporary file
-      await file.delete();
-      
-      return VoiceRecordingResult(
-        bytes: bytes,
-        duration: durationInSeconds,
-        fileName: 'voice_message_${DateTime.now().millisecondsSinceEpoch}.m4a',
-        mimeType: 'audio/m4a',
-      );
-      
+      _recordingPath = null;
+      _recordingStartTime = null;
+      Log.i('Recording cancelled', 'ENHANCED_VOICE');
     } catch (e) {
-      Log.e('Error creating simulated audio file', 'ENHANCED_VOICE', e);
-      return null;
+      Log.e('Error cancelling recording', 'ENHANCED_VOICE', e);
     }
   }
+  
   
   /// Check if currently recording
   static bool get isRecording => _isRecording;
@@ -231,10 +310,12 @@ class EnhancedVoiceService {
   /// Get audio player state
   static PlayerState? get audioPlayerState => _audioPlayer?.state;
   
-  /// Dispose audio player
+  /// Dispose audio player and recorder
   static void dispose() {
     _audioPlayer?.dispose();
     _audioPlayer = null;
+    _audioRecorder?.dispose();
+    _audioRecorder = null;
   }
   
   /// Show settings dialog

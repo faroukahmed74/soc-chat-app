@@ -160,7 +160,7 @@ router.post('/', authenticateToken, async (req, res) => {
           ? (isGroupChat ? `${senderName} sent a photo` : '📷 Photo')
           : type === 'video'
             ? (isGroupChat ? `${senderName} sent a video` : '🎥 Video')
-            : type === 'audio'
+            : type === 'audio' || type === 'voice'
               ? (isGroupChat ? `${senderName} sent a voice message` : '🎤 Voice message')
               : (isGroupChat ? `${senderName} sent a ${type}` : `📎 ${type}`);
       

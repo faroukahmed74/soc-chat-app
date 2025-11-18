@@ -161,36 +161,55 @@ class MongoDBChatService {
     {String? content}
   ) async {
     try {
+      print('[MONGODB_CHAT_SERVICE] sendMediaMessage called: chatId=$chatId, type=$messageType, mediaUrl=$mediaUrl');
       final token = await _getAuthToken();
-      if (token == null) throw Exception('No auth token');
+      if (token == null) {
+        print('[MONGODB_CHAT_SERVICE] ERROR: No auth token');
+        throw Exception('No auth token');
+      }
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
+      final url = '$baseUrl/api/messages';
+      print('[MONGODB_CHAT_SERVICE] Sending POST to: $url');
+      
+      final requestBody = {
+        'chatId': chatId,
+        'content': (content != null && content.isNotEmpty) ? content : 'Media message',
+        'type': messageType,
+        'mediaUrl': mediaUrl,
+      };
+      print('[MONGODB_CHAT_SERVICE] Request body: $requestBody');
+      
       final response = await http.post(
-        Uri.parse('$baseUrl/api/messages'),
+        Uri.parse(url),
         headers: {
           'Authorization': 'Bearer $token',
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-        body: json.encode({
-          'chatId': chatId,
-          'content': (content != null && content.isNotEmpty) ? content : 'Media message',
-          'type': messageType,
-          'mediaUrl': mediaUrl,
-        }),
+        body: json.encode(requestBody),
       );
+
+      print('[MONGODB_CHAT_SERVICE] Response status: ${response.statusCode}');
+      print('[MONGODB_CHAT_SERVICE] Response body: ${response.body}');
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         final body = json.decode(response.body);
+        print('[MONGODB_CHAT_SERVICE] Response decoded successfully');
         if (body is Map && body['messageData'] is Map) {
+          print('[MONGODB_CHAT_SERVICE] Returning messageData from response');
           return Map<String, dynamic>.from(body['messageData']);
         }
+        print('[MONGODB_CHAT_SERVICE] Returning full body as message');
         return Map<String, dynamic>.from(body);
       } else {
+        print('[MONGODB_CHAT_SERVICE] ERROR: Failed with status ${response.statusCode}');
         throw Exception('Failed to send media message: ${response.statusCode}');
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       Log.e('Error sending media message', 'MONGODB_CHAT_SERVICE', e);
+      print('[MONGODB_CHAT_SERVICE] Exception: $e');
+      print('[MONGODB_CHAT_SERVICE] Stack trace: $stackTrace');
       return null;
     }
   }

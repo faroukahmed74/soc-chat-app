@@ -17,7 +17,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:http/http.dart' as http;
+import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:characters/characters.dart';
 import '../services/theme_service.dart';
@@ -1335,32 +1337,43 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   }
 
   Future<void> _sendMediaMessage(String mediaUrl, String messageType, {String? content}) async {
-    if (_isSending) return;
+    print('[CHAT_SCREEN_MONGODB] _sendMediaMessage called with mediaUrl: $mediaUrl, type: $messageType');
+    
+    if (_isSending) {
+      print('[CHAT_SCREEN_MONGODB] Already sending media, returning...');
+      return;
+    }
 
     setState(() {
       _isSending = true;
     });
 
     try {
+      print('[CHAT_SCREEN_MONGODB] Calling _chatService.sendMediaMessage...');
       final result = await _chatService.sendMediaMessage(
         widget.chatId,
         mediaUrl,
         messageType,
         content: (content != null && content.isNotEmpty) ? content : null,
       );
+      print('[CHAT_SCREEN_MONGODB] sendMediaMessage result: ${result != null ? "success" : "null"}');
       if (result != null) {
+        print('[CHAT_SCREEN_MONGODB] Media message sent successfully, scrolling to bottom...');
         // Force scroll to bottom when user sends their own media
         _scrollToBottom(force: true);
         // Message will be added via the stream listener
       } else {
+        print('[CHAT_SCREEN_MONGODB] ERROR: sendMediaMessage returned null');
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(content: Text('Failed to send media')),
           );
         }
       }
-    } catch (e) {
+    } catch (e, stackTrace) {
       Log.e('Error sending media', 'CHAT_SCREEN_MONGODB', e);
+      print('[CHAT_SCREEN_MONGODB] Error sending media: $e');
+      print('[CHAT_SCREEN_MONGODB] Stack trace: $stackTrace');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error sending media: $e')),
@@ -1371,6 +1384,137 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         setState(() {
           _isSending = false;
         });
+        print('[CHAT_SCREEN_MONGODB] _isSending set to false');
+      }
+    }
+  }
+
+  Future<void> _sendVoiceMessage(Uint8List audioBytes, String mimeType, String content) async {
+    print('[CHAT_SCREEN_MONGODB] _sendVoiceMessage called with ${audioBytes.length} bytes, mimeType: $mimeType');
+    
+    if (_isSending) {
+      print('[CHAT_SCREEN_MONGODB] Already sending, returning...');
+      return;
+    }
+
+    try {
+      Log.i('Starting voice message upload, size: ${audioBytes.length} bytes, mimeType: $mimeType', 'CHAT_SCREEN_MONGODB');
+      print('[CHAT_SCREEN_MONGODB] Starting voice message upload...');
+      
+      // Upload voice message first
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final token = await DatabaseConfig.getStoredAuthToken();
+      
+      Log.i('Uploading to: $baseUrl/api/media/upload', 'CHAT_SCREEN_MONGODB');
+      print('[CHAT_SCREEN_MONGODB] Uploading to: $baseUrl/api/media/upload');
+      
+      final dio = Dio(BaseOptions(
+        baseUrl: baseUrl,
+        headers: {
+          if (token.isNotEmpty) 'Authorization': 'Bearer $token',
+          'ngrok-skip-browser-warning': 'true',
+        },
+        connectTimeout: const Duration(seconds: 30),
+        receiveTimeout: const Duration(seconds: 120),
+        sendTimeout: const Duration(seconds: 120),
+      ));
+
+      // Determine file extension from mimeType
+      String extension = 'm4a';
+      if (mimeType.contains('webm')) {
+        extension = 'webm';
+      } else if (mimeType.contains('wav')) {
+        extension = 'wav';
+      } else if (mimeType.contains('mp3')) {
+        extension = 'mp3';
+      } else if (mimeType.contains('aac')) {
+        extension = 'aac';
+      }
+      
+      final fileName = 'voice_message_${DateTime.now().millisecondsSinceEpoch}.$extension';
+      
+      Log.i('Creating form data with fileName: $fileName, chatId: ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
+      print('[CHAT_SCREEN_MONGODB] Creating form data with fileName: $fileName');
+      
+      final formData = FormData.fromMap({
+        'chatId': widget.chatId,
+        'type': 'voice',
+        'file': MultipartFile.fromBytes(
+          audioBytes,
+          filename: fileName,
+        ),
+        if (content.isNotEmpty) 'caption': content,
+      });
+
+      Log.i('Sending upload request...', 'CHAT_SCREEN_MONGODB');
+      print('[CHAT_SCREEN_MONGODB] Sending upload request...');
+      
+      final response = await dio.post(
+        '/api/media/upload',
+        data: formData,
+        onSendProgress: (sent, total) {
+          if (total > 0) {
+            final progress = (sent / total * 100).toStringAsFixed(1);
+            Log.i('Upload progress: $progress%', 'CHAT_SCREEN_MONGODB');
+            print('[CHAT_SCREEN_MONGODB] Upload progress: $progress%');
+          }
+        },
+      );
+
+      Log.i('Upload response: status=${response.statusCode}, data=${response.data}', 'CHAT_SCREEN_MONGODB');
+      print('[CHAT_SCREEN_MONGODB] Upload response: status=${response.statusCode}');
+
+      if (response.statusCode == 201 || response.statusCode == 200) {
+        dynamic responseData = response.data;
+        if (responseData is Map) {
+          final mediaUrl = responseData['mediaUrl'] as String?;
+          if (mediaUrl != null && mediaUrl.isNotEmpty) {
+            Log.i('Upload successful, mediaUrl: $mediaUrl', 'CHAT_SCREEN_MONGODB');
+            print('[CHAT_SCREEN_MONGODB] Upload successful! mediaUrl: $mediaUrl');
+            print('[CHAT_SCREEN_MONGODB] Calling _sendMediaMessage...');
+            // Send the voice message - don't set _isSending here, let _sendMediaMessage handle it
+            await _sendMediaMessage(mediaUrl, 'voice', content: content);
+            print('[CHAT_SCREEN_MONGODB] _sendMediaMessage completed');
+          } else {
+            Log.e('No media URL in response', 'CHAT_SCREEN_MONGODB', null);
+            print('[CHAT_SCREEN_MONGODB] ERROR: No media URL in response: ${response.data}');
+            throw Exception('No media URL returned from upload. Response: ${response.data}');
+          }
+        } else {
+          Log.e('Invalid response format', 'CHAT_SCREEN_MONGODB', null);
+          print('[CHAT_SCREEN_MONGODB] ERROR: Invalid response format: ${response.data}');
+          throw Exception('Invalid response format: ${response.data}');
+        }
+      } else {
+        Log.e('Upload failed with status code', 'CHAT_SCREEN_MONGODB', null);
+        print('[CHAT_SCREEN_MONGODB] ERROR: Upload failed with status ${response.statusCode}');
+        throw Exception('Upload failed: Status ${response.statusCode}, Response: ${response.data}');
+      }
+    } on DioException catch (e) {
+      Log.e('DioException sending voice message', 'CHAT_SCREEN_MONGODB', e);
+      print('[CHAT_SCREEN_MONGODB] DioException: ${e.message}');
+      if (e.response != null) {
+        print('[CHAT_SCREEN_MONGODB] Response status: ${e.response?.statusCode}, data: ${e.response?.data}');
+      }
+      String errorMessage = 'Error sending voice message';
+      if (e.response != null) {
+        errorMessage += ': ${e.response?.statusCode} - ${e.response?.data}';
+      } else if (e.message != null) {
+        errorMessage += ': ${e.message}';
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(errorMessage)),
+        );
+      }
+    } catch (e, stackTrace) {
+      Log.e('Error sending voice message', 'CHAT_SCREEN_MONGODB', e);
+      print('[CHAT_SCREEN_MONGODB] Error: $e');
+      print('[CHAT_SCREEN_MONGODB] Stack trace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sending voice message: $e')),
+        );
       }
     }
   }
@@ -2041,20 +2185,21 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                   else if (messageType == 'audio' || messageType == 'voice')
                     Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Container(
+                        ConstrainedBox(
                           constraints: BoxConstraints(
                             maxWidth: ResponsiveUtils.getResponsiveValue(
                               context,
-                              mobile: 200.0,
-                              tablet: 225.0,
-                              desktop: 250.0,
+                              mobile: 250.0,
+                              tablet: 280.0,
+                              desktop: 300.0,
                             ),
                             maxHeight: ResponsiveUtils.getResponsiveValue(
                               context,
-                              mobile: 70.0,
-                              tablet: 75.0,
-                              desktop: 80.0,
+                              mobile: 60.0,
+                              tablet: 65.0,
+                              desktop: 70.0,
                             ),
                           ),
                           child: EnhancedMediaPreview(
@@ -2065,22 +2210,22 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             onTap: () => _showFullScreenMedia(mediaUrl ?? '', messageType, content),
                             maxWidth: ResponsiveUtils.getResponsiveValue(
                               context,
-                              mobile: 200.0,
-                              tablet: 225.0,
-                              desktop: 250.0,
+                              mobile: 250.0,
+                              tablet: 280.0,
+                              desktop: 300.0,
                             ),
                             maxHeight: ResponsiveUtils.getResponsiveValue(
                               context,
-                              mobile: 70.0,
-                              tablet: 75.0,
-                              desktop: 80.0,
+                              mobile: 60.0,
+                              tablet: 65.0,
+                              desktop: 70.0,
                             ),
                             enableRetry: true,
                           ),
                         ),
                         if (content.isNotEmpty && !content.contains('Voice Message') && !content.contains('Audio Message'))
                           Padding(
-                            padding: EdgeInsets.only(top: spacing * 0.67),
+                            padding: EdgeInsets.only(top: spacing * 0.5),
                             child: Text(
                               displayContent,
                               style: ResponsiveUtils.getResponsiveCaptionStyle(
@@ -2872,6 +3017,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
             controller: _messageController,
             onSendMessage: _sendMessage,
             onSendMedia: _sendMediaMessage,
+            onSendVoice: _sendVoiceMessage,
             chatId: widget.chatId,
             isEnabled: !_isSending,
           ),

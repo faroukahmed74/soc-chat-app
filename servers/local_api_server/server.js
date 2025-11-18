@@ -2376,7 +2376,7 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
           ? (isGroupChat ? `${senderName} sent a photo` : '📷 Photo')
           : messageType === 'video'
             ? (isGroupChat ? `${senderName} sent a video` : '🎥 Video')
-            : messageType === 'audio'
+            : messageType === 'audio' || messageType === 'voice'
               ? (isGroupChat ? `${senderName} sent a voice message` : '🎤 Voice message')
               : (isGroupChat ? `${senderName} sent a ${messageType}` : `📎 ${messageType}`);
       

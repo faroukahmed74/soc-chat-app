@@ -282,73 +282,25 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   }
 
   Widget _buildAudioWidget() {
+    // Use a more compact horizontal layout for voice messages
+    final isVoice = widget.mediaType == 'voice';
+    
     return GestureDetector(
       onTap: widget.onTap, // Make entire audio widget tappable
       child: Stack(
       children: [
         Container(
+          constraints: widget.maxHeight != null 
+              ? BoxConstraints(maxHeight: widget.maxHeight!)
+              : null,
           decoration: BoxDecoration(
               color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
             borderRadius: BorderRadius.circular(12),
           ),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _themeService.isDarkMode ? Colors.grey[700] : Colors.grey[200],
-                  ),
-                  child: Icon(
-                    widget.mediaType == 'voice' ? Icons.mic : Icons.music_note,
-                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-                size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 12),
-                  child: Text(
-                    widget.fileName ?? (widget.mediaType == 'voice' ? 'Voice Message' : 'Audio'),
-                style: TextStyle(
-                      color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-                  fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
-                      fontWeight: FontWeight.w600,
-                    ),
-                    textAlign: TextAlign.center,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    IconButton(
-                      onPressed: widget.onTap,
-                      icon: Icon(
-                        Icons.play_arrow,
-                        color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-                        size: 32,
-                      ),
-                      tooltip: 'Play audio',
-                    ),
-                  ],
-                ),
-                if (widget.fileSize != null) ...[
-              const SizedBox(height: 4),
-              Text(
-                    widget.fileSize!,
-                style: TextStyle(
-                  color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
-                      fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 10),
-                ),
-              ),
-                ],
-            ],
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: isVoice 
+              ? _buildCompactVoiceWidget()
+              : _buildStandardAudioWidget(),
         ),
         // Download button overlay
         Positioned(
@@ -395,6 +347,126 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
             ),
         ],
       ),
+    );
+  }
+
+  Widget _buildCompactVoiceWidget() {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // Play/Pause button
+        Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: _themeService.isDarkMode ? Colors.grey[700] : Colors.grey[200],
+            shape: BoxShape.circle,
+          ),
+          child: IconButton(
+            onPressed: widget.onTap,
+            icon: Icon(
+              Icons.play_arrow,
+              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+              size: 20,
+            ),
+            padding: EdgeInsets.zero,
+            tooltip: 'Play voice message',
+          ),
+        ),
+        const SizedBox(width: 12),
+        // Voice icon and label
+        Icon(
+          Icons.mic,
+          color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
+          size: 18,
+        ),
+        const SizedBox(width: 8),
+        // File name or duration
+        Flexible(
+          child: Text(
+            widget.fileName ?? 'Voice Message',
+            style: TextStyle(
+              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12),
+              fontWeight: FontWeight.w500,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        if (widget.fileSize != null) ...[
+          const SizedBox(width: 8),
+          Text(
+            widget.fileSize!,
+            style: TextStyle(
+              color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
+              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 10),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildStandardAudioWidget() {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Container(
+          width: 50,
+          height: 50,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: _themeService.isDarkMode ? Colors.grey[700] : Colors.grey[200],
+          ),
+          child: Icon(
+            Icons.music_note,
+            color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+            size: 24,
+          ),
+        ),
+        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: Text(
+            widget.fileName ?? 'Audio',
+            style: TextStyle(
+              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 12),
+              fontWeight: FontWeight.w600,
+            ),
+            textAlign: TextAlign.center,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+        ),
+        const SizedBox(height: 6),
+        IconButton(
+          onPressed: widget.onTap,
+          icon: Icon(
+            Icons.play_arrow,
+            color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+            size: 28,
+          ),
+          tooltip: 'Play audio',
+          padding: EdgeInsets.zero,
+          constraints: const BoxConstraints(
+            minWidth: 40,
+            minHeight: 40,
+          ),
+        ),
+        if (widget.fileSize != null) ...[
+          const SizedBox(height: 4),
+          Text(
+            widget.fileSize!,
+            style: TextStyle(
+              color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
+              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 10),
+            ),
+          ),
+        ],
+      ],
     );
   }
 
@@ -914,28 +986,71 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
         }
       } else {
         // Mobile: Download file to device
-        await _downloadMediaMobile(mediaUrl);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Downloaded successfully'),
-              backgroundColor: Colors.green,
-            ),
-          );
+        try {
+          await _downloadMediaMobile(mediaUrl);
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Downloaded successfully'),
+                backgroundColor: Colors.green,
+                duration: Duration(seconds: 2),
+              ),
+            );
+          }
+        } catch (downloadError) {
+          // Handle specific error types
+          String errorMessage = 'Failed to download';
+          if (downloadError.toString().contains('permission')) {
+            errorMessage = 'Permission denied. Please grant storage permission in app settings.';
+          } else if (downloadError.toString().contains('timeout')) {
+            errorMessage = 'Download timeout. Please check your network connection.';
+          } else if (downloadError.toString().contains('HTTP')) {
+            errorMessage = 'Download failed. Please check your internet connection.';
+          } else {
+            errorMessage = 'Failed to download: ${downloadError.toString()}';
+          }
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(errorMessage),
+                backgroundColor: Colors.red,
+                duration: const Duration(seconds: 4),
+                action: SnackBarAction(
+                  label: 'OK',
+                  textColor: Colors.white,
+                  onPressed: () {},
+                ),
+              ),
+            );
+          }
+          rethrow;
         }
       }
     } catch (e) {
       Log.e('Error downloading media', 'ENHANCED_MEDIA_PREVIEW', e);
-      _showSnackBar('Failed to download: ${e.toString()}');
+      if (!e.toString().contains('permission') && 
+          !e.toString().contains('timeout') && 
+          !e.toString().contains('HTTP')) {
+        _showSnackBar('Failed to download: ${e.toString()}');
+      }
     }
   }
 
   Future<void> _downloadMediaMobile(String url) async {
-    await MediaDownloadService.saveToDevice(
-      url: url,
-      mediaType: widget.mediaType,
-      fileName: widget.fileName,
-    );
+    try {
+      Log.i('Starting mobile download: type=${widget.mediaType}, url=$url', 'ENHANCED_MEDIA_PREVIEW');
+      await MediaDownloadService.saveToDevice(
+        url: url,
+        mediaType: widget.mediaType,
+        fileName: widget.fileName,
+      );
+      Log.i('Mobile download completed successfully', 'ENHANCED_MEDIA_PREVIEW');
+    } catch (e, stackTrace) {
+      Log.e('Error in _downloadMediaMobile', 'ENHANCED_MEDIA_PREVIEW', e);
+      Log.e('Stack trace: $stackTrace', 'ENHANCED_MEDIA_PREVIEW', null);
+      rethrow;
+    }
   }
 
   String _getFileNameFromUrl(String url) {

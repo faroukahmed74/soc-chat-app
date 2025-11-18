@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
+import 'dart:async';
 import '../widgets/emoji_picker.dart';
 import '../widgets/enhanced_media_sender.dart';
 import '../utils/responsive_utils.dart';
+import '../services/enhanced_voice_service.dart';
+import '../services/web_voice_service.dart';
 
 /// Intent class for sending messages via keyboard shortcut
 class _SendMessageIntent extends Intent {
@@ -24,6 +27,7 @@ class EnhancedChatInput extends StatefulWidget {
   final String? selectedMediaType;
   final String? selectedMediaFileName;
   final VoidCallback? onClearMedia;
+  final Future<void> Function(Uint8List, String, String)? onSendVoice;
 
   const EnhancedChatInput({
     super.key,
@@ -36,6 +40,7 @@ class EnhancedChatInput extends StatefulWidget {
     this.selectedMediaType,
     this.selectedMediaFileName,
     this.onClearMedia,
+    this.onSendVoice,
   });
 
   @override
@@ -46,6 +51,11 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
   bool _showEmojiPicker = false;
   bool _showMediaSender = false;
   final FocusNode _focusNode = FocusNode();
+  
+  // Voice recording state
+  bool _isRecordingVoice = false;
+  Timer? _recordingTimer;
+  Duration _recordingDuration = Duration.zero;
 
   @override
   void initState() {
@@ -62,7 +72,169 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
   @override
   void dispose() {
     _focusNode.dispose();
+    _recordingTimer?.cancel();
+    if (_isRecordingVoice) {
+      _cancelVoiceRecording();
+    }
     super.dispose();
+  }
+  
+  Future<void> _startVoiceRecording() async {
+    try {
+      if (kIsWeb) {
+        final started = await WebVoiceService.startRecording();
+        if (!started) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to start recording. Please check microphone permissions.')),
+            );
+          }
+          return;
+        }
+      } else {
+        final started = await EnhancedVoiceService.startRecording(context);
+        if (!started) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Failed to start recording. Please check microphone permissions.')),
+            );
+          }
+          return;
+        }
+      }
+
+      setState(() {
+        _isRecordingVoice = true;
+        _recordingDuration = Duration.zero;
+      });
+
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (mounted) {
+          setState(() {
+            if (kIsWeb) {
+              final duration = WebVoiceService.currentRecordingDuration;
+              if (duration != null) {
+                _recordingDuration = duration;
+              }
+            } else {
+              final duration = EnhancedVoiceService.currentRecordingDuration;
+              if (duration != null) {
+                _recordingDuration = duration;
+              }
+            }
+          });
+        }
+      });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error starting recording: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _stopVoiceRecording() async {
+    try {
+      print('[ENHANCED_CHAT_INPUT] Stopping voice recording...');
+      _recordingTimer?.cancel();
+      _recordingTimer = null;
+
+      VoiceRecordingResult? result;
+      if (kIsWeb) {
+        print('[ENHANCED_CHAT_INPUT] Stopping web recording...');
+        result = await WebVoiceService.stopRecording();
+      } else {
+        print('[ENHANCED_CHAT_INPUT] Stopping mobile recording...');
+        result = await EnhancedVoiceService.stopRecording();
+      }
+
+      print('[ENHANCED_CHAT_INPUT] Recording result: ${result != null ? "not null" : "null"}');
+      if (result != null) {
+        print('[ENHANCED_CHAT_INPUT] Recording bytes: ${result.bytes.length}, mimeType: ${result.mimeType}, duration: ${result.duration}');
+      }
+
+      setState(() {
+        _isRecordingVoice = false;
+        _recordingDuration = Duration.zero;
+      });
+
+      if (result == null) {
+        print('[ENHANCED_CHAT_INPUT] Recording result is null');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Recording failed: No audio data captured')),
+          );
+        }
+        return;
+      }
+
+      if (result.bytes.isEmpty) {
+        print('[ENHANCED_CHAT_INPUT] Recording bytes are empty');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Recording failed: Audio file is empty')),
+          );
+        }
+        return;
+      }
+
+      if (widget.onSendVoice == null) {
+        print('[ENHANCED_CHAT_INPUT] onSendVoice callback is null!');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Error: Voice message handler not configured')),
+          );
+        }
+        return;
+      }
+
+      print('[ENHANCED_CHAT_INPUT] Calling onSendVoice callback...');
+      await widget.onSendVoice!(result.bytes, result.mimeType, '🎤 Voice Message');
+      print('[ENHANCED_CHAT_INPUT] Voice message sent successfully');
+    } catch (e, stackTrace) {
+      print('[ENHANCED_CHAT_INPUT] Error in _stopVoiceRecording: $e');
+      print('[ENHANCED_CHAT_INPUT] Stack trace: $stackTrace');
+      setState(() {
+        _isRecordingVoice = false;
+        _recordingDuration = Duration.zero;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error stopping recording: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _cancelVoiceRecording() async {
+    try {
+      _recordingTimer?.cancel();
+      _recordingTimer = null;
+
+      if (kIsWeb) {
+        await WebVoiceService.cancelRecording();
+      } else {
+        await EnhancedVoiceService.cancelRecording();
+      }
+
+      setState(() {
+        _isRecordingVoice = false;
+        _recordingDuration = Duration.zero;
+      });
+    } catch (e) {
+      setState(() {
+        _isRecordingVoice = false;
+        _recordingDuration = Duration.zero;
+      });
+    }
+  }
+
+  String _formatDuration(Duration duration) {
+    String twoDigits(int n) => n.toString().padLeft(2, '0');
+    final minutes = twoDigits(duration.inMinutes.remainder(60));
+    final seconds = twoDigits(duration.inSeconds.remainder(60));
+    return '$minutes:$seconds';
   }
 
   void _toggleEmojiPicker() {
@@ -158,6 +330,73 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
               });
               _focusNode.requestFocus();
             },
+          ),
+
+        // Voice recording UI overlay
+        if (_isRecordingVoice)
+          Container(
+            margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.colorScheme.surface,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.2),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+              border: Border.all(
+                color: Colors.red.withOpacity(0.3),
+                width: 2,
+              ),
+            ),
+            child: Row(
+              children: [
+                // Recording indicator
+                Container(
+                  width: 12,
+                  height: 12,
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                // Duration
+                Text(
+                  _formatDuration(_recordingDuration),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+                const Spacer(),
+                // Cancel button
+                IconButton(
+                  onPressed: _cancelVoiceRecording,
+                  icon: const Icon(Icons.close),
+                  color: Colors.grey,
+                  tooltip: 'Cancel',
+                ),
+                const SizedBox(width: 8),
+                // Send button
+                Container(
+                  decoration: BoxDecoration(
+                    color: theme.primaryColor,
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    onPressed: _stopVoiceRecording,
+                    icon: const Icon(Icons.send),
+                    color: Colors.white,
+                    tooltip: 'Send',
+                  ),
+                ),
+              ],
+            ),
           ),
 
         // Media preview
@@ -335,6 +574,27 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
                         : (isDark ? Colors.grey[400] : Colors.grey[600]),
                   ),
                 ),
+
+                // Microphone button
+                if (widget.onSendVoice != null)
+                  Container(
+                    decoration: BoxDecoration(
+                      color: _isRecordingVoice 
+                          ? Colors.red.withOpacity(0.2)
+                          : Colors.transparent,
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: IconButton(
+                      onPressed: _isRecordingVoice ? _stopVoiceRecording : _startVoiceRecording,
+                      icon: Icon(
+                        _isRecordingVoice ? Icons.stop : Icons.mic,
+                        color: _isRecordingVoice 
+                            ? Colors.red 
+                            : (isDark ? Colors.grey[400] : Colors.grey[600]),
+                      ),
+                      tooltip: _isRecordingVoice ? 'Stop Recording' : 'Record Voice Message',
+                    ),
+                  ),
 
                 // Text input
                 Expanded(
