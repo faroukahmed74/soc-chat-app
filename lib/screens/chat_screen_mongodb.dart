@@ -1766,6 +1766,28 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                                   ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.8)
                                   : Theme.of(context).colorScheme.primary,
                               weight: FontWeight.bold,
+                            ).copyWith(
+                              fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
+                              fontFamilyFallback: kIsWeb
+                                  ? const [
+                                      'NotoColorEmoji',
+                                      'NotoSansArabic',
+                                      'Apple Color Emoji',
+                                      'Segoe UI Emoji',
+                                      'Segoe UI Symbol',
+                                      'Noto Color Emoji',
+                                      'Android Emoji',
+                                      'EmojiSymbols',
+                                      'EmojiOne Mozilla',
+                                      'Twemoji Mozilla',
+                                      'Segoe UI Historic',
+                                      'Arial',
+                                      'Helvetica',
+                                      'Segoe UI',
+                                      'Tahoma',
+                                      'sans-serif'
+                                    ]
+                                  : null,
                             ),
                           ),
                           SizedBox(height: spacing * 0.25),
@@ -1778,6 +1800,28 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                               color: isCurrentUser
                                   ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
                                   : Theme.of(context).colorScheme.onSurfaceVariant,
+                            ).copyWith(
+                              fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
+                              fontFamilyFallback: kIsWeb
+                                  ? const [
+                                      'NotoColorEmoji',
+                                      'NotoSansArabic',
+                                      'Apple Color Emoji',
+                                      'Segoe UI Emoji',
+                                      'Segoe UI Symbol',
+                                      'Noto Color Emoji',
+                                      'Android Emoji',
+                                      'EmojiSymbols',
+                                      'EmojiOne Mozilla',
+                                      'Twemoji Mozilla',
+                                      'Segoe UI Historic',
+                                      'Arial',
+                                      'Helvetica',
+                                      'Segoe UI',
+                                      'Tahoma',
+                                      'sans-serif'
+                                    ]
+                                  : null,
                             ),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
@@ -1796,6 +1840,28 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                               ? Theme.of(context).colorScheme.onPrimary.withOpacity(0.7)
                               : Theme.of(context).colorScheme.onSurfaceVariant,
                           weight: FontWeight.bold,
+                        ).copyWith(
+                          fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
+                          fontFamilyFallback: kIsWeb
+                              ? const [
+                                  'NotoColorEmoji',
+                                  'NotoSansArabic',
+                                  'Apple Color Emoji',
+                                  'Segoe UI Emoji',
+                                  'Segoe UI Symbol',
+                                  'Noto Color Emoji',
+                                  'Android Emoji',
+                                  'EmojiSymbols',
+                                  'EmojiOne Mozilla',
+                                  'Twemoji Mozilla',
+                                  'Segoe UI Historic',
+                                  'Arial',
+                                  'Helvetica',
+                                  'Segoe UI',
+                                  'Tahoma',
+                                  'sans-serif'
+                                ]
+                              : null,
                         ),
                       ),
                     ),
@@ -1807,6 +1873,27 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
                       ).copyWith(
                         fontStyle: FontStyle.italic,
+                        fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
+                        fontFamilyFallback: kIsWeb
+                            ? const [
+                                'NotoColorEmoji',
+                                'NotoSansArabic',
+                                'Apple Color Emoji',
+                                'Segoe UI Emoji',
+                                'Segoe UI Symbol',
+                                'Noto Color Emoji',
+                                'Android Emoji',
+                                'EmojiSymbols',
+                                'EmojiOne Mozilla',
+                                'Twemoji Mozilla',
+                                'Segoe UI Historic',
+                                'Arial',
+                                'Helvetica',
+                                'Segoe UI',
+                                'Tahoma',
+                                'sans-serif'
+                              ]
+                            : null,
                       ),
                     )
                   else if (messageType == 'text')
@@ -1817,6 +1904,28 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                         color: isCurrentUser
                             ? Theme.of(context).colorScheme.onPrimary
                             : Theme.of(context).colorScheme.onSurface,
+                      ).copyWith(
+                        fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
+                        fontFamilyFallback: kIsWeb
+                            ? const [
+                                'NotoColorEmoji',
+                                'NotoSansArabic',
+                                'Apple Color Emoji',
+                                'Segoe UI Emoji',
+                                'Segoe UI Symbol',
+                                'Noto Color Emoji',
+                                'Android Emoji',
+                                'EmojiSymbols',
+                                'EmojiOne Mozilla',
+                                'Twemoji Mozilla',
+                                'Segoe UI Historic',
+                                'Arial',
+                                'Helvetica',
+                                'Segoe UI',
+                                'Tahoma',
+                                'sans-serif'
+                              ]
+                            : null,
                       ),
                     )
                   else if (messageType == 'image')
@@ -2531,6 +2640,27 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                   overflow: TextOverflow.ellipsis,
                   style: baseStyle.copyWith(
                     fontSize: _dynamicTitleFontSize(baseStyle),
+                    fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
+                    fontFamilyFallback: kIsWeb
+                        ? const [
+                            'NotoColorEmoji',
+                            'NotoSansArabic',
+                            'Apple Color Emoji',
+                            'Segoe UI Emoji',
+                            'Segoe UI Symbol',
+                            'Noto Color Emoji',
+                            'Android Emoji',
+                            'EmojiSymbols',
+                            'EmojiOne Mozilla',
+                            'Twemoji Mozilla',
+                            'Segoe UI Historic',
+                            'Arial',
+                            'Helvetica',
+                            'Segoe UI',
+                            'Tahoma',
+                            'sans-serif'
+                          ]
+                        : null,
                   ),
                 );
               },

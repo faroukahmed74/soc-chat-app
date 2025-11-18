@@ -63,22 +63,17 @@
     
     /* Apply emoji font to all text elements */
     body, * {
-      font-family: Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", "EmojiOne Mozilla", "Twemoji Mozilla", "Segoe UI Historic", sans-serif !important;
+      font-family: "NotoColorEmoji", Arial, Helvetica, "Segoe UI", Tahoma, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji", "Android Emoji", "EmojiSymbols", "EmojiOne Mozilla", "Twemoji Mozilla", "Segoe UI Historic", sans-serif !important;
     }
   </style>
 
   <!-- Responsive Configuration -->
   <script>
-    // Ensure all engine resources are local and prevent Google Fonts fetches
     window.flutterConfiguration = {
-      // Force HTML renderer to use system/local fonts to fix blank text
-      renderer: 'html',
       canvasKitBaseUrl: './canvaskit/',
-      useHostedFonts: false // disable fetching Roboto from fonts.gstatic.com
+      useHostedFonts: false
     };
-
-    // Proactively block any runtime attempts to insert Google Fonts stylesheets
-    (function blockExternalFonts(){
+  (function(){
       function removeGF() {
         try {
           const links = Array.from(document.querySelectorAll('link[rel="stylesheet"], link[href]'));
@@ -86,12 +81,9 @@
                .forEach(l => { try { l.parentNode && l.parentNode.removeChild(l); } catch(_){} });
         } catch(_) {}
       }
-      // Initial pass
       removeGF();
-      // Observe future injections
       const obs = new MutationObserver(() => removeGF());
       obs.observe(document.documentElement || document.body, { childList: true, subtree: true });
-      // Also patch appendChild to skip blocked links
       const origAppend = Element.prototype.appendChild;
       Element.prototype.appendChild = function(node){
         try {
@@ -104,11 +96,9 @@
       };
     })();
   </script>
-  </script>
   <script src="responsive_config.js"></script>
   
   <script>
-    // The value below is injected by flutter build, do not touch.
     const serviceWorkerVersion = null;
   </script>
   
@@ -155,8 +145,9 @@
     })();
   </script>
   
-  <!-- This script adds the flutter initialization JS code -->
+  <!-- Flutter bootstrap and loader -->
   <script src="flutter.js" defer></script>
+  <script src="flutter_bootstrap.js" defer></script>
 </head>
 <body>
   <!-- SOC Chat App Logo and Loading Screen -->
@@ -282,97 +273,45 @@
   </style>
 
   <script>
-    // Register service worker for offline support (non-blocking)
     if ('serviceWorker' in navigator) {
       window.addEventListener('load', function() {
-        navigator.serviceWorker.register('/firebase-messaging-sw.js')
-          .then(function(registration) {
-            console.log('Service Worker registered successfully:', registration.scope);
-          })
-          .catch(function(error) {
-            console.log('Service Worker registration failed:', error);
-          });
+        const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        if (isSecure) {
+          navigator.serviceWorker.register('/firebase-messaging-sw.js')
+            .then(function(registration) { console.log('Service Worker registered:', registration.scope); })
+            .catch(function(error) { console.log('Service Worker registration failed:', error); });
+        } else {
+          console.log('Skipping SW registration on non-secure origin');
+        }
       });
     }
-    
-    // Initialize Flutter app when ready
-    function initializeFlutterApp() {
+    function startFlutter() {
       try {
-        // Wait for Flutter loader to be available
-        if (typeof _flutter === 'undefined' || !_flutter.loader) {
-          console.log('Waiting for Flutter loader...');
-          setTimeout(initializeFlutterApp, 100);
+        if (typeof _flutter === 'undefined' || !_flutter.loader || !window._flutter.buildConfig) {
+          setTimeout(startFlutter, 100);
           return;
         }
-        
-        console.log('Flutter loader available, initializing app...');
-        
-        // Try new Flutter loader API first, fallback to old API for compatibility
-        if (typeof _flutter.loader.load === 'function') {
-          // New API (Flutter 3.16+)
-          console.log('Using new Flutter loader API');
-          _flutter.loader.load({
-            serviceWorkerSettings: {
-              serviceWorkerVersion: serviceWorkerVersion,
-            },
-            onEntrypointLoaded: function(engineInitializer) {
-              console.log('Flutter entrypoint loaded, initializing engine...');
-              engineInitializer.initializeEngine().then(function(appRunner) {
-                console.log('Flutter engine initialized, running app...');
-                document.getElementById('loading').style.display = 'none';
-                appRunner.runApp();
-              }).catch(function(error) {
-                console.error('Flutter engine initialization error:', error);
-                document.getElementById('loading').style.display = 'none';
-                document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);"><h2>Error Loading App</h2><p>Please check the browser console for details.</p></div>';
-              });
-            },
-            onError: function(error) {
-              console.error('Flutter loader error:', error);
+        _flutter.loader.load({
+          serviceWorkerSettings: { serviceWorkerVersion: serviceWorkerVersion },
+          config: window.flutterConfiguration,
+          onEntrypointLoaded: function(engineInitializer) {
+            engineInitializer.initializeEngine().then(function(appRunner) {
               document.getElementById('loading').style.display = 'none';
-            }
-          });
-        } else if (typeof _flutter.loader.loadEntrypoint === 'function') {
-          // Old API (Flutter < 3.16) - fallback for compatibility
-          console.log('Using old Flutter loader API');
-          _flutter.loader.loadEntrypoint({
-            serviceWorker: {
-              serviceWorkerVersion: serviceWorkerVersion,
-            },
-            onEntrypointLoaded: function(engineInitializer) {
-              console.log('Flutter entrypoint loaded, initializing engine...');
-              engineInitializer.initializeEngine().then(function(appRunner) {
-                console.log('Flutter engine initialized, running app...');
-                document.getElementById('loading').style.display = 'none';
-                appRunner.runApp();
-              }).catch(function(error) {
-                console.error('Flutter engine initialization error:', error);
-                document.getElementById('loading').style.display = 'none';
-                document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);"><h2>Error Loading App</h2><p>Please check the browser console for details.</p></div>';
-              });
-            }
-          });
-        } else {
-          console.error('Flutter loader API not available');
-          document.getElementById('loading').style.display = 'none';
-          document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);"><h2>Error: Flutter Loader Not Available</h2><p>Please refresh the page.</p></div>';
-        }
-      } catch (error) {
-        console.error('Error initializing Flutter app:', error);
+              appRunner.runApp();
+            }).catch(function(error) {
+              console.error('Flutter engine initialization error:', error);
+              document.getElementById('loading').style.display = 'none';
+            });
+          }
+        });
+      } catch (e) {
+        console.error('Flutter start error:', e);
         document.getElementById('loading').style.display = 'none';
-        document.body.innerHTML += '<div style="position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:white;padding:20px;border-radius:8px;box-shadow:0 4px 6px rgba(0,0,0,0.1);"><h2>Error Loading App</h2><p>' + error.message + '</p><p>Please check the browser console for details.</p></div>';
       }
     }
-    
-    // Start initialization when page loads
-    window.addEventListener('load', function(ev) {
-      console.log('Page loaded, initializing Flutter app...');
-      initializeFlutterApp();
-    });
-    
-    // Also try immediately in case flutter.js is already loaded
+    window.addEventListener('load', startFlutter);
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-      setTimeout(initializeFlutterApp, 100);
+      setTimeout(startFlutter, 100);
     }
   </script>
 </body>

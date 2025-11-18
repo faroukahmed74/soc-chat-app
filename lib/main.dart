@@ -175,6 +175,43 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
   bool _showOnboarding = false;
   late ThemeService _themeService;
   Locale _currentLocale = const Locale('en');
+  TextTheme _withFallback(TextTheme base, String primary) {
+    const f = [
+      'NotoColorEmoji',
+      'NotoSansArabic',
+      'Apple Color Emoji',
+      'Segoe UI Emoji',
+      'Segoe UI Symbol',
+      'Noto Color Emoji',
+      'Android Emoji',
+      'EmojiSymbols',
+      'EmojiOne Mozilla',
+      'Twemoji Mozilla',
+      'Segoe UI Historic',
+      'Arial',
+      'Helvetica',
+      'Segoe UI',
+      'Tahoma',
+      'sans-serif'
+    ];
+    return TextTheme(
+      displayLarge: base.displayLarge?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      displayMedium: base.displayMedium?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      displaySmall: base.displaySmall?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      headlineLarge: base.headlineLarge?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      headlineMedium: base.headlineMedium?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      headlineSmall: base.headlineSmall?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      titleLarge: base.titleLarge?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      titleMedium: base.titleMedium?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      titleSmall: base.titleSmall?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      bodyLarge: base.bodyLarge?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      bodyMedium: base.bodyMedium?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      bodySmall: base.bodySmall?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      labelLarge: base.labelLarge?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      labelMedium: base.labelMedium?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+      labelSmall: base.labelSmall?.copyWith(fontFamily: primary, fontFamilyFallback: f),
+    );
+  }
 
   @override
   void initState() {
@@ -266,8 +303,18 @@ class _MyAppState extends State<MyApp> with TickerProviderStateMixin {
               return child!;
             },
             title: AppLocalizations.getString('app_name', _currentLocale.languageCode),
-            theme: ThemeService.lightTheme,
-            darkTheme: ThemeService.darkTheme,
+            theme: kIsWeb
+                ? ThemeService.lightTheme.copyWith(
+                    textTheme: _withFallback(ThemeService.lightTheme.textTheme, 'NotoNaskhArabic'),
+                    primaryTextTheme: _withFallback(ThemeService.lightTheme.primaryTextTheme, 'NotoNaskhArabic'),
+                  )
+                : ThemeService.lightTheme,
+            darkTheme: kIsWeb
+                ? ThemeService.darkTheme.copyWith(
+                    textTheme: _withFallback(ThemeService.darkTheme.textTheme, 'NotoNaskhArabic'),
+                    primaryTextTheme: _withFallback(ThemeService.darkTheme.primaryTextTheme, 'NotoNaskhArabic'),
+                  )
+                : ThemeService.darkTheme,
             themeMode: _themeService.themeMode,
             locale: _currentLocale,
             supportedLocales: LocalizationService.supportedLocales,

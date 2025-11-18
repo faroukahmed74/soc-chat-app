@@ -960,6 +960,26 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                   color: hasUnreadMessage
                       ? Theme.of(context).colorScheme.onSurface
                       : null,
+                  fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
+                  fontFamilyFallback: kIsWeb
+                      ? const [
+                          'NotoSansArabic',
+                          'Apple Color Emoji',
+                          'Segoe UI Emoji',
+                          'Segoe UI Symbol',
+                          'Noto Color Emoji',
+                          'Android Emoji',
+                          'EmojiSymbols',
+                          'EmojiOne Mozilla',
+                          'Twemoji Mozilla',
+                          'Segoe UI Historic',
+                          'Arial',
+                          'Helvetica',
+                          'Segoe UI',
+                          'Tahoma',
+                          'sans-serif'
+                        ]
+                      : null,
                 ),
                 overflow: TextOverflow.ellipsis,
               ),
@@ -983,6 +1003,26 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                 : Theme.of(context).colorScheme.onSurfaceVariant,
             fontWeight: hasUnreadMessage ? FontWeight.bold : FontWeight.normal,
             fontSize: hasUnreadMessage ? 14 : 13,
+            fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
+            fontFamilyFallback: kIsWeb
+                ? const [
+                    'NotoSansArabic',
+                    'Apple Color Emoji',
+                    'Segoe UI Emoji',
+                    'Segoe UI Symbol',
+                    'Noto Color Emoji',
+                    'Android Emoji',
+                    'EmojiSymbols',
+                    'EmojiOne Mozilla',
+                    'Twemoji Mozilla',
+                    'Segoe UI Historic',
+                    'Arial',
+                    'Helvetica',
+                    'Segoe UI',
+                    'Tahoma',
+                    'sans-serif'
+                  ]
+                : null,
           ),
           maxLines: 1,
         ),
@@ -1113,6 +1153,26 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
           'Chats',
           style: AppDesignSystem.headlineSmall.copyWith(
             color: Theme.of(context).colorScheme.onPrimary,
+            fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
+            fontFamilyFallback: kIsWeb
+                ? const [
+                    'NotoSansArabic',
+                    'Apple Color Emoji',
+                    'Segoe UI Emoji',
+                    'Segoe UI Symbol',
+                    'Noto Color Emoji',
+                    'Android Emoji',
+                    'EmojiSymbols',
+                    'EmojiOne Mozilla',
+                    'Twemoji Mozilla',
+                    'Segoe UI Historic',
+                    'Arial',
+                    'Helvetica',
+                    'Segoe UI',
+                    'Tahoma',
+                    'sans-serif'
+                  ]
+                : null,
           ),
         ),
         backgroundColor: Theme.of(context).colorScheme.primary,
@@ -1226,6 +1286,26 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                     style: AppDesignSystem.titleLarge.copyWith(
                       color: Theme.of(context).colorScheme.onPrimary,
                       fontWeight: FontWeight.bold,
+                      fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
+                      fontFamilyFallback: kIsWeb
+                          ? const [
+                              'NotoSansArabic',
+                              'Apple Color Emoji',
+                              'Segoe UI Emoji',
+                              'Segoe UI Symbol',
+                              'Noto Color Emoji',
+                              'Android Emoji',
+                              'EmojiSymbols',
+                              'EmojiOne Mozilla',
+                              'Twemoji Mozilla',
+                              'Segoe UI Historic',
+                              'Arial',
+                              'Helvetica',
+                              'Segoe UI',
+                              'Tahoma',
+                              'sans-serif'
+                            ]
+                          : null,
                     ),
                   ),
                 ],

@@ -49,7 +49,7 @@ class AppDesignSystem {
     brightness: Brightness.light,
     // Use local bundled Roboto fonts for consistent offline web rendering
     fontFamily: 'Roboto',
-    fontFamilyFallback: const ['NotoNaskhArabic', 'NotoSansArabic', 'Arial', 'Helvetica', 'Segoe UI', 'Tahoma', 'sans-serif'],
+    fontFamilyFallback: const ['NotoColorEmoji', 'NotoNaskhArabic', 'NotoSansArabic', 'Arial', 'Helvetica', 'Segoe UI', 'Tahoma', 'sans-serif'],
     primaryColor: primaryColor,
     scaffoldBackgroundColor: neutral50,
     colorScheme: const ColorScheme.light(
@@ -147,7 +147,7 @@ class AppDesignSystem {
     brightness: Brightness.dark,
     // Use local bundled Roboto fonts for consistent offline web rendering
     fontFamily: 'Roboto',
-    fontFamilyFallback: const ['NotoNaskhArabic', 'NotoSansArabic', 'Arial', 'Helvetica', 'Segoe UI', 'Tahoma', 'sans-serif'],
+    fontFamilyFallback: const ['NotoColorEmoji', 'NotoNaskhArabic', 'NotoSansArabic', 'Arial', 'Helvetica', 'Segoe UI', 'Tahoma', 'sans-serif'],
     primaryColor: primaryLight,
     scaffoldBackgroundColor: neutral900,
     colorScheme: const ColorScheme.dark(
