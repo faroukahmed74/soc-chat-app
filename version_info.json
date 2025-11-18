@@ -1,10 +1,10 @@
 {
-  "version": "1.0.25",
-  "build_number": "25",
+  "version": "1.0.26",
+  "build_number": "26",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.25 - Media Hub & Image Editing:\n- Added in-app media hub per chat with tabs for images, videos, and documents\n- Enabled photo editing (crop / rotate) before sending via camera or gallery\n- Fixed Android camera/gallery crashes by bundling UCrop activity and FileProvider\n- Unified media download handling with runtime storage permissions\n- Various stability fixes and logging improvements",
+  "release_notes": "SOC Chat App v1.0.26 - Voice Messages Feature:\n- Added voice message recording and sending for individual and group chats\n- Cross-platform voice messaging support (Android, iOS, and Web)\n- Compact and responsive voice message player UI with horizontal layout\n- Real-time voice message playback with duration display\n- Fixed UI overflow issues in voice message display\n- Enhanced error handling and logging for voice message uploads\n- Improved media upload flow with better progress tracking\n- Various stability improvements and bug fixes",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": true,
-  "last_updated": "2025-11-17T12:00:00Z"
+  "last_updated": "2025-01-17T12:00:00Z"
 }
