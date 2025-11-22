@@ -433,7 +433,8 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
         deletedBy: msg.deletedBy ? msg.deletedBy.toString() : null,
         replyTo: msg.replyTo ? msg.replyTo.toString() : null,
         replyToContent: msg.replyToContent || '',
-        replyToSenderName: msg.replyToSenderName || ''
+        replyToSenderName: msg.replyToSenderName || '',
+        reactions: msg.reactions || {} // Include reactions field
       };
       
       if (msg.isDeletedForEveryone) {
