@@ -16,6 +16,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 import '../utils/cairo_time_utils.dart';
 import '../services/theme_service.dart';
@@ -329,6 +330,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
 
       // Check for pending navigation from FCM notification
       await _checkPendingNavigation();
+      await _checkPendingCallData();
     } catch (e) {
       Log.e('Error initializing chat list', 'CHAT_LIST_MONGODB', e);
       if (mounted) {
@@ -1127,6 +1129,63 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
       }
     } catch (e) {
       Log.e('Error checking pending navigation', 'CHAT_LIST_MONGODB', e);
+    }
+  }
+
+  /// Check for pending call data from FCM notification (when app was closed)
+  Future<void> _checkPendingCallData() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final pendingCallDataStr = prefs.getString('pending_call_data');
+
+      if (pendingCallDataStr != null && pendingCallDataStr.isNotEmpty) {
+        // Clear the pending call data
+        await prefs.remove('pending_call_data');
+
+        // Wait a bit for the UI to be ready
+        await Future.delayed(const Duration(milliseconds: 1000));
+
+        if (!mounted) return;
+
+        try {
+          final data = jsonDecode(pendingCallDataStr) as Map<String, dynamic>;
+          final callId = data['callId']?.toString();
+          final chatId = data['chatId']?.toString();
+          final chatName = data['chatName']?.toString() ?? 'Unknown';
+          final callTypeStr = data['callType']?.toString() ?? 'video';
+          final isGroupChat = data['isGroupChat']?.toString() == 'true';
+
+          if (callId != null && callId.isNotEmpty && chatId != null && chatId.isNotEmpty) {
+            Log.i(
+              '📞 Navigating to pending call: callId=$callId, chatId=$chatId',
+              'CHAT_LIST_MONGODB',
+            );
+
+            if (mounted) {
+              Navigator.pushNamed(
+                context,
+                '/call',
+                arguments: {
+                  'chatId': chatId,
+                  'chatName': chatName,
+                  'isGroupChat': isGroupChat,
+                  'callType': callTypeStr,
+                  'direction': 'incoming',
+                  'callId': callId,
+                },
+              );
+              Log.i(
+                '✅ Navigated to pending call: $callId',
+                'CHAT_LIST_MONGODB',
+              );
+            }
+          }
+        } catch (e) {
+          Log.e('Error navigating to pending call', 'CHAT_LIST_MONGODB', e);
+        }
+      }
+    } catch (e) {
+      Log.e('Error checking pending call data', 'CHAT_LIST_MONGODB', e);
     }
   }
 

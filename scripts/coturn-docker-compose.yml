@@ -1,0 +1,28 @@
+﻿version: '3.8'
+
+services:
+  coturn:
+    image: coturn/coturn:latest
+    container_name: soc-chat-coturn
+    network_mode: host
+    restart: unless-stopped
+    environment:
+      - EXTERNAL_IP=10.120.4.230
+    volumes:
+      - ./coturn:/etc/coturn
+    command: |
+      -n
+      --log-file=stdout
+      --external-ip=10.120.4.230
+      --listening-port=3478
+      --tls-listening-port=5349
+      --min-port=49152
+      --max-port=65535
+      --realm=soc-chat-app.local
+      --user=soc-chat-turn:yG5EJFUdLgT7xqXr
+      --no-cli
+      --no-tls
+      --no-dtls
+      --fingerprint
+      --lt-cred-mech
+      --verbose

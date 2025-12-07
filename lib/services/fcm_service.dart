@@ -620,6 +620,14 @@ class FCMService {
       'FCM_SERVICE',
     );
 
+    // Check if this is a call invitation - handle it immediately
+    final messageType = message.data['type']?.toString();
+    if (messageType == 'call_invitation') {
+      Log.i('📞 Call invitation received in foreground, processing...', 'FCM_SERVICE');
+      _processMessageData(message.data);
+      return;
+    }
+
     // On iOS, notifications with 'notification' field are automatically displayed
     // by the system when app is in foreground (via AppDelegate), but we still
     // show a local notification as a fallback
@@ -675,6 +683,13 @@ class FCMService {
     Log.i('Processing FCM message data: $data', 'FCM_SERVICE');
 
     try {
+      // Check if this is a call invitation
+      final messageType = data['type']?.toString();
+      if (messageType == 'call_invitation') {
+        await _handleCallInvitationFromFCM(data);
+        return;
+      }
+
       // Extract relevant data
       final chatId = data['chatId']?.toString();
       final senderName = data['senderName']?.toString() ?? 'Unknown';
@@ -754,6 +769,72 @@ class FCMService {
       }
     } catch (e) {
       Log.e('Error processing FCM message data', 'FCM_SERVICE', e);
+    }
+  }
+
+  /// Handle call invitation from FCM notification
+  Future<void> _handleCallInvitationFromFCM(Map<String, dynamic> data) async {
+    try {
+      Log.i('📞 Processing call invitation from FCM: $data', 'FCM_SERVICE');
+      
+      final callId = data['callId']?.toString();
+      final chatId = data['chatId']?.toString();
+      final chatName = data['chatName']?.toString() ?? 'Unknown';
+      final callTypeStr = data['callType']?.toString() ?? 'video';
+      final isGroupChat = data['isGroupChat']?.toString() == 'true';
+      
+      if (callId == null || callId.isEmpty || chatId == null || chatId.isEmpty) {
+        Log.w('❌ Call invitation missing required fields: callId=$callId, chatId=$chatId', 'FCM_SERVICE');
+        return;
+      }
+
+      Log.i('📞 Navigating to call screen from FCM: callId=$callId, chatId=$chatId', 'FCM_SERVICE');
+
+      // Check if call screen is already open for this call
+      if (ActiveCallTracker.isCallActive(callId)) {
+        Log.w('⚠️ [FCM_SERVICE] Call screen already open for callId: $callId, ignoring duplicate FCM notification');
+        return;
+      }
+
+      // Wait a bit for app to initialize if needed
+      await Future.delayed(const Duration(milliseconds: 500));
+
+      // Use navigatorKey to navigate
+      final navigator = navigatorKey.currentState;
+      if (navigator == null) {
+        Log.w('❌ Navigator not available, storing call data for later', 'FCM_SERVICE');
+        // Store call data to navigate when app becomes active
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString('pending_call_data', jsonEncode(data));
+        return;
+      }
+
+      // Check if already on call screen route
+      final currentContext = navigatorKey.currentContext;
+      if (currentContext != null) {
+        final route = ModalRoute.of(currentContext);
+        if (route?.settings.name == '/call') {
+          Log.w('⚠️ [FCM_SERVICE] Call screen route already active, ignoring duplicate FCM notification');
+          return;
+        }
+      }
+
+      // Import call screen dynamically to avoid circular dependencies
+      // Navigate to call screen
+      ActiveCallTracker.setActiveCall(callId); // Mark as active BEFORE navigation
+      navigator.pushNamed('/call', arguments: {
+        'chatId': chatId,
+        'chatName': chatName,
+        'isGroupChat': isGroupChat,
+        'callType': callTypeStr,
+        'direction': 'incoming',
+        'callId': callId,
+      });
+
+      Log.i('✅ Successfully navigated to call screen from FCM', 'FCM_SERVICE');
+    } catch (e, stackTrace) {
+      Log.e('Error handling call invitation from FCM', 'FCM_SERVICE', e);
+      Log.e('Stack trace', 'FCM_SERVICE', stackTrace);
     }
   }
 
@@ -1005,6 +1086,38 @@ Future<void> _firebaseBackgroundMessageHandler(RemoteMessage message) async {
   // for data-only messages or when we need to process the message.
   // However, we still show a local notification as a fallback to ensure
   // the user sees it.
+  
+  // Check if this is a call invitation - handle it specially
+  final messageType = message.data['type']?.toString();
+  if (messageType == 'call_invitation') {
+    Log.i('📞 Call invitation received in background, processing...', 'FCM_BACKGROUND');
+    
+    // For call invitations, we need to show a notification that can wake up the app
+    // and handle the call when the user taps it
+    try {
+      final notificationService = EnhancedNotificationService();
+      if (!notificationService.isInitialized) {
+        await notificationService.initialize();
+      }
+
+      final title = message.notification?.title ?? 'Incoming Call';
+      final body = message.notification?.body ?? 'You have an incoming call';
+      final data = message.data;
+
+      // Use call_notifications channel for call invitations (higher priority)
+      await notificationService.sendLocalNotification(
+        title: title,
+        body: body,
+        payload: jsonEncode(data),
+        channelId: 'call_notifications', // Use call channel for higher priority
+      );
+
+      Log.i('📞 Call invitation notification shown in background (platform: ${isIOS ? "iOS" : "Android"})', 'FCM_BACKGROUND');
+    } catch (e) {
+      Log.e('Error showing call invitation notification in background', 'FCM_BACKGROUND', e);
+    }
+    return; // Don't process further - call notification is handled
+  }
   
   // On Android, we always need to show a local notification for background messages.
   try {

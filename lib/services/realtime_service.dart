@@ -14,6 +14,7 @@ class RealtimeService {
   IO.Socket? _socket;
   bool _connecting = false;
   bool _handlingTokenExpiry = false;
+  List<MessageCallback> _callInvitationHandlers = [];
 
   bool get isConnected => _socket?.connected == true;
 
@@ -68,8 +69,13 @@ class RealtimeService {
       _registerTokenRefreshHandler();
 
       _socket!.on('connect', (_) {
-        Log.i('Realtime connected', 'REALTIME');
+        Log.i('Realtime connected (Socket ID: ${_socket!.id})', 'REALTIME');
         _connecting = false;
+        // Re-register call invitation listener after connection
+        // This ensures the listener is active when the socket is connected
+        if (_callInvitationHandlers.isNotEmpty) {
+          _registerCallInvitationListener();
+        }
       });
       _socket!.on('disconnect', (_) {
         Log.w('Realtime disconnected', 'REALTIME');
@@ -172,6 +178,74 @@ class RealtimeService {
         Log.e('Realtime message delete parse error', 'REALTIME', e);
       }
     });
+  }
+
+  void onCallInvitation(MessageCallback handler) {
+    // Add handler to list so multiple listeners can coexist
+    if (!_callInvitationHandlers.contains(handler)) {
+      _callInvitationHandlers.add(handler);
+      Log.i('📞 Added call invitation handler (total: ${_callInvitationHandlers.length})', 'REALTIME');
+    }
+    
+    // Register the listener if socket is already connected
+    if (_socket != null && isConnected) {
+      _registerCallInvitationListener();
+    } else if (_socket != null) {
+      Log.i('📞 Socket exists but not connected yet - listener will be registered on connect', 'REALTIME');
+    } else {
+      Log.w('Cannot register call invitation listener: Socket is null', 'REALTIME');
+    }
+  }
+
+  void _registerCallInvitationListener() {
+    if (_socket == null || _callInvitationHandlers.isEmpty) return;
+    
+    Log.i('📞 Registering call invitation listener on Socket.IO (socket ID: ${_socket!.id}, connected: ${isConnected}, handlers: ${_callInvitationHandlers.length})', 'REALTIME');
+    // Remove old listener and add new one that calls all handlers
+    _socket!.off('call_invitation');
+    _socket!.on('call_invitation', (data) {
+      try {
+        Log.i('📞 Socket.IO received call_invitation event: $data', 'REALTIME');
+        Log.i('📞 Event data type: ${data.runtimeType}', 'REALTIME');
+        
+        Map<String, dynamic>? callData;
+        if (data is Map) {
+          callData = Map<String, dynamic>.from(data);
+        } else if (data is Map<dynamic, dynamic>) {
+          callData = Map<String, dynamic>.from(data);
+        } else {
+          Log.w('Call invitation data is not a Map: ${data.runtimeType}', 'REALTIME');
+          return;
+        }
+        
+        Log.i('📞 Parsed call data: callId=${callData['callId']}, chatId=${callData['chatId']}, callerId=${callData['callerId']}', 'REALTIME');
+        
+        // Call all registered handlers
+        for (final handler in _callInvitationHandlers) {
+          try {
+            handler(callData);
+          } catch (e, stackTrace) {
+            Log.e('Error in call invitation handler', 'REALTIME', e);
+            Log.e('Stack trace', 'REALTIME', stackTrace);
+          }
+        }
+      } catch (e, stackTrace) {
+        Log.e('Realtime call invitation parse error', 'REALTIME', e);
+        Log.e('Stack trace', 'REALTIME', stackTrace);
+      }
+    });
+    Log.i('✅ Call invitation listener registered on Socket.IO', 'REALTIME');
+  }
+
+  /// Generic method to listen to any Socket.IO event
+  void on(String event, void Function(dynamic) handler) {
+    _socket?.off(event);
+    _socket?.on(event, handler);
+  }
+
+  /// Generic method to emit Socket.IO events
+  void emit(String event, dynamic data) {
+    _socket?.emit(event, data);
   }
 
   void dispose() {

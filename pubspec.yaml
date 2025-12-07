@@ -48,6 +48,7 @@ dependencies:
   # Audio recording and playback - Voice messages
   audioplayers: ^5.2.1
   record: ^5.2.1
+  vibration: ^1.8.4
   
   # Video player for video messages
   video_player: ^2.8.12
@@ -64,6 +65,9 @@ dependencies:
 
   # For opening media links in chat
   url_launcher: ^6.2.6
+
+  # WebRTC for voice/video calls
+  flutter_webrtc: ^0.9.48
 
   # For in-app notifications - Unified notification system
   flutter_local_notifications: ^17.2.4

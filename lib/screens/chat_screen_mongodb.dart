@@ -38,6 +38,11 @@ import '../config/database_config.dart';
 import '../widgets/chat_media_gallery.dart';
 import '../utils/responsive_utils.dart';
 import '../utils/cairo_time_utils.dart';
+import 'call_screen.dart';
+import '../services/call_types.dart';
+import '../services/webrtc_call_service.dart';
+import '../services/local_auth_service.dart';
+import '../main.dart'; // For ActiveCallTracker
 
 class ChatScreenMongoDB extends StatefulWidget {
   final String chatId;
@@ -213,7 +218,34 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
 
     try {
       // Get current user info
-      final user = await _authService.getCurrentUser();
+      var user = await _authService.getCurrentUser();
+      
+      // If getCurrentUser returns null, try alternative methods
+      if (user == null) {
+        print('🔵 getCurrentUser returned null in chat screen, trying alternatives...');
+        final userId = await LocalAuthService.getCurrentUserIdAsync();
+        if (userId != null) {
+          print('🔵 Found user ID via getCurrentUserIdAsync: $userId');
+          user = {
+            'id': userId,
+            'name': 'User',
+            'email': '',
+          };
+        } else {
+          // Try getting from SharedPreferences directly
+          final prefs = await SharedPreferences.getInstance();
+          final userId = prefs.getString('user_id');
+          if (userId != null) {
+            print('🔵 Found user ID from SharedPreferences: $userId');
+            user = {
+              'id': userId,
+              'name': prefs.getString('user_name') ?? 'User',
+              'email': prefs.getString('user_email') ?? '',
+            };
+          }
+        }
+      }
+      
       if (user != null) {
         _currentUserId = user['id'];
         _currentUserName = user['name'] ?? user['email'];
@@ -396,6 +428,18 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
             };
           }
         });
+      });
+
+      // Listen for incoming call invitations
+      // NOTE: This listener is for chat-specific calls. The global listener in main.dart
+      // NOTE: Call invitations are handled by the global listener in main.dart
+      // This local listener is DISABLED to prevent duplicate call screens
+      // The global listener handles all call invitations and uses ActiveCallTracker to prevent duplicates
+      _realtime.onCallInvitation((data) {
+        Log.i('📞 Chat screen received call invitation (ignoring - handled by global listener): $data', 'CHAT_SCREEN_MONGODB');
+        // DO NOT navigate here - let the global listener in main.dart handle it
+        // This prevents duplicate call screens
+        return;
       });
     } catch (e) {
       Log.e('Error initializing chat', 'CHAT_SCREEN_MONGODB', e);
@@ -789,6 +833,107 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     _messageController.selection = TextSelection.fromPosition(
       TextPosition(offset: _messageController.text.length),
     );
+  }
+
+  /// Start a call (voice or video)
+  Future<void> _startCall(CallType callType) async {
+    try {
+      print('🔵 _startCall called with type: $callType');
+      Log.i('🔵 _startCall called with type: $callType', 'CHAT_SCREEN_MONGODB');
+      
+      if (_currentUserId == null || _currentUserName == null) {
+        print('❌ User information not available');
+        Log.e('User information not available', 'CHAT_SCREEN_MONGODB');
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('User information not available')),
+        );
+        return;
+      }
+
+      // Get participant information
+      List<String> participantIds = widget.userIds ?? [];
+
+      if (participantIds.isEmpty && _memberIds != null) {
+        participantIds = _memberIds!.where((id) => id != _currentUserId).toList();
+      }
+
+      // If still empty, try to get from chat members
+      if (participantIds.isEmpty && widget.isGroupChat && _memberIds != null) {
+        participantIds = _memberIds!.where((id) => id != _currentUserId).toList();
+      }
+
+      // For individual chats, get the other user's ID
+      if (participantIds.isEmpty && !widget.isGroupChat) {
+        if (widget.userIds != null && widget.userIds!.isNotEmpty) {
+          participantIds = widget.userIds!.where((id) => id != _currentUserId).toList();
+        } else if (_memberIds != null && _memberIds!.isNotEmpty) {
+          participantIds = _memberIds!.where((id) => id != _currentUserId).toList();
+        }
+      }
+
+      print('🔵 Starting call - Participant IDs: ${participantIds.join(", ")}');
+      Log.i('Starting call - Participant IDs: ${participantIds.join(", ")}', 'CHAT_SCREEN_MONGODB');
+
+      if (participantIds.isEmpty) {
+        print('❌ No participants found for call');
+        Log.e('No participants found for call', 'CHAT_SCREEN_MONGODB');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No participants found. Cannot start call.')),
+          );
+        }
+        return;
+      }
+
+      // Get participant names if available
+      List<String> participantNames = [];
+      if (participantIds.isNotEmpty) {
+        participantNames = List.filled(participantIds.length, 'User');
+      }
+
+      print('🔵 Navigating to call screen with ${participantIds.length} participants');
+      Log.i('📞 Navigating to call screen with ${participantIds.length} participants', 'CHAT_SCREEN_MONGODB');
+      
+      try {
+      // Navigate to call screen
+        print('🔵 About to push CallScreen route');
+        final result = await Navigator.of(context).push(
+        MaterialPageRoute(
+            builder: (context) {
+              print('🔵 Building CallScreen widget');
+              return CallScreen(
+            chatId: widget.chatId,
+            chatName: widget.chatName,
+            isGroupChat: widget.isGroupChat,
+            participantIds: participantIds,
+            participantNames: participantNames,
+            callType: callType,
+                direction: CallDirection.outgoing,
+              );
+            },
+          ),
+        );
+        print('🔵 Call screen closed, result: $result');
+        Log.i('📞 Call screen closed', 'CHAT_SCREEN_MONGODB');
+      } catch (e, stackTrace) {
+        print('❌ Error navigating to call screen: $e');
+        print('❌ Stack trace: $stackTrace');
+        Log.e('Error navigating to call screen', 'CHAT_SCREEN_MONGODB', e, stackTrace);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error starting call: $e')),
+      );
+        }
+      }
+    } catch (e, stackTrace) {
+      Log.e('Error starting call: $e', 'CHAT_SCREEN_MONGODB', e);
+      Log.e('Stack trace: $stackTrace', 'CHAT_SCREEN_MONGODB');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to start call: $e')),
+        );
+      }
+    }
   }
 
   /// React to a message
@@ -2249,9 +2394,9 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                         ),
                         maxHeight: ResponsiveUtils.getResponsiveValue(
                           context,
-                          mobile: 120.0,
-                          tablet: 135.0,
-                          desktop: 150.0,
+                          mobile: 140.0,
+                          tablet: 160.0,
+                          desktop: 180.0,
                         ),
                       ),
                       child: EnhancedMediaPreview(
@@ -2271,9 +2416,9 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                         ),
                         maxHeight: ResponsiveUtils.getResponsiveValue(
                           context,
-                          mobile: 120.0,
-                          tablet: 135.0,
-                          desktop: 150.0,
+                          mobile: 140.0,
+                          tablet: 160.0,
+                          desktop: 180.0,
                         ),
                         enableRetry: true,
                       ),
@@ -2878,6 +3023,26 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         elevation: 0,
         centerTitle: false,
         actions: [
+          // Voice call button
+          IconButton(
+            tooltip: 'Voice Call',
+            icon: const Icon(Icons.phone),
+            onPressed: () {
+              print('🔵 CALL BUTTON PRESSED: Voice Call');
+              Log.i('🔵 CALL BUTTON PRESSED: Voice Call', 'CHAT_SCREEN_MONGODB');
+              _startCall(CallType.voice);
+            },
+          ),
+          // Video call button
+          IconButton(
+            tooltip: 'Video Call',
+            icon: const Icon(Icons.videocam),
+            onPressed: () {
+              print('🔵 CALL BUTTON PRESSED: Video Call');
+              Log.i('🔵 CALL BUTTON PRESSED: Video Call', 'CHAT_SCREEN_MONGODB');
+              _startCall(CallType.video);
+            },
+          ),
           IconButton(
             tooltip: 'Media',
             icon: const Icon(Icons.perm_media_outlined),

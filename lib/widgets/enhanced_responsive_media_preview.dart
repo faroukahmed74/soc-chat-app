@@ -628,37 +628,152 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
   }
 
   Widget _buildDocumentWidget() {
+    final isMobile = ResponsiveUtils.isMobile(context);
+    final isTablet = ResponsiveUtils.isTablet(context);
+    final isDesktop = ResponsiveUtils.isDesktop(context);
+    
+    // Get responsive maxHeight if not provided
+    final maxHeight = widget.maxHeight ?? ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 200.0,
+      tablet: 250.0,
+      desktop: 300.0,
+    );
+    
     return Container(
       color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // Calculate available height (use constraints or fallback to maxHeight)
+          final availableHeight = constraints.maxHeight.isFinite && constraints.maxHeight > 0
+              ? constraints.maxHeight
+              : maxHeight;
+          
+          // Determine compactness based on available height
+          final heightRatio = availableHeight / maxHeight;
+          final isVeryCompact = availableHeight < 90 || heightRatio < 0.5;
+          final isCompact = availableHeight < 130 || heightRatio < 0.65;
+          
+          // Responsive spacing based on screen size and available height
+          final baseSpacing = ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: 4.0,
+            tablet: 6.0,
+            desktop: 8.0,
+          );
+          final spacing = isVeryCompact 
+              ? baseSpacing * 0.5 
+              : (isCompact ? baseSpacing * 0.75 : baseSpacing);
+          
+          // Responsive icon size
+          final baseIconSize = ResponsiveUtils.getResponsiveIconSize(context);
+          final iconSize = isVeryCompact
+              ? baseIconSize * 0.9
+              : (isCompact 
+                  ? baseIconSize * 1.0 
+                  : baseIconSize * 1.3);
+          
+          // Responsive font sizes
+          final baseFontSize = ResponsiveUtils.getResponsiveFontSize(context, baseSize: 13);
+          final fontSize = isVeryCompact
+              ? baseFontSize * 0.75
+              : (isCompact 
+                  ? baseFontSize * 0.85 
+                  : baseFontSize);
+          
+          final fileSizeFontSize = ResponsiveUtils.getResponsiveFontSize(
+            context, 
+            baseSize: isVeryCompact ? 8 : (isCompact ? 9 : 10),
+          );
+          
+          // Responsive button sizes
+          final baseButtonSize = ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: 36.0,
+            tablet: 40.0,
+            desktop: 44.0,
+          );
+          final buttonSize = isVeryCompact 
+              ? baseButtonSize * 0.75 
+              : (isCompact ? baseButtonSize * 0.85 : baseButtonSize);
+          
+          final buttonPadding = ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: isVeryCompact ? 2.0 : (isCompact ? 4.0 : 6.0),
+            tablet: isVeryCompact ? 3.0 : (isCompact ? 5.0 : 7.0),
+            desktop: isVeryCompact ? 4.0 : (isCompact ? 6.0 : 8.0),
+          );
+          
+          final iconButtonSize = ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: isVeryCompact ? 16 : 18,
+            tablet: 20,
+            desktop: 22,
+          );
+          
+          // Responsive padding
+          final containerPadding = ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: isVeryCompact ? 4.0 : (isCompact ? 6.0 : 8.0),
+            tablet: isVeryCompact ? 6.0 : (isCompact ? 8.0 : 10.0),
+            desktop: isVeryCompact ? 8.0 : (isCompact ? 10.0 : 12.0),
+          );
+          
+          return Padding(
+            padding: EdgeInsets.all(containerPadding),
+            child: IntrinsicHeight(
       child: Column(
+                mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+                // File icon
           Icon(
             Icons.insert_drive_file,
             color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-            size: ResponsiveUtils.getResponsiveIconSize(context) * 2,
+                  size: iconSize,
+                ),
+                SizedBox(height: spacing),
+                // File name - flexible to prevent overflow
+                Flexible(
+                  child: Padding(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 4.0,
+                        tablet: 6.0,
+                        desktop: 8.0,
+                      ),
           ),
-          const SizedBox(height: 16),
-          Text(
+                    child: Text(
             widget.fileName ?? 'Document',
             style: TextStyle(
               color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-              fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 14),
+                        fontSize: fontSize,
               fontWeight: FontWeight.w600,
             ),
             textAlign: TextAlign.center,
-            maxLines: 2,
+                      maxLines: isVeryCompact ? 1 : (isCompact ? 1 : 2),
             overflow: TextOverflow.ellipsis,
           ),
-          const SizedBox(height: 8),
+                  ),
+                ),
+                SizedBox(height: spacing),
+                // Action buttons
           Row(
             mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
             children: [
               IconButton(
                 onPressed: _downloadMedia,
                 icon: Icon(
                   Icons.download,
                   color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                        size: iconButtonSize.toDouble(),
+                      ),
+                      padding: EdgeInsets.all(buttonPadding),
+                      constraints: BoxConstraints(
+                        minWidth: buttonSize,
+                        minHeight: buttonSize,
                 ),
                 tooltip: 'Download',
               ),
@@ -668,22 +783,35 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
                   icon: Icon(
                     Icons.fullscreen,
                     color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                          size: iconButtonSize.toDouble(),
+                        ),
+                        padding: EdgeInsets.all(buttonPadding),
+                        constraints: BoxConstraints(
+                          minWidth: buttonSize,
+                          minHeight: buttonSize,
                   ),
                   tooltip: 'View full screen',
                 ),
             ],
           ),
-          if (widget.fileSize != null) ...[
-            const SizedBox(height: 8),
+                // File size (only show if not very compact)
+                if (widget.fileSize != null && !isVeryCompact) ...[
+                  SizedBox(height: spacing * 0.5),
             Text(
               widget.fileSize!,
               style: TextStyle(
                 color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
-                fontSize: ResponsiveUtils.getResponsiveFontSize(context, baseSize: 10),
+                      fontSize: fileSizeFontSize,
               ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
             ),
           ],
         ],
+              ),
+            ),
+          );
+        },
       ),
     );
   }

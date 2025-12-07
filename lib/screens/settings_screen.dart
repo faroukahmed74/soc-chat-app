@@ -565,6 +565,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: _notificationsEnabled ? Colors.green : Colors.grey,
                     ),
                   ),
+                  ListTile(
+                    leading: const Icon(Icons.music_note),
+                    title: const Text('Call Ringtone'),
+                    subtitle: const Text('Set custom ringtone for incoming calls'),
+                    trailing: const Icon(Icons.chevron_right),
+                    onTap: () {
+                      Navigator.pushNamed(context, '/ringtone-settings');
+                    },
+                  ),
                 ],
               ),
 

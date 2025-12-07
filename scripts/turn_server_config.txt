@@ -1,0 +1,23 @@
+﻿# TURN Server Configuration
+# Generated on: 2025-12-04 13:07:47
+
+TURN_SERVER_IP=192.168.128.1
+TURN_SERVER_PORT=3478
+TURN_SERVER_TLS_PORT=5349
+TURN_USERNAME=soc-chat-turn
+TURN_PASSWORD=yG5EJFUdLgT7xqXr
+TURN_REALM=soc-chat-app.local
+
+# Flutter WebRTC Configuration
+# Add these to lib/services/webrtc_call_service.dart:
+#
+# {
+#   'urls': 'turn:192.168.128.1:3478',
+#   'username': 'soc-chat-turn',
+#   'credential': 'yG5EJFUdLgT7xqXr',
+# },
+# {
+#   'urls': 'turn:192.168.128.1:=tcp',
+#   'username': 'soc-chat-turn',
+#   'credential': 'yG5EJFUdLgT7xqXr',
+# },

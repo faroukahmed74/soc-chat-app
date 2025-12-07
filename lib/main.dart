@@ -40,6 +40,7 @@ import 'services/message_sound_service.dart';
 import 'services/background_service_manager.dart';
 import 'services/ios_notification_service.dart';
 import 'services/fcm_service.dart';
+import 'services/webrtc_call_service.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'dart:io' if (dart.library.html) 'dart:html' as io;
 
@@ -47,6 +48,22 @@ import 'dart:io' if (dart.library.html) 'dart:html' as io;
 // GLOBAL NAVIGATOR KEY
 // =============================================================================
 final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
+
+// =============================================================================
+// ACTIVE CALL TRACKING (Prevent duplicate call screens)
+// =============================================================================
+class ActiveCallTracker {
+  static String? _activeCallId;
+  
+  static bool isCallActive(String callId) => _activeCallId == callId;
+  static void setActiveCall(String callId) => _activeCallId = callId;
+  static void clearActiveCall(String callId) {
+    if (_activeCallId == callId) {
+      _activeCallId = null;
+    }
+  }
+  static void clearAll() => _activeCallId = null;
+}
 
 // =============================================================================
 // BACKGROUND HANDLERS (TOP-LEVEL)
@@ -530,13 +547,23 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
         // For web offline mode, connect in background (non-blocking)
         if (kIsWeb) {
           // On web, connect in background - don't block app initialization
-          realtime.connect().catchError((e) {
+          realtime.connect().then((_) {
+            // Set up global call invitation listener after connection
+            _setupCallInvitationListener(realtime);
+            // Initialize WebRTC Call Service with TURN configuration
+            _initializeWebRTCCallService();
+          }).catchError((e) {
             Log.e('Realtime connect failed (non-blocking)', 'MAIN_APP', e);
           });
         } else {
           // On mobile, connect synchronously
           await realtime.connect();
+          // Set up global call invitation listener after connection
+          _setupCallInvitationListener(realtime);
+          // Initialize WebRTC Call Service with TURN configuration
+          _initializeWebRTCCallService();
         }
+        
         // Join all chats after login: lightweight approach is to rely on message events
         realtime.onNewMessage((msg) async {
           try {
@@ -590,6 +617,129 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
     } catch (e) {
       Log.e('Error during app initialization', 'MAIN_APP', e);
     }
+  }
+
+  /// Set up global call invitation listener
+  /// Initialize WebRTC Call Service with TURN server configuration
+  /// Web: Uses local network IP (10.120.4.230)
+  /// Mobile: Uses ngrok URL for TURN server access
+  Future<void> _initializeWebRTCCallService() async {
+    try {
+      final callService = WebRTCCallService();
+      
+      // Initialize the service first
+      await callService.initialize();
+      
+      // Configure TURN server based on platform
+      // Web: Use local network IP (primary) + ngrok TCP tunnel (for cross-platform calls with mobile)
+      // Mobile: Use ngrok TCP tunnel (required for cross-network calls)
+      if (kIsWeb) {
+        // Web clients: Use local network IP (primary for web-to-web) + ngrok (for web-to-mobile)
+        final serverUrl = DatabaseConfig.physicalServerUrl;
+        await callService.setTurnServerConfig(
+          serverIp: '10.120.4.230',  // Main network IP for web clients (primary for web-to-web calls)
+          ngrokUrl: serverUrl,  // Also fetch ngrok TCP tunnel for cross-platform calls (web-to-mobile)
+          port: '3478',
+          username: 'soc-chat-turn',
+          password: 'yG5EJFUdLgT7xqXr',
+        );
+        Log.i('✅ WebRTC Call Service initialized with TURN server (Web - local IP + ngrok for cross-platform)', 'MAIN_APP');
+      } else {
+        // Mobile clients: MUST use ngrok TCP tunnel for cross-network calls
+        // The ngrok config file includes both HTTP (API) and TCP (TURN) tunnels
+        final ngrokUrl = DatabaseConfig.physicalServerUrl;
+        await callService.setTurnServerConfig(
+          ngrokUrl: ngrokUrl,  // Ngrok HTTP URL - will be used to find TCP tunnel
+          serverIp: null,  // Don't add local IP for mobile - force ngrok usage for cross-network calls
+          port: '3478',
+          username: 'soc-chat-turn',
+          password: 'yG5EJFUdLgT7xqXr',
+        );
+        Log.i('✅ WebRTC Call Service initialized with TURN server (Mobile - ngrok TCP tunnel only)', 'MAIN_APP');
+      }
+    } catch (e, stackTrace) {
+      Log.e('Failed to initialize WebRTC Call Service', 'MAIN_APP', e, stackTrace);
+      // Continue without TURN - STUN servers will still work
+    }
+  }
+
+  void _setupCallInvitationListener(RealtimeService realtime) {
+    realtime.onCallInvitation((data) {
+      try {
+        Log.i('📞 Received call invitation globally: $data', 'MAIN_APP');
+        // Navigate to call screen from anywhere in the app
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          final navigator = navigatorKey.currentState;
+          if (navigator != null) {
+            final chatId = (data['chatId'] ?? '').toString();
+            final chatName = (data['chatName'] ?? 'Unknown').toString();
+            final callTypeStr = (data['callType'] ?? 'video').toString();
+            final callId = (data['callId'] ?? '').toString(); // WebRTC uses callId
+            final isGroupChat = data['isGroupChat'] ?? false;
+            
+            // Handle both 'voice' and 'audio' (server normalizes 'voice' to 'audio')
+            // Convert to CallType enum for proper handling
+            final callType = (callTypeStr == 'voice' || callTypeStr == 'audio') ? 'voice' : 'video';
+            
+            Log.i('📞 Call invitation details: chatId=$chatId, callId=$callId, callType=$callType (from $callTypeStr)', 'MAIN_APP');
+            
+            // Check if call screen is already open for this call
+            if (ActiveCallTracker.isCallActive(callId)) {
+              Log.w('⚠️ [MAIN_APP] Call screen already open for callId: $callId, ignoring duplicate invitation');
+              return;
+            }
+            
+            // Additional check: if navigator is already showing a call screen, don't navigate again
+            // Check if we can pop (meaning there's a route on the stack)
+            final canPop = navigator.canPop();
+            if (canPop) {
+              // Check the top route by trying to get the current route context
+              final currentContext = navigatorKey.currentContext;
+              if (currentContext != null) {
+                final route = ModalRoute.of(currentContext);
+                if (route?.settings.name == '/call') {
+                  Log.w('⚠️ [MAIN_APP] Call screen route already active, ignoring duplicate invitation');
+                  return;
+                }
+              }
+            }
+            
+            if (callId.isNotEmpty && chatId.isNotEmpty) {
+              Log.i('📞 Navigating to call screen via global listener: chatId=$chatId, callId=$callId', 'MAIN_APP');
+              try {
+                ActiveCallTracker.setActiveCall(callId); // Mark as active BEFORE navigation
+                print('🔵 [MAIN_APP] Setting active call and navigating to call screen');
+                navigator.pushNamed('/call', arguments: {
+                  'chatId': chatId,
+                  'chatName': chatName,
+                  'isGroupChat': isGroupChat,
+                  'callType': callType, // Pass as 'voice' or 'video' string
+                  'direction': 'incoming',
+                  'callId': callId,
+                }).then((_) {
+                  // Clear active call ID when screen is closed
+                  ActiveCallTracker.clearActiveCall(callId);
+                  Log.i('📞 [MAIN_APP] Call screen closed, cleared active call ID', 'MAIN_APP');
+                });
+                Log.i('✅ Successfully navigated to call screen', 'MAIN_APP');
+              } catch (e, stackTrace) {
+                ActiveCallTracker.clearActiveCall(callId); // Clear on error
+                Log.e('Error navigating to call screen', 'MAIN_APP', e);
+                Log.e('Stack trace', 'MAIN_APP', stackTrace);
+              }
+            } else {
+              Log.w('❌ Call invitation missing required fields: callId=$callId, chatId=$chatId', 'MAIN_APP');
+            }
+          } else {
+            Log.w('❌ Navigator not available for call screen', 'MAIN_APP');
+          }
+        });
+      } catch (e, stackTrace) {
+        Log.e('Error handling global call invitation', 'MAIN_APP', e);
+        Log.e('Stack trace', 'MAIN_APP', stackTrace);
+      }
+    });
+    Log.i('✅ Global call invitation listener set up', 'MAIN_APP');
   }
 
   Future<void> _checkInitialPermissions() async {

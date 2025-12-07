@@ -103,8 +103,18 @@ async function needsTranscoding(videoPath) {
 
     // Common unsupported codecs: hevc (H.265), vp9, etc.
     // Common supported codecs: h264, vp8
-    const unsupportedCodecs = ['hevc', 'h265', 'vp9'];
-    const needsTransform = unsupportedCodecs.includes(metadata.codec.toLowerCase());
+    const codec = metadata.codec ? metadata.codec.toLowerCase() : '';
+    const unsupportedCodecs = [
+      'hevc',
+      'h265',
+      'hvc1',
+      'hev1',
+      'av01',
+      'av1',
+      'vp9',
+      'vp90',
+    ];
+    const needsTransform = unsupportedCodecs.includes(codec);
     
     if (needsTransform) {
       console.log(`Video needs transcoding: codec=${metadata.codec}`);

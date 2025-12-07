@@ -20,7 +20,9 @@ import '../screens/fcm_sound_test_screen.dart';
 import '../screens/profile_screen.dart';
 import '../screens/notification_test_screen.dart';
 import '../screens/broadcast_messages_screen.dart';
-
+import '../screens/call_screen.dart';
+import '../screens/ringtone_settings_screen.dart';
+import '../services/call_types.dart';
 import '../services/theme_service.dart';
 
 Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
@@ -44,4 +46,23 @@ Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
   '/notification-test': (_) => const NotificationTestScreen(),
   '/profile': (_) => const ProfileScreen(),
   '/broadcasts': (_) => const BroadcastMessagesScreen(),
+  '/ringtone-settings': (_) => const RingtoneSettingsScreen(),
+  // Call route - parameters passed via arguments
+  '/call': (context) {
+    final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+    final callTypeStr = args['callType'] as String? ?? 'video';
+    final directionStr = args['direction'] as String? ?? 'outgoing';
+    
+    return CallScreen(
+      chatId: args['chatId'] as String,
+      chatName: args['chatName'] as String,
+      isGroupChat: args['isGroupChat'] as bool? ?? false,
+      participantIds: args['participantIds'] as List<String>?,
+      participantNames: args['participantNames'] as List<String>?,
+      // Handle both 'voice' and 'audio' (server normalizes 'voice' to 'audio')
+      callType: (callTypeStr == 'voice' || callTypeStr == 'audio') ? CallType.voice : CallType.video,
+      direction: directionStr == 'incoming' ? CallDirection.incoming : CallDirection.outgoing,
+      callId: args['callId'] as String?,
+    );
+  },
 };

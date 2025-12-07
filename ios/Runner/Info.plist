@@ -52,7 +52,7 @@
 	<key>NSCalendarsUsageDescription</key>
 	<string>This app needs access to your calendar to schedule events and reminders.</string>
 	<key>NSCameraUsageDescription</key>
-	<string>This app needs camera access to take photos and record videos for sharing in chat conversations.</string>
+	<string>This app needs camera access to take photos, record videos, and make video calls in chat conversations.</string>
 	<key>NSContactsUsageDescription</key>
 	<string>This app needs access to your contacts to help you find and connect with friends.</string>
 	<key>NSFaceIDUsageDescription</key>
@@ -70,7 +70,7 @@
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app needs location access to share your location in chat conversations.</string>
 	<key>NSMicrophoneUsageDescription</key>
-	<string>This app needs microphone access to record voice messages and videos with audio in chat conversations.</string>
+	<string>This app needs microphone access to record voice messages, videos with audio, and make voice and video calls in chat conversations.</string>
 	<key>NSMotionUsageDescription</key>
 	<string>This app needs access to motion and fitness data to provide health-related features.</string>
 	<key>NSNetworkVolumesUsageDescription</key>

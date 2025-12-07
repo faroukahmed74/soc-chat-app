@@ -197,17 +197,25 @@ class ImprovedMediaService {
       if (result != null && result.files.isNotEmpty) {
         final file = result.files.first;
         final bytes = file.bytes;
+        final extension = file.extension?.toLowerCase();
         
         if (bytes != null) {
-          Log.i('Document selected successfully: ${bytes.length} bytes', 'IMPROVED_MEDIA');
+          final detectedType = _detectMediaType(
+            extension: extension,
+            fileName: file.name,
+          );
+          Log.i(
+            'File selected successfully: ${bytes.length} bytes (type: $detectedType, ext: $extension)',
+            'IMPROVED_MEDIA',
+          );
           
           return MediaResult(
             bytes: bytes,
-            type: 'document',
+            type: detectedType,
             originalSize: bytes.length,
             optimizedSize: bytes.length,
             fileName: file.name,
-            mimeType: _getMimeType(file.extension),
+            mimeType: _getMimeType(extension),
           );
         }
       }
@@ -525,8 +533,9 @@ class ImprovedMediaService {
   /// Get MIME type from file extension
   static String _getMimeType(String? extension) {
     if (extension == null) return 'application/octet-stream';
+    final ext = extension.toLowerCase();
     
-    switch (extension.toLowerCase()) {
+    switch (ext) {
       case 'pdf':
         return 'application/pdf';
       case 'doc':
@@ -542,18 +551,99 @@ class ImprovedMediaService {
         return 'text/plain';
       case 'jpg':
       case 'jpeg':
+      case 'heic':
+      case 'heif':
         return 'image/jpeg';
       case 'png':
         return 'image/png';
       case 'gif':
         return 'image/gif';
+      case 'webp':
+        return 'image/webp';
       case 'mp4':
+      case 'm4v':
+      case 'mov':
+      case 'mkv':
+      case 'webm':
         return 'video/mp4';
       case 'mp3':
+      case 'm4a':
+      case 'aac':
+      case 'wav':
+      case 'ogg':
         return 'audio/mpeg';
       default:
         return 'application/octet-stream';
     }
+  }
+
+  static String _detectMediaType({
+    String? extension,
+    String? mimeType,
+    String? fileName,
+  }) {
+    String? ext = extension?.toLowerCase();
+    if ((ext == null || ext.isEmpty) && fileName != null && fileName.contains('.')) {
+      ext = fileName.split('.').last.toLowerCase();
+    }
+    if ((ext == null || ext.isEmpty) && mimeType != null) {
+      ext = _mapMimeToExtension(mimeType);
+    }
+
+    final mime = mimeType?.toLowerCase();
+    if (mime != null) {
+      if (mime.startsWith('image/')) return 'image';
+      if (mime.startsWith('video/')) return 'video';
+      if (mime.startsWith('audio/')) return 'audio';
+    }
+
+    const imageExts = {
+      'jpg',
+      'jpeg',
+      'png',
+      'gif',
+      'bmp',
+      'webp',
+      'heic',
+      'heif',
+      'tiff',
+    };
+    const videoExts = {
+      'mp4',
+      'm4v',
+      'mov',
+      'avi',
+      'mkv',
+      'webm',
+      'flv',
+    };
+    const audioExts = {
+      'mp3',
+      'm4a',
+      'aac',
+      'wav',
+      'ogg',
+      'oga',
+      'flac',
+      'amr',
+    };
+    
+    if (ext != null) {
+      if (imageExts.contains(ext)) return 'image';
+      if (videoExts.contains(ext)) return 'video';
+      if (audioExts.contains(ext)) return 'audio';
+      if (ext == 'pdf') return 'document';
+    }
+    return 'document';
+  }
+
+  static String? _mapMimeToExtension(String mimeType) {
+    final lower = mimeType.toLowerCase();
+    if (lower.contains('/')) {
+      final subtype = lower.split('/').last;
+      if (subtype.isNotEmpty) return subtype;
+    }
+    return null;
   }
 
   // Web-specific methods (stubs for mobile)

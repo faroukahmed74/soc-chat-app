@@ -20,7 +20,8 @@ import '../screens/app_health_check_screen.dart';
 import '../screens/startup_diagnostics_screen.dart';
 import '../screens/fcm_sound_test_screen.dart';
 import '../screens/broadcast_messages_screen.dart';
-
+import '../screens/call_screen.dart';
+import '../services/call_types.dart';
 import '../services/theme_service.dart';
 
 /// Web routes: Use same screens as mobile for consistency
@@ -48,4 +49,21 @@ Map<String, WidgetBuilder> buildRoutes(ThemeService themeService) => {
         themeService.setTheme(dark ? ThemeMode.dark : ThemeMode.light),
   ),
   '/broadcasts': (_) => const BroadcastMessagesScreen(),
+  // Call route - parameters passed via arguments
+  '/call': (context) {
+    final args = ModalRoute.of(context)!.settings.arguments as Map<String, dynamic>;
+    final callTypeStr = args['callType'] as String? ?? 'video';
+    final directionStr = args['direction'] as String? ?? 'outgoing';
+    
+    return CallScreen(
+      chatId: args['chatId'] as String,
+      chatName: args['chatName'] as String,
+      isGroupChat: args['isGroupChat'] as bool? ?? false,
+      participantIds: args['participantIds'] as List<String>?,
+      participantNames: args['participantNames'] as List<String>?,
+      callType: callTypeStr == 'voice' ? CallType.voice : CallType.video,
+      direction: directionStr == 'incoming' ? CallDirection.incoming : CallDirection.outgoing,
+      callId: args['callId'] as String?,
+    );
+  },
 };

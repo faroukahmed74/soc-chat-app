@@ -54,33 +54,78 @@ echo Starting All Services...
 echo =============================================================================
 echo.
 
-echo [1/5] Starting MongoDB...
+echo [1/7] Starting MongoDB...
 net start MongoDB >nul 2>&1
 if !errorlevel! equ 0 (
     echo   ✅ MongoDB started successfully
 ) else (
-    echo   ❌ MongoDB failed to start
+    echo   ⚠️  MongoDB may already be running or failed to start
 )
+timeout /t 2 /nobreak >nul
 
-echo [2/5] Starting API Server (Port 3003)...
+echo [2/7] Starting API Server (Port 3003)...
 cd /d "%API_SERVER_DIR%"
 start "SOC Chat App - API Server" cmd /c "set PORT=3003 && set HOST=0.0.0.0 && node server.js"
 cd /d "%PROJECT_ROOT%"
-echo   ✅ API Server started on port 3003
+echo   ✅ API Server starting on port 3003 (includes call invitation system)
+timeout /t 3 /nobreak >nul
 
-echo [3/5] Starting ngrok Tunnel...
-start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok http 3003 --domain=soc-chat-app.ngrok-free.app"
-echo   ✅ ngrok tunnel started
+echo [3/7] Starting TURN Server (coturn Docker)...
+set "COTURN_COMPOSE=%PROJECT_ROOT%scripts\coturn-docker-compose.yml"
+if exist "%COTURN_COMPOSE%" (
+    docker-compose -f "%COTURN_COMPOSE%" up -d >nul 2>&1
+    if !errorlevel! equ 0 (
+        echo   ✅ coturn TURN server started
+    ) else (
+        echo   ⚠️  coturn may already be running or Docker not available
+    )
+) else (
+    echo   ⚠️  coturn-docker-compose.yml not found (TURN server will not be available)
+)
+timeout /t 2 /nobreak >nul
 
-echo [4/5] Starting Web Server (Port 8082)...
+echo [4/7] Starting ngrok Tunnel (API + TURN)...
+set "NGROK_CONFIG=%PROJECT_ROOT%scripts\ngrok.yml"
+if exist "%NGROK_CONFIG%" (
+    start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok start --all --config=%NGROK_CONFIG%"
+    echo   ✅ ngrok tunnels starting (HTTP for API + TCP for TURN)
+) else (
+    start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok http 3003 --domain=soc-chat-app.ngrok-free.app"
+    echo   ✅ ngrok tunnel starting (HTTP only - TURN will use STUN only)
+    echo   ⚠️  Note: For TURN support, create scripts\ngrok.yml config file
+)
+timeout /t 2 /nobreak >nul
+
+echo [5/7] Starting Web Server (Port 8082)...
 cd /d "%PROJECT_ROOT%\servers"
 start "SOC Chat App - Web Server" cmd /c "set PORT=8082 && set API_TARGET=http://localhost:3003 && node server.js"
 cd /d "%PROJECT_ROOT%"
-echo   ✅ Web server started on port 8082
+echo   ✅ Web server starting on port 8082 (web call support)
+timeout /t 2 /nobreak >nul
 
-echo [5/5] Starting Network URLs Service...
-start "Network URLs Service" cmd /c "node local_network_config.js"
-echo   ✅ Network URLs service started
+echo [6/7] Starting Network URLs Service...
+cd /d "%API_SERVER_DIR%"
+if exist "local_network_config.js" (
+    start "Network URLs Service" cmd /c "node local_network_config.js"
+    echo   ✅ Network URLs service started
+) else (
+    echo   ⚠️  local_network_config.js not found (optional service)
+)
+cd /d "%PROJECT_ROOT%"
+timeout /t 1 /nobreak >nul
+
+echo [7/7] Starting FCM Server (Optional - for background call notifications)...
+cd /d "%PROJECT_ROOT%\servers"
+if exist "fcm_server_production.js" (
+    start "SOC Chat App - FCM Server" cmd /c "set PORT=3000 && node fcm_server_production.js"
+    echo   ✅ FCM Server started on port 3000
+) else if exist "fcm_server.js" (
+    start "SOC Chat App - FCM Server" cmd /c "set PORT=3000 && node fcm_server.js"
+    echo   ✅ FCM Server started on port 3000
+) else (
+    echo   ⚠️  FCM Server files not found (optional - calls work without it)
+)
+cd /d "%PROJECT_ROOT%"
 
 echo.
 echo =============================================================================
@@ -88,16 +133,27 @@ echo ALL SERVICES STARTED SUCCESSFULLY!
 echo =============================================================================
 echo.
 echo Services Status:
-echo   - MongoDB: Running
-echo   - API Server: Running on port 3003
-echo   - ngrok Tunnel: Running
-echo   - Web Server: Running on port 8082
+echo   - MongoDB: Running (Database)
+echo   - API Server: Running on port 3003 (Backend + Call System)
+echo   - TURN Server: Running via coturn Docker (port 3478)
+echo   - ngrok Tunnel: Running (HTTP for API + TCP for TURN)
+echo   - Web Server: Running on port 8082 (Web App)
 echo   - Network URLs: Running
+echo   - FCM Server: Running on port 3000 (Optional - Background Notifications)
 echo.
 echo Access URLs:
 echo   - Public API: https://soc-chat-app.ngrok-free.app
 echo   - Web App: http://localhost:8082
 echo   - Local Network: http://[YOUR_IP]:8082
+echo.
+echo Call System Features:
+echo   ✅ Voice calls (individual and group)
+echo   ✅ Video calls (individual and group)
+echo   ✅ Screen sharing
+echo   ✅ Cross-platform (Web, Android, iOS)
+echo.
+echo Note: Wait 5-10 seconds for all services to fully initialize
+echo       before testing calls.
 echo.
 pause
 goto MAIN_MENU
@@ -112,19 +168,25 @@ echo Stopping All Services...
 echo =============================================================================
 echo.
 
-echo [1/5] Stopping ngrok...
+echo [1/7] Stopping ngrok...
 taskkill /f /im ngrok.exe >nul 2>&1
 
-echo [2/5] Stopping API Server...
+echo [2/7] Stopping TURN Server (coturn Docker)...
+docker-compose -f "%PROJECT_ROOT%scripts\coturn-docker-compose.yml" down >nul 2>&1
+
+echo [3/7] Stopping API Server...
 taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - API Server" >nul 2>&1
 
-echo [3/5] Stopping Web Server...
-taskkill /f /im python.exe /fi "WINDOWTITLE eq SOC Chat App - Web Server" >nul 2>&1
+echo [4/7] Stopping Web Server...
+taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - Web Server" >nul 2>&1
 
-echo [4/5] Stopping Network URLs Service...
+echo [5/7] Stopping Network URLs Service...
 taskkill /f /im cmd.exe /fi "WINDOWTITLE eq Network URLs Service" >nul 2>&1
 
-echo [5/5] Stopping MongoDB...
+echo [6/7] Stopping FCM Server...
+taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - FCM Server" >nul 2>&1
+
+echo [7/7] Stopping MongoDB...
 net stop MongoDB >nul 2>&1
 
 echo.
@@ -158,9 +220,9 @@ echo ===========================================================================
 echo.
 
 set "RUNNING_COUNT=0"
-set "TOTAL_COUNT=5"
+set "TOTAL_COUNT=7"
 
-echo [1/5] Checking MongoDB...
+echo [1/7] Checking MongoDB...
 net start | findstr -i mongo >nul
 if !errorlevel! equ 0 (
     echo   Status: ✅ RUNNING
@@ -169,7 +231,7 @@ if !errorlevel! equ 0 (
     echo   Status: ❌ NOT RUNNING
 )
 
-echo [2/5] Checking API Server (Port 3003)...
+echo [2/7] Checking API Server (Port 3003)...
 netstat -an | findstr ":3003" | findstr "LISTENING" >nul
 if !errorlevel! equ 0 (
     echo   Status: ✅ LISTENING
@@ -178,7 +240,16 @@ if !errorlevel! equ 0 (
     echo   Status: ❌ NOT LISTENING
 )
 
-echo [3/5] Checking ngrok...
+echo [3/7] Checking TURN Server (coturn Docker)...
+docker ps | findstr "soc-chat-coturn" >nul
+if !errorlevel! equ 0 (
+    echo   Status: ✅ RUNNING
+    set /a RUNNING_COUNT+=1
+) else (
+    echo   Status: ⚠️  NOT RUNNING (Optional - uses STUN if unavailable)
+)
+
+echo [4/7] Checking ngrok...
 netstat -an | findstr ":4040" | findstr "LISTENING" >nul
 if !errorlevel! equ 0 (
     echo   Status: ✅ RUNNING
@@ -187,7 +258,7 @@ if !errorlevel! equ 0 (
     echo   Status: ❌ NOT RUNNING
 )
 
-echo [4/5] Checking Web Server (Port 8082)...
+echo [5/7] Checking Web Server (Port 8082)...
 netstat -an | findstr ":8082" | findstr "LISTENING" >nul
 if !errorlevel! equ 0 (
     echo   Status: ✅ LISTENING
@@ -196,13 +267,22 @@ if !errorlevel! equ 0 (
     echo   Status: ❌ NOT LISTENING
 )
 
-echo [5/5] Checking Network URLs Service...
+echo [6/7] Checking Network URLs Service...
 tasklist | findstr "cmd.exe" | findstr "Network URLs" >nul
 if !errorlevel! equ 0 (
     echo   Status: ✅ RUNNING
     set /a RUNNING_COUNT+=1
 ) else (
-    echo   Status: ❌ NOT RUNNING
+    echo   Status: ⚠️  NOT RUNNING (Optional)
+)
+
+echo [7/7] Checking FCM Server (Port 3000)...
+netstat -an | findstr ":3000" | findstr "LISTENING" >nul
+if !errorlevel! equ 0 (
+    echo   Status: ✅ RUNNING
+    set /a RUNNING_COUNT+=1
+) else (
+    echo   Status: ⚠️  NOT RUNNING (Optional)
 )
 
 echo.
@@ -229,13 +309,15 @@ echo Start Individual Service
 echo =============================================================================
 echo.
 echo 1. MongoDB
-echo 2. API Server (Port 3003)
-echo 3. ngrok Tunnel
-echo 4. Web Server (Port 8082)
-echo 5. Network URLs Service
-echo 6. Back to Main Menu
+echo 2. API Server (Port 3003) - Includes Call System
+echo 3. TURN Server (coturn Docker) - Optional
+echo 4. ngrok Tunnel
+echo 5. Web Server (Port 8082)
+echo 6. Network URLs Service - Optional
+echo 7. FCM Server (Port 3000) - Optional
+echo 8. Back to Main Menu
 echo.
-set /p "service_choice=Enter service to start (1-6): "
+set /p "service_choice=Enter service to start (1-8): "
 
 if "%service_choice%"=="1" (
     net start MongoDB >nul 2>&1
@@ -250,23 +332,64 @@ if "%service_choice%"=="2" (
     pause
 )
 if "%service_choice%"=="3" (
-    start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok http 3003 --domain=soc-chat-app.ngrok-free.app"
-    echo ngrok tunnel started
+    set "COTURN_COMPOSE=%PROJECT_ROOT%scripts\coturn-docker-compose.yml"
+    if exist "%COTURN_COMPOSE%" (
+        docker-compose -f "%COTURN_COMPOSE%" up -d >nul 2>&1
+        if !errorlevel! equ 0 (
+            echo coturn TURN server started
+        ) else (
+            echo coturn may already be running or Docker not available
+        )
+    ) else (
+        echo coturn-docker-compose.yml not found (TURN server will not be available)
+    )
     pause
 )
 if "%service_choice%"=="4" (
+    set "NGROK_CONFIG=%PROJECT_ROOT%scripts\ngrok.yml"
+    if exist "%NGROK_CONFIG%" (
+        start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok start --all --config=%NGROK_CONFIG%"
+        echo ngrok tunnels started (HTTP for API + TCP for TURN)
+    ) else (
+        start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok http 3003 --domain=soc-chat-app.ngrok-free.app"
+        echo ngrok tunnel started (HTTP only)
+        echo Note: For TURN support, create scripts\ngrok.yml config file
+    )
+    pause
+)
+if "%service_choice%"=="5" (
     cd /d "%PROJECT_ROOT%\servers"
     start "SOC Chat App - Web Server" cmd /c "set PORT=8082 && set API_TARGET=http://localhost:3003 && node server.js"
     cd /d "%PROJECT_ROOT%"
     echo Web server started
     pause
 )
-if "%service_choice%"=="5" (
-    start "Network URLs Service" cmd /c "node local_network_config.js"
-    echo Network URLs service started
+if "%service_choice%"=="6" (
+    cd /d "%API_SERVER_DIR%"
+    if exist "local_network_config.js" (
+        start "Network URLs Service" cmd /c "node local_network_config.js"
+        echo Network URLs service started
+    ) else (
+        echo local_network_config.js not found (optional service)
+    )
+    cd /d "%PROJECT_ROOT%"
     pause
 )
-if "%service_choice%"=="6" goto MAIN_MENU
+if "%service_choice%"=="7" (
+    cd /d "%PROJECT_ROOT%\servers"
+    if exist "fcm_server_production.js" (
+        start "SOC Chat App - FCM Server" cmd /c "set PORT=3000 && node fcm_server_production.js"
+        echo FCM Server started on port 3000
+    ) else if exist "fcm_server.js" (
+        start "SOC Chat App - FCM Server" cmd /c "set PORT=3000 && node fcm_server.js"
+        echo FCM Server started on port 3000
+    ) else (
+        echo FCM Server files not found
+    )
+    cd /d "%PROJECT_ROOT%"
+    pause
+)
+if "%service_choice%"=="8" goto MAIN_MENU
 goto START_INDIVIDUAL
 
 :: =============================================================================

@@ -31,15 +31,12 @@ Write-Log "========================================"
 Write-Log "Step 1/3: Starting Web Server (servers/server.js)..."
 try {
     $webServerDir = Join-Path $projectRoot "servers"
-    $webServerProcess = Start-Process -FilePath "node" `
-        -ArgumentList "server.js" `
+    $webCommand = 'cmd /c "set PORT=8082 && set API_TARGET=http://localhost:3003 && node server.js"'
+    $webServerProcess = Start-Process -FilePath "powershell.exe" `
+        -ArgumentList "-WindowStyle Hidden", "-NoProfile", "-Command", $webCommand `
         -WorkingDirectory $webServerDir `
         -WindowStyle Hidden `
-        -PassThru `
-        -Environment @{
-            "PORT" = "8082"
-            "API_TARGET" = "http://localhost:3003"
-        }
+        -PassThru
     
     if ($webServerProcess) {
         Write-Log "  [OK] Web Server started (PID: $($webServerProcess.Id))"
@@ -55,15 +52,12 @@ try {
 Write-Log "Step 2/3: Starting API Server (servers/local_api_server/server.js)..."
 try {
     $apiServerDir = Join-Path $projectRoot "servers\local_api_server"
-    $apiServerProcess = Start-Process -FilePath "node" `
-        -ArgumentList "server.js" `
+    $apiCommand = 'cmd /c "set PORT=3003 && set HOST=0.0.0.0 && node server.js"'
+    $apiServerProcess = Start-Process -FilePath "powershell.exe" `
+        -ArgumentList "-WindowStyle Hidden", "-NoProfile", "-Command", $apiCommand `
         -WorkingDirectory $apiServerDir `
         -WindowStyle Hidden `
-        -PassThru `
-        -Environment @{
-            "PORT" = "3003"
-            "HOST" = "0.0.0.0"
-        }
+        -PassThru
     
     if ($apiServerProcess) {
         Write-Log "  [OK] API Server started (PID: $($apiServerProcess.Id))"
@@ -92,20 +86,53 @@ try {
             Write-Log "    [INFO] MongoDB may already be running or failed to start"
         }
         
-        Write-Log "  Starting ngrok Tunnel..."
-        $ngrokProcess = Start-Process -FilePath "ngrok" `
-            -ArgumentList "http", "3003", "--domain=soc-chat-app.ngrok-free.app" `
-            -WindowStyle Hidden `
-            -PassThru
-        
-        if ($ngrokProcess) {
-            Write-Log "    [OK] ngrok tunnel started (PID: $($ngrokProcess.Id))"
+        Write-Log "  Starting TURN Server (coturn Docker)..."
+        $coturnComposePath = Join-Path $projectRoot "scripts\coturn-docker-compose.yml"
+        if (Test-Path $coturnComposePath) {
+            try {
+                $dockerResult = docker-compose -f $coturnComposePath up -d 2>&1
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Log "    [OK] coturn TURN server started"
+                } else {
+                    Write-Log "    [WARNING] coturn may already be running or Docker not available"
+                }
+            } catch {
+                Write-Log "    [WARNING] Failed to start coturn: $_"
+            }
         } else {
-            Write-Log "    [WARNING] ngrok may not be in PATH"
+            Write-Log "    [INFO] coturn-docker-compose.yml not found, skipping TURN server"
+        }
+        Start-Sleep -Seconds 2
+        
+        Write-Log "  Starting ngrok Tunnel (API + TURN)..."
+        $ngrokConfigPath = Join-Path $projectRoot "scripts\ngrok.yml"
+        if (Test-Path $ngrokConfigPath) {
+            # Use config file for both API and TURN tunnels
+            $ngrokProcess = Start-Process -FilePath "ngrok" `
+                -ArgumentList "start", "--all", "--config", $ngrokConfigPath `
+                -WindowStyle Hidden `
+                -PassThru
+            if ($ngrokProcess) {
+                Write-Log "    [OK] ngrok tunnels started (HTTP + TCP) (PID: $($ngrokProcess.Id))"
+            } else {
+                Write-Log "    [WARNING] ngrok may not be in PATH"
+            }
+        } else {
+            # Fallback to single HTTP tunnel
+            $ngrokProcess = Start-Process -FilePath "ngrok" `
+                -ArgumentList "http", "3003", "--domain=soc-chat-app.ngrok-free.app" `
+                -WindowStyle Hidden `
+                -PassThru
+            if ($ngrokProcess) {
+                Write-Log "    [OK] ngrok HTTP tunnel started (PID: $($ngrokProcess.Id))"
+                Write-Log "    [WARNING] TURN server will not be accessible via ngrok (TCP tunnel missing)"
+            } else {
+                Write-Log "    [WARNING] ngrok may not be in PATH"
+            }
         }
         
         Write-Log "  Starting Network URLs Service..."
-        $networkConfigJs = Join-Path $projectRoot "local_network_config.js"
+        $networkConfigJs = Join-Path $projectRoot "servers\local_network_config.js"
         if (Test-Path $networkConfigJs) {
             $networkProcess = Start-Process -FilePath "node" `
                 -ArgumentList "local_network_config.js" `
