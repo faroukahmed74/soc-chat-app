@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:vibration/vibration.dart';
+import 'package:http/http.dart' as http;
 import '../services/webrtc_call_service.dart';
 import '../services/call_types.dart';
 import '../services/local_auth_service.dart';
@@ -15,7 +17,7 @@ import '../services/call_controls_service.dart';
 import '../services/ringtone_service.dart';
 import '../widgets/call_forward_dialog.dart';
 import '../widgets/call_transfer_dialog.dart';
-import 'package:flutter_webrtc/flutter_webrtc.dart';
+import '../config/database_config.dart';
 import '../main.dart'; // For ActiveCallTracker
 
 /// Call Screen - Handles incoming, outgoing, and active calls with WebRTC
@@ -967,23 +969,33 @@ class _CallScreenState extends State<CallScreen> {
   Widget _buildActiveCallUI(bool isMobile, bool isTablet) {
     final remoteStreams = _callService.remoteStreams;
     final isGroupCall = widget.isGroupChat && remoteStreams.length > 1;
+    
+    // Detect orientation
+    final orientation = MediaQuery.of(context).orientation;
+    final isLandscape = orientation == Orientation.landscape;
 
     return Stack(
       children: [
-        // Remote video streams
+        // Remote video streams - Full screen background
         if (widget.callType == CallType.video)
-          _buildVideoStreams(isGroupCall, isMobile, isTablet)
+          Positioned.fill(
+            child: _buildVideoStreams(isGroupCall, isMobile, isTablet),
+          )
         else
           _buildVoiceCallUI(isMobile, isTablet),
         
-        // Local video preview (for video calls) - always show for video calls
+        // Local video preview (for video calls) - Positioned based on orientation
         if (widget.callType == CallType.video)
           Positioned(
-            top: 20,
-            right: 20,
+            top: isLandscape ? 10 : 20,
+            right: isLandscape ? 10 : 20,
             child: Container(
-              width: isMobile ? 120 : 160,
-              height: isMobile ? 160 : 213,
+              width: isLandscape 
+                  ? (isMobile ? 100 : 140)
+                  : (isMobile ? 120 : 160),
+              height: isLandscape
+                  ? (isMobile ? 133 : 186)
+                  : (isMobile ? 160 : 213),
               decoration: BoxDecoration(
                 color: Colors.black,
                 borderRadius: BorderRadius.circular(12),
@@ -991,6 +1003,13 @@ class _CallScreenState extends State<CallScreen> {
                   color: _isVideoEnabled ? Colors.white : Colors.red,
                   width: 2,
                 ),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.5),
+                    blurRadius: 8,
+                    spreadRadius: 2,
+                  ),
+                ],
               ),
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(10),
@@ -1026,20 +1045,20 @@ class _CallScreenState extends State<CallScreen> {
             ),
           ),
 
-        // Participant list (for group calls)
+        // Participant list (for group calls) - Adjust position for landscape
         if (widget.isGroupChat)
           Positioned(
-            top: 20,
-            left: 20,
+            top: isLandscape ? 10 : 20,
+            left: isLandscape ? 10 : 20,
             child: _buildParticipantList(isMobile, isTablet),
           ),
 
-        // Call controls overlay
+        // Call controls overlay - Semi-transparent, auto-hide in landscape
         Positioned(
           bottom: 0,
           left: 0,
           right: 0,
-          child: _buildCallControls(isMobile, isTablet),
+          child: _buildCallControls(isMobile, isTablet, isLandscape),
         ),
       ],
     );
@@ -1138,7 +1157,20 @@ class _CallScreenState extends State<CallScreen> {
           ),
         );
       }
-      return RTCVideoView(renderer);
+      // Full screen video with proper aspect ratio - ensures video is always visible
+      return Container(
+        width: double.infinity,
+        height: double.infinity,
+        color: Colors.black,
+        child: FittedBox(
+          fit: BoxFit.contain,
+          child: SizedBox(
+            width: 640,
+            height: 480,
+            child: RTCVideoView(renderer),
+          ),
+        ),
+      );
     }
   }
 
@@ -1178,15 +1210,20 @@ class _CallScreenState extends State<CallScreen> {
     );
   }
 
-  Widget _buildCallControls(bool isMobile, bool isTablet) {
+  Widget _buildCallControls(bool isMobile, bool isTablet, [bool isLandscape = false]) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 20, horizontal: 20),
+      padding: EdgeInsets.symmetric(
+        vertical: isLandscape ? 10 : 20,
+        horizontal: isLandscape ? 10 : 20,
+      ),
       decoration: BoxDecoration(
-        color: Colors.black.withOpacity(0.7),
-        borderRadius: const BorderRadius.only(
-          topLeft: Radius.circular(20),
-          topRight: Radius.circular(20),
-        ),
+        color: Colors.black.withOpacity(isLandscape ? 0.5 : 0.7),
+        borderRadius: isLandscape 
+            ? BorderRadius.zero
+            : const BorderRadius.only(
+                topLeft: Radius.circular(20),
+                topRight: Radius.circular(20),
+              ),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -1611,66 +1648,196 @@ class _CallScreenState extends State<CallScreen> {
   
   /// Show forward call dialog
   Future<void> _showForwardDialog() async {
-    // TODO: Fetch available users from API
-    // For now, use participant IDs as available users
-    final availableUsers = widget.participantIds?.map((id) => {
-      'id': id,
-      'name': 'User ${id.length > 8 ? id.substring(0, 8) : id}',
-    }).toList() ?? [];
-    
-    if (availableUsers.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No users available to forward to')),
-        );
-      }
-      return;
-    }
-    
     if (!mounted) return;
+    
+    // Show loading dialog
     showDialog(
       context: context,
-      builder: (context) => CallForwardDialog(
-        availableUsers: availableUsers,
-        onForward: (userId) async {
-          if (_currentCallId != null) {
-            final success = await _callControlsService.forwardCall(
-              callId: _currentCallId!,
-              forwardToUserId: userId,
-            );
-            if (success && mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Call forwarded')),
-              );
-            }
-          }
-        },
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
       ),
     );
+    
+    try {
+      // Fetch user details for all participants
+      final availableUsers = <Map<String, dynamic>>[];
+      
+      if (widget.participantIds != null && widget.participantIds!.isNotEmpty) {
+        for (final userId in widget.participantIds!) {
+          try {
+            // Fetch user details from API
+            final userDetails = await _fetchUserDetails(userId);
+            if (userDetails != null) {
+              availableUsers.add({
+                'id': userId,
+                '_id': userId,
+                'name': userDetails['name'] ?? userDetails['displayName'] ?? userDetails['username'] ?? 'Unknown',
+                'email': userDetails['email'] ?? '',
+              });
+            } else {
+              // Fallback to ID if user not found
+              availableUsers.add({
+                'id': userId,
+                '_id': userId,
+                'name': 'User ${userId.length > 8 ? userId.substring(0, 8) : userId}',
+                'email': '',
+              });
+            }
+          } catch (e) {
+            print('⚠️ Error fetching user $userId: $e');
+            // Add with fallback name
+            availableUsers.add({
+              'id': userId,
+              '_id': userId,
+              'name': 'User ${userId.length > 8 ? userId.substring(0, 8) : userId}',
+              'email': '',
+            });
+          }
+        }
+      }
+      
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Close loading dialog
+      
+      if (availableUsers.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No users available to forward to')),
+          );
+        }
+        return;
+      }
+      
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => CallForwardDialog(
+          availableUsers: availableUsers,
+          onForward: (userId) async {
+            if (_currentCallId != null) {
+              final success = await _callControlsService.forwardCall(
+                callId: _currentCallId!,
+                forwardToUserId: userId,
+              );
+              if (success && mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Call forwarded')),
+                );
+              }
+            }
+          },
+        ),
+      );
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading users: ${e.toString()}')),
+        );
+      }
+    }
+  }
+  
+  /// Fetch user details from API
+  Future<Map<String, dynamic>?> _fetchUserDetails(String userId) async {
+    try {
+      final token = await DatabaseConfig.getStoredAuthToken();
+      if (token.isEmpty) return null;
+      
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      final response = await http.get(
+        Uri.parse('$baseUrl/api/users/$userId'),
+        headers: {
+          'Authorization': 'Bearer $token',
+          'Content-Type': 'application/json',
+          if (!kIsWeb) 'ngrok-skip-browser-warning': 'true',
+        },
+      ).timeout(const Duration(seconds: 5));
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        return {
+          'id': data['id'] ?? data['_id'] ?? userId,
+          'name': data['name'] ?? data['displayName'] ?? data['username'] ?? 'Unknown',
+          'email': data['email'] ?? '',
+        };
+      }
+      return null;
+    } catch (e) {
+      print('Error fetching user details: $e');
+      return null;
+    }
   }
   
   /// Show transfer call dialog
   Future<void> _showTransferDialog() async {
-    // TODO: Fetch available users from API
-    final availableUsers = widget.participantIds?.map((id) => {
-      'id': id,
-      'name': 'User ${id.length > 8 ? id.substring(0, 8) : id}',
-    }).toList() ?? [];
-    
-    if (availableUsers.isEmpty) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('No users available to transfer to')),
-        );
-      }
-      return;
-    }
-    
     if (!mounted) return;
+    
+    // Show loading dialog
     showDialog(
       context: context,
-      builder: (context) => CallTransferDialog(
-        availableUsers: availableUsers,
+      barrierDismissible: false,
+      builder: (context) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+    
+    try {
+      // Fetch user details for all participants
+      final availableUsers = <Map<String, dynamic>>[];
+      
+      if (widget.participantIds != null && widget.participantIds!.isNotEmpty) {
+        for (final userId in widget.participantIds!) {
+          try {
+            // Fetch user details from API
+            final userDetails = await _fetchUserDetails(userId);
+            if (userDetails != null) {
+              availableUsers.add({
+                'id': userId,
+                '_id': userId,
+                'name': userDetails['name'] ?? userDetails['displayName'] ?? userDetails['username'] ?? 'Unknown',
+                'email': userDetails['email'] ?? '',
+              });
+            } else {
+              // Fallback to ID if user not found
+              availableUsers.add({
+                'id': userId,
+                '_id': userId,
+                'name': 'User ${userId.length > 8 ? userId.substring(0, 8) : userId}',
+                'email': '',
+              });
+            }
+          } catch (e) {
+            print('⚠️ Error fetching user $userId: $e');
+            // Add with fallback name
+            availableUsers.add({
+              'id': userId,
+              '_id': userId,
+              'name': 'User ${userId.length > 8 ? userId.substring(0, 8) : userId}',
+              'email': '',
+            });
+          }
+        }
+      }
+      
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Close loading dialog
+      
+      if (availableUsers.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No users available to transfer to')),
+          );
+        }
+        return;
+      }
+      
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (context) => CallTransferDialog(
+          availableUsers: availableUsers,
         onTransfer: (userId, transferType) async {
           if (_currentCallId != null) {
             final success = await _callControlsService.transferCall(
@@ -1693,6 +1860,14 @@ class _CallScreenState extends State<CallScreen> {
         },
       ),
     );
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error loading users: ${e.toString()}')),
+        );
+      }
+    }
   }
 }
 

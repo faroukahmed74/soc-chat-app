@@ -222,17 +222,45 @@ class WebRTCCallService {
             server['urls']?.toString().startsWith('turn:') == true
           );
           
-          // Add TURN servers from server response (ngrok first, then local IP fallback)
-          // The server returns them in priority order: ngrok TCP tunnel first, then local IP
-          // IMPORTANT: Add ngrok TURN servers FIRST so they are tried before local IP
-          // This ensures devices on mobile data use ngrok TURN server
-          _iceServers.addAll(turnServers);
+          // IMPORTANT: For mobile devices, prioritize ngrok TURN servers
+          // Server returns: ngrok TURN servers FIRST, then local IP fallback
+          // We need to ensure ngrok servers are at the beginning of _iceServers list
+          // so WebRTC tries them first for cross-network calls
+          List<Map<String, dynamic>> ngrokServers = [];
+          List<Map<String, dynamic>> localServers = [];
           
-          print('🔵 [TURN_CONFIG] ✅ TURN servers added in priority order:');
-          for (int i = 0; i < turnServers.length; i++) {
-            final server = turnServers[i];
+          for (final server in turnServers) {
             final isNgrok = server['urls']?.toString().contains('ngrok') ?? false;
-            print('   ${i + 1}. ${server['urls']} ${isNgrok ? "(NGROK - for mobile data)" : "(Local IP - fallback)"}');
+            if (isNgrok) {
+              ngrokServers.add(server);
+            } else {
+              localServers.add(server);
+            }
+          }
+          
+          // For mobile: Add ngrok servers FIRST (highest priority for cross-network)
+          // For web: Add local servers first (for same-network), then ngrok (for cross-platform)
+          if (!kIsWeb) {
+            // Mobile: ngrok first, then local
+            _iceServers.addAll(ngrokServers);
+            _iceServers.addAll(localServers);
+            print('🔵 [TURN_CONFIG] ✅ Mobile TURN servers (ngrok FIRST for cross-network):');
+          } else {
+            // Web: local first (for web-to-web), then ngrok (for web-to-mobile)
+            _iceServers.addAll(localServers);
+            _iceServers.addAll(ngrokServers);
+            print('🔵 [TURN_CONFIG] ✅ Web TURN servers (local FIRST for web-to-web):');
+          }
+          
+          // Log the final order
+          for (int i = 0; i < _iceServers.length; i++) {
+            final server = _iceServers[i];
+            final urls = server['urls']?.toString() ?? 'unknown';
+            final isNgrok = urls.contains('ngrok');
+            final isTurn = urls.startsWith('turn:');
+            if (isTurn) {
+              print('   ${i + 1}. $urls ${isNgrok ? "(NGROK - for cross-network)" : "(Local IP - same network)"}');
+            }
           }
           
           final tcpTunnelUrl = data['tcpTunnelUrl'];

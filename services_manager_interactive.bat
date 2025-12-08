@@ -85,15 +85,30 @@ if exist "%COTURN_COMPOSE%" (
 timeout /t 2 /nobreak >nul
 
 echo [4/7] Starting ngrok Tunnel (API + TURN)...
+:: Always stop any existing ngrok processes first
+taskkill /f /im ngrok.exe >nul 2>&1
+timeout /t 2 /nobreak >nul
+:: Double-check and wait for processes to fully terminate
+:NGROK_CHECK_LOOP
+tasklist | findstr /i "ngrok.exe" >nul
+if !errorlevel! equ 0 (
+    timeout /t 1 /nobreak >nul
+    goto NGROK_CHECK_LOOP
+)
 set "NGROK_CONFIG=%PROJECT_ROOT%scripts\ngrok.yml"
 if exist "%NGROK_CONFIG%" (
-    start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok start --all --config=%NGROK_CONFIG%"
+    cd /d "%PROJECT_ROOT%scripts"
+    start "SOC Chat App - ngrok (All Tunnels)" cmd /k "ngrok start --all --config=ngrok.yml"
+    cd /d "%PROJECT_ROOT%"
     echo   ✅ ngrok tunnels starting (HTTP for API + TCP for TURN)
-) else (
-    start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok http 3003 --domain=soc-chat-app.ngrok-free.app"
-    echo   ✅ ngrok tunnel starting (HTTP only - TURN will use STUN only)
-    echo   ⚠️  Note: For TURN support, create scripts\ngrok.yml config file
+    goto NGROK_STARTED
 )
+cd /d "%PROJECT_ROOT%scripts"
+start "SOC Chat App - ngrok (HTTP Only)" cmd /k "ngrok http 3003 --domain=soc-chat-app.ngrok-free.app"
+cd /d "%PROJECT_ROOT%"
+echo   ✅ ngrok tunnel starting (HTTP only - TURN will use STUN only)
+echo   ⚠️  Note: For TURN support, create scripts\ngrok.yml config file
+:NGROK_STARTED
 timeout /t 2 /nobreak >nul
 
 echo [5/7] Starting Web Server (Port 8082)...
@@ -346,15 +361,30 @@ if "%service_choice%"=="3" (
     pause
 )
 if "%service_choice%"=="4" (
+    :: Always stop any existing ngrok processes first
+    taskkill /f /im ngrok.exe >nul 2>&1
+    timeout /t 2 /nobreak >nul
+    :: Double-check and wait for processes to fully terminate
+    :NGROK_INDIVIDUAL_CHECK
+    tasklist | findstr /i "ngrok.exe" >nul
+    if !errorlevel! equ 0 (
+        timeout /t 1 /nobreak >nul
+        goto NGROK_INDIVIDUAL_CHECK
+    )
     set "NGROK_CONFIG=%PROJECT_ROOT%scripts\ngrok.yml"
     if exist "%NGROK_CONFIG%" (
-        start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok start --all --config=%NGROK_CONFIG%"
+        cd /d "%PROJECT_ROOT%scripts"
+        start "SOC Chat App - ngrok (All Tunnels)" cmd /k "ngrok start --all --config=ngrok.yml"
+        cd /d "%PROJECT_ROOT%"
         echo ngrok tunnels started (HTTP for API + TCP for TURN)
-    ) else (
-        start "SOC Chat App - ngrok Tunnel" cmd /c "ngrok http 3003 --domain=soc-chat-app.ngrok-free.app"
-        echo ngrok tunnel started (HTTP only)
-        echo Note: For TURN support, create scripts\ngrok.yml config file
+        goto NGROK_INDIVIDUAL_STARTED
     )
+    cd /d "%PROJECT_ROOT%scripts"
+    start "SOC Chat App - ngrok (HTTP Only)" cmd /k "ngrok http 3003 --domain=soc-chat-app.ngrok-free.app"
+    cd /d "%PROJECT_ROOT%"
+    echo ngrok tunnel started (HTTP only)
+    echo Note: For TURN support, create scripts\ngrok.yml config file
+    :NGROK_INDIVIDUAL_STARTED
     pause
 )
 if "%service_choice%"=="5" (

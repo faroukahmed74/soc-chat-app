@@ -822,30 +822,67 @@ app.get('/api/webrtc/turn-config', async (req, res) => {
     };
     
     // Try to fetch ngrok TCP tunnel URL from ngrok API
+    // Check both ports 4040 and 4041 (ngrok may use either)
     let tcpTunnelUrl = null;
     try {
-      const ngrokApiUrl = 'http://localhost:4040/api/tunnels';
-      const response = await new Promise((resolve, reject) => {
-        http.get(ngrokApiUrl, (res) => {
-          let data = '';
-          res.on('data', (chunk) => { data += chunk; });
-          res.on('end', () => {
-            try {
-              const tunnels = JSON.parse(data).tunnels || [];
-              // Find TCP tunnel for port 3478
-              for (const tunnel of tunnels) {
-                if (tunnel.proto === 'tcp' && tunnel.config?.addr?.includes('3478')) {
-                  resolve(tunnel.public_url);
-                  return;
-                }
+      // Try port 4040 first, then 4041
+      const ngrokPorts = [4040, 4041];
+      let ngrokApiUrl = null;
+      for (const port of ngrokPorts) {
+        try {
+          const testUrl = `http://localhost:${port}/api/tunnels`;
+          const testResponse = await new Promise((resolve, reject) => {
+            http.get(testUrl, (res) => {
+              if (res.statusCode === 200) {
+                ngrokApiUrl = testUrl;
+                resolve(true);
+              } else {
+                reject(new Error(`Status ${res.statusCode}`));
               }
-              resolve(null);
-            } catch (e) {
-              reject(e);
-            }
+            }).on('error', reject);
           });
-        }).on('error', reject);
-      });
+          if (ngrokApiUrl) break;
+        } catch (e) {
+          // Try next port
+          continue;
+        }
+      }
+      
+      if (!ngrokApiUrl) {
+        console.warn('⚠️ [TURN_CONFIG] ngrok API not accessible on ports 4040 or 4041');
+        throw new Error('ngrok API not accessible');
+      }
+      
+      const response = await new Promise((resolve, reject) => {
+          http.get(ngrokApiUrl, (res) => {
+            let data = '';
+            res.on('data', (chunk) => { data += chunk; });
+            res.on('end', () => {
+              try {
+                const tunnels = JSON.parse(data).tunnels || [];
+                // Find TCP tunnel for port 3478
+                // Check both tunnel name and config address
+                for (const tunnel of tunnels) {
+                  const isTurnTunnel = tunnel.name === 'turn' || 
+                                      (tunnel.proto === 'tcp' && (
+                                        tunnel.config?.addr?.includes('3478') ||
+                                        tunnel.config?.addr === '3478' ||
+                                        tunnel.config?.addr === 'localhost:3478'
+                                      ));
+                  if (isTurnTunnel) {
+                    console.log('📡 [TURN_CONFIG] Found TURN tunnel:', tunnel.name, tunnel.public_url);
+                    resolve(tunnel.public_url);
+                    return;
+                  }
+                }
+                console.warn('⚠️ [TURN_CONFIG] No TCP tunnel found for port 3478. Available tunnels:', tunnels.map(t => `${t.name} (${t.proto})`).join(', '));
+                resolve(null);
+              } catch (e) {
+                reject(e);
+              }
+            });
+          }).on('error', reject);
+        });
       
       if (response) {
         tcpTunnelUrl = response; // Format: tcp://0.tcp.ngrok.io:12345
