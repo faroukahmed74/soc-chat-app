@@ -790,12 +790,6 @@ class FCMService {
 
       Log.i('📞 Navigating to call screen from FCM: callId=$callId, chatId=$chatId', 'FCM_SERVICE');
 
-      // Check if call screen is already open for this call
-      if (ActiveCallTracker.isCallActive(callId)) {
-        Log.w('⚠️ [FCM_SERVICE] Call screen already open for callId: $callId, ignoring duplicate FCM notification');
-        return;
-      }
-
       // Wait a bit for app to initialize if needed
       await Future.delayed(const Duration(milliseconds: 500));
 
@@ -819,19 +813,37 @@ class FCMService {
         }
       }
 
+      // CRITICAL: Try to set active call atomically - if it fails, another handler got there first
+      final wasSet = ActiveCallTracker.setActiveCall(callId);
+      if (!wasSet) {
+        Log.w('⚠️ [FCM_SERVICE] Call screen already being opened for callId: $callId, ignoring duplicate FCM notification');
+        return;
+      }
+
       // Import call screen dynamically to avoid circular dependencies
       // Navigate to call screen
-      ActiveCallTracker.setActiveCall(callId); // Mark as active BEFORE navigation
-      navigator.pushNamed('/call', arguments: {
-        'chatId': chatId,
-        'chatName': chatName,
-        'isGroupChat': isGroupChat,
-        'callType': callTypeStr,
-        'direction': 'incoming',
-        'callId': callId,
-      });
+      try {
+        navigator.pushNamed('/call', arguments: {
+          'chatId': chatId,
+          'chatName': chatName,
+          'isGroupChat': isGroupChat,
+          'callType': callTypeStr,
+          'direction': 'incoming',
+          'callId': callId,
+        }).then((_) {
+          // Clear active call ID when screen is closed
+          ActiveCallTracker.clearActiveCall(callId);
+        }).catchError((e) {
+          // Clear on navigation error
+          ActiveCallTracker.clearActiveCall(callId);
+          Log.e('Error navigating to call screen from FCM', 'FCM_SERVICE', e);
+        });
 
-      Log.i('✅ Successfully navigated to call screen from FCM', 'FCM_SERVICE');
+        Log.i('✅ Successfully navigated to call screen from FCM', 'FCM_SERVICE');
+      } catch (e) {
+        ActiveCallTracker.clearActiveCall(callId); // Clear on error
+        Log.e('Error navigating to call screen from FCM', 'FCM_SERVICE', e);
+      }
     } catch (e, stackTrace) {
       Log.e('Error handling call invitation from FCM', 'FCM_SERVICE', e);
       Log.e('Stack trace', 'FCM_SERVICE', stackTrace);

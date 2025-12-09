@@ -146,54 +146,43 @@ class WebRTCCallService {
         }
       }
       // For mobile: ALWAYS use ngrok TCP tunnel first (required for cross-network calls)
-      // Only add local IP as fallback if ngrok is not available
+      // CRITICAL: Do NOT add local IP TURN servers for mobile - they won't work for cross-network calls
+      // Only ngrok TURN servers can relay traffic between different networks
       else if (!kIsWeb) {
         // For mobile devices, prioritize ngrok TURN server for cross-network calls
         // Fetch ngrok TURN servers first (this will replace any existing TURN servers)
         if (ngrokUrl != null && ngrokUrl.isNotEmpty) {
+          print('🔵 [TURN_CONFIG] Mobile device - fetching ngrok TURN servers...');
           await _configureMobileTurnWithNgrok(ngrokUrl, username!, password!);
           
-          // Only add local IP as fallback if ngrok TURN servers were not found
           // Check if we have ngrok TURN servers
           final hasNgrokTurn = _iceServers.any((server) => 
             server['urls']?.toString().contains('ngrok') == true
           );
           
-          if (!hasNgrokTurn && serverIp != null) {
-            // No ngrok TURN servers found, add local IP as fallback
-            _iceServers.addAll([
-              {
-                'urls': 'turn:$serverIp:$port',
-                'username': username,
-                'credential': password,
-              },
-              {
-                'urls': 'turn:$serverIp:$port?transport=tcp',
-                'username': username,
-                'credential': password,
-              },
-            ]);
-            Log.w('TURN servers configured for Mobile (local IP fallback - ngrok not available): $serverIp:$port', 'WEBRTC_CALL_SERVICE');
-          } else if (hasNgrokTurn) {
-            Log.i('✅ Mobile TURN servers configured with ngrok (local IP not needed)', 'WEBRTC_CALL_SERVICE');
+          if (hasNgrokTurn) {
+            print('✅ [TURN_CONFIG] Mobile TURN servers configured with ngrok (for cross-network calls)');
+            Log.i('✅ Mobile TURN servers configured with ngrok (local IP NOT added - would break cross-network)', 'WEBRTC_CALL_SERVICE');
+            
+            // CRITICAL: Do NOT add local IP TURN servers for mobile
+            // Local TURN servers (10.120.4.230) only work on same network
+            // For cross-network calls, we MUST use ngrok TURN servers only
+            print('⚠️ [TURN_CONFIG] Local IP TURN servers NOT added for mobile (would prevent cross-network calls)');
+          } else {
+            // No ngrok TURN servers found - this is a problem for cross-network calls
+            print('❌ [TURN_CONFIG] WARNING: No ngrok TURN servers found! Cross-network calls will fail!');
+            Log.e('No ngrok TURN servers found - cross-network calls will fail', 'WEBRTC_CALL_SERVICE');
+            
+            // Still don't add local IP - it won't help for cross-network calls
+            // Better to fail clearly than silently use wrong server
           }
         } else {
-          // No ngrok URL provided, use local IP only
-          if (serverIp != null) {
-            _iceServers.addAll([
-              {
-                'urls': 'turn:$serverIp:$port',
-                'username': username,
-                'credential': password,
-              },
-              {
-                'urls': 'turn:$serverIp:$port?transport=tcp',
-                'username': username,
-                'credential': password,
-              },
-            ]);
-            Log.w('TURN servers configured for Mobile (local IP only - ngrok URL not provided): $serverIp:$port', 'WEBRTC_CALL_SERVICE');
-          }
+          // No ngrok URL provided - this is a critical error for mobile
+          print('❌ [TURN_CONFIG] ERROR: No ngrok URL provided for mobile device!');
+          print('❌ [TURN_CONFIG] Cross-network calls will NOT work without ngrok TURN server!');
+          Log.e('No ngrok URL provided for mobile - cross-network calls will fail', 'WEBRTC_CALL_SERVICE');
+          
+          // Do NOT add local IP - it won't work for cross-network calls
         }
       }
     }
@@ -207,13 +196,24 @@ class WebRTCCallService {
       final serverUrl = ngrokUrl.replaceAll('/api', ''); // Remove /api if present
       final turnConfigUrl = '$serverUrl/api/webrtc/turn-config';
       
-      print('🔵 [TURN_CONFIG] Fetching TURN configuration from server: $turnConfigUrl');
+      print('🔵 [TURN_CONFIG] ===========================================');
+      print('🔵 [TURN_CONFIG] Fetching TURN configuration from server');
+      print('🔵 [TURN_CONFIG] URL: $turnConfigUrl');
+      print('🔵 [TURN_CONFIG] Platform: ${kIsWeb ? "Web" : "Mobile"}');
+      print('🔵 [TURN_CONFIG] ===========================================');
+      
       final response = await http.get(
         Uri.parse(turnConfigUrl),
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 10)); // Increased timeout
+      
+      print('🔵 [TURN_CONFIG] Response status: ${response.statusCode}');
       
       if (response.statusCode == 200) {
+        print('🔵 [TURN_CONFIG] Parsing response...');
         final data = json.decode(response.body);
+        print('🔵 [TURN_CONFIG] Response success: ${data['success']}');
+        print('🔵 [TURN_CONFIG] Turn servers count: ${data['turnServers']?.length ?? 0}');
+        
         if (data['success'] == true && data['turnServers'] != null) {
           final turnServers = List<Map<String, dynamic>>.from(data['turnServers']);
           
@@ -238,13 +238,16 @@ class WebRTCCallService {
             }
           }
           
-          // For mobile: Add ngrok servers FIRST (highest priority for cross-network)
+          // For mobile: Add ONLY ngrok servers (local servers break cross-network calls)
           // For web: Add local servers first (for same-network), then ngrok (for cross-platform)
           if (!kIsWeb) {
-            // Mobile: ngrok first, then local
+            // Mobile: ONLY ngrok servers - local servers would break cross-network calls
+            // Local TURN servers (10.120.4.230) only work on same network
+            // For cross-network calls, we MUST use ngrok TURN servers only
             _iceServers.addAll(ngrokServers);
-            _iceServers.addAll(localServers);
-            print('🔵 [TURN_CONFIG] ✅ Mobile TURN servers (ngrok FIRST for cross-network):');
+            // DO NOT add localServers for mobile - they prevent cross-network calls
+            print('🔵 [TURN_CONFIG] ✅ Mobile TURN servers (ONLY ngrok - local servers NOT added):');
+            print('🔵 [TURN_CONFIG] ⚠️  Local TURN servers excluded for mobile (would break cross-network calls)');
           } else {
             // Web: local first (for web-to-web), then ngrok (for web-to-mobile)
             _iceServers.addAll(localServers);
@@ -287,16 +290,32 @@ class WebRTCCallService {
         }
       }
       
-      // Fallback: keep existing local IP TURN servers (already added in setTurnServerConfig)
-      print('⚠️ [TURN_CONFIG] Could not get TURN config from server, keeping local IP fallback');
-      Log.w('TURN servers configured with local IP fallback (server API failed)', 'WEBRTC_CALL_SERVICE');
-    } catch (e) {
-      print('❌ [TURN_CONFIG] Error fetching TURN configuration: $e');
-      Log.e('Error getting TURN configuration from server', 'WEBRTC_CALL_SERVICE', e);
+      // Fallback: No TURN servers from API
+      print('❌ [TURN_CONFIG] ===========================================');
+      print('❌ [TURN_CONFIG] ERROR: Could not get TURN config from server!');
+      print('❌ [TURN_CONFIG] Response status: ${response.statusCode}');
+      print('❌ [TURN_CONFIG] Response body: ${response.body.substring(0, response.body.length > 200 ? 200 : response.body.length)}');
+      print('❌ [TURN_CONFIG] ===========================================');
+      Log.e('TURN config API failed - no TURN servers available', 'WEBRTC_CALL_SERVICE');
       
-      // Fallback: keep existing local IP TURN servers (already added in setTurnServerConfig)
-      print('⚠️ [TURN_CONFIG] Keeping local IP TURN servers as fallback');
-      Log.w('TURN servers configured with local IP fallback (error occurred)', 'WEBRTC_CALL_SERVICE');
+      // For mobile: DO NOT add local IP fallback - it breaks cross-network calls
+      if (!kIsWeb) {
+        print('❌ [TURN_CONFIG] Mobile device - NOT adding local IP fallback (would break cross-network calls)');
+        print('❌ [TURN_CONFIG] Cross-network calls will NOT work without ngrok TURN servers!');
+      }
+    } catch (e, stackTrace) {
+      print('❌ [TURN_CONFIG] ===========================================');
+      print('❌ [TURN_CONFIG] EXCEPTION fetching TURN configuration!');
+      print('❌ [TURN_CONFIG] Error: $e');
+      print('❌ [TURN_CONFIG] Stack trace: $stackTrace');
+      print('❌ [TURN_CONFIG] ===========================================');
+      Log.e('Error getting TURN configuration from server', 'WEBRTC_CALL_SERVICE', e, stackTrace);
+      
+      // For mobile: DO NOT add local IP fallback - it breaks cross-network calls
+      if (!kIsWeb) {
+        print('❌ [TURN_CONFIG] Mobile device - NOT adding local IP fallback (would break cross-network calls)');
+        print('❌ [TURN_CONFIG] Cross-network calls will NOT work without ngrok TURN servers!');
+      }
     }
   }
 
@@ -884,10 +903,31 @@ class WebRTCCallService {
     
     // Log ICE servers being used
     print('🔵 [PEER_CONNECTION] ICE servers configuration:');
+    final turnServers = _iceServers.where((s) => s['urls']?.toString().startsWith('turn:') == true).toList();
+    final stunServers = _iceServers.where((s) => s['urls']?.toString().startsWith('stun:') == true).toList();
+    
+    print('   STUN servers: ${stunServers.length}');
+    print('   TURN servers: ${turnServers.length}');
+    
+    // Check if we have ngrok TURN servers (critical for cross-network calls on mobile)
+    if (!kIsWeb) {
+      final hasNgrokTurn = turnServers.any((s) => s['urls']?.toString().contains('ngrok') == true);
+      if (hasNgrokTurn) {
+        print('   ✅ ngrok TURN servers configured (for cross-network calls)');
+        final ngrokServers = turnServers.where((s) => s['urls']?.toString().contains('ngrok') == true).toList();
+        ngrokServers.forEach((s) => print('      - ${s['urls']}'));
+      } else {
+        print('   ⚠️  WARNING: No ngrok TURN servers found! Cross-network calls may fail!');
+        print('   ⚠️  Only local TURN servers available (will only work on same network)');
+      }
+    }
+    
     for (final server in _iceServers) {
       final urls = server['urls']?.toString() ?? 'unknown';
       final hasCredentials = server['username'] != null && server['credential'] != null;
-      print('   - $urls (${hasCredentials ? "with credentials" : "no credentials"})');
+      final isNgrok = urls.contains('ngrok');
+      final type = urls.startsWith('turn:') ? (isNgrok ? 'TURN (NGROK)' : 'TURN (Local)') : 'STUN';
+      print('   - $urls ($type, ${hasCredentials ? "with credentials" : "no credentials"})');
     }
     Log.i('ICE Servers: ${_iceServers.map((s) => s['urls']).join(", ")}', 'WEBRTC_CALL_SERVICE');
     
@@ -913,16 +953,28 @@ class WebRTCCallService {
       if (candidate.candidate != null) {
         // Log ICE candidate type to see if TURN (relay) is being used
         final candidateStr = candidate.candidate ?? '';
-        if (candidateStr.contains('typ relay')) {
-          print('🔵 [ICE_CANDIDATE] ✅ RELAY candidate (TURN server) from $userId: ${candidateStr.substring(0, candidateStr.length > 100 ? 100 : candidateStr.length)}...');
-          Log.i('RELAY ICE candidate (TURN) from $userId', 'WEBRTC_CALL_SERVICE');
-        } else if (candidateStr.contains('typ srflx')) {
+        
+        // Enhanced logging for debugging cross-network calls
+        final isRelay = candidateStr.contains('typ relay') || candidateStr.contains('relay');
+        final isSrflx = candidateStr.contains('typ srflx') || candidateStr.contains('srflx');
+        final isHost = candidateStr.contains('typ host') || candidateStr.contains('host');
+        
+        if (isRelay) {
+          print('🔵 [ICE_CANDIDATE] ✅✅✅ RELAY candidate (TURN server) from $userId');
+          print('   Full candidate: $candidateStr');
+          Log.i('RELAY ICE candidate (TURN) from $userId - CROSS-NETWORK SUPPORT', 'WEBRTC_CALL_SERVICE');
+        } else if (isSrflx) {
           print('🔵 [ICE_CANDIDATE] Server reflexive candidate (STUN) from $userId');
-        } else if (candidateStr.contains('typ host')) {
+          print('   Candidate: ${candidateStr.length > 150 ? candidateStr.substring(0, 150) + "..." : candidateStr}');
+        } else if (isHost) {
           print('🔵 [ICE_CANDIDATE] Host candidate (local) from $userId');
+          print('   Candidate: ${candidateStr.length > 150 ? candidateStr.substring(0, 150) + "..." : candidateStr}');
         } else {
-          print('🔵 [ICE_CANDIDATE] Candidate from $userId: ${candidateStr.substring(0, candidateStr.length > 100 ? 100 : candidateStr.length)}...');
+          print('🔵 [ICE_CANDIDATE] Candidate from $userId: ${candidateStr.length > 150 ? candidateStr.substring(0, 150) + "..." : candidateStr}');
         }
+        
+        // Log candidate details for debugging
+        print('   SDP MID: ${candidate.sdpMid}, SDP MLine Index: ${candidate.sdpMLineIndex}');
         
         sendWebRTCSignal('ice_candidate', {
           'candidate': {
@@ -931,6 +983,8 @@ class WebRTCCallService {
             'sdpMLineIndex': candidate.sdpMLineIndex,
           },
         }, targetUserId: userId); // Send to specific user
+      } else {
+        print('⚠️ [ICE_CANDIDATE] Received ICE candidate with null candidate string from $userId');
       }
     };
 
@@ -1106,12 +1160,15 @@ class WebRTCCallService {
       
       if (state == RTCIceConnectionState.RTCIceConnectionStateConnected ||
           state == RTCIceConnectionState.RTCIceConnectionStateCompleted) {
-        print('🔵 [ICE_CONNECTION] ✅ Connection established with $userId - media should flow now!');
+        print('🔵 [ICE_CONNECTION] ✅✅✅ Connection established with $userId - media should flow now!');
+        print('🔵 [ICE_CONNECTION] State: $state');
         print('🔵 [ICE_CONNECTION] Remote streams count: ${_remoteStreams.length}');
         
         // Check if TURN server was used by examining ICE connection type
         // This helps diagnose if TURN is working for cross-network calls
-        print('🔵 [ICE_CONNECTION] Check logs above for "RELAY candidate" to confirm TURN server usage');
+        print('🔵 [ICE_CONNECTION] ⚠️ IMPORTANT: Check logs above for "RELAY candidate" to confirm TURN server usage');
+        print('🔵 [ICE_CONNECTION] ⚠️ If you see only "host" or "srflx" candidates, TURN is NOT being used!');
+        print('🔵 [ICE_CONNECTION] ⚠️ Cross-network calls REQUIRE "RELAY" candidates (TURN server)');
         Log.i('ICE connection established with $userId - media should flow', 'WEBRTC_CALL_SERVICE');
         
         // Cancel any pending reconnection attempts
