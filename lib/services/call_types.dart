@@ -21,3 +21,25 @@ enum CallDirection {
   outgoing,  // Outgoing call
 }
 
+/// Helper class for CallType conversions
+class CallTypeHelper {
+  /// Convert CallType enum to string for API/server communication
+  /// Returns 'voice' for CallType.voice, 'video' for CallType.video
+  static String toServerString(CallType type) {
+    return type == CallType.voice ? 'voice' : 'video';
+  }
+  
+  /// Convert string to CallType enum
+  /// Handles both 'voice' and 'audio' strings (server normalizes 'voice' to 'audio')
+  /// Returns CallType.voice for 'voice'/'audio', CallType.video for 'video'
+  static CallType fromString(String str) {
+    return (str == 'voice' || str == 'audio') ? CallType.voice : CallType.video;
+  }
+  
+  /// Convert CallType enum to string for UI display
+  /// Returns 'voice' for CallType.voice, 'video' for CallType.video
+  static String toDisplayString(CallType type) {
+    return type == CallType.voice ? 'voice' : 'video';
+  }
+}
+

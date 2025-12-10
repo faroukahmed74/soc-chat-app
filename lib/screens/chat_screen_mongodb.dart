@@ -430,17 +430,10 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         });
       });
 
-      // Listen for incoming call invitations
-      // NOTE: This listener is for chat-specific calls. The global listener in main.dart
       // NOTE: Call invitations are handled by the global listener in main.dart
-      // This local listener is DISABLED to prevent duplicate call screens
-      // The global listener handles all call invitations and uses ActiveCallTracker to prevent duplicates
-      _realtime.onCallInvitation((data) {
-        Log.i('📞 Chat screen received call invitation (ignoring - handled by global listener): $data', 'CHAT_SCREEN_MONGODB');
-        // DO NOT navigate here - let the global listener in main.dart handle it
-        // This prevents duplicate call screens
-        return;
-      });
+      // This local listener has been REMOVED to prevent duplicate call screens
+      // The global listener in main.dart handles all call invitations and uses ActiveCallTracker to prevent duplicates
+      // No need to register a listener here - it would be redundant and could cause race conditions
     } catch (e) {
       Log.e('Error initializing chat', 'CHAT_SCREEN_MONGODB', e);
       if (mounted) {

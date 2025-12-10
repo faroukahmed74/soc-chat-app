@@ -15,6 +15,7 @@ const { MongoClient, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcrypt');
 const http = require('http');
+const https = require('https');
 const socketIo = require('socket.io');
 const { jwtVerify, createRemoteJWKSet } = require('jose');
 
@@ -809,16 +810,76 @@ app.get('/api/status/mongodb', (req, res) => {
   });
 });
 
+// Helper function to generate Twilio TURN credentials via Token API
+// This is the RECOMMENDED way to get Twilio TURN credentials
+async function generateTwilioTurnCredentials(accountSid, authToken) {
+  return new Promise((resolve, reject) => {
+    const auth = Buffer.from(`${accountSid}:${authToken}`).toString('base64');
+    const options = {
+      hostname: 'api.twilio.com',
+      path: `/2010-04-01/Accounts/${accountSid}/Tokens.json`,
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded',
+      },
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => { data += chunk; });
+      res.on('end', () => {
+        try {
+          if (res.statusCode === 200 || res.statusCode === 201) {
+            const response = JSON.parse(data);
+            if (response.ice_servers && response.ice_servers.length > 0) {
+              console.log('✅ [TURN_CONFIG] Twilio Token API: Generated TURN credentials successfully');
+              resolve(response.ice_servers);
+            } else {
+              reject(new Error('Twilio API returned no ice_servers'));
+            }
+          } else {
+            reject(new Error(`Twilio API error: ${res.statusCode} - ${data}`));
+          }
+        } catch (e) {
+          reject(e);
+        }
+      });
+    });
+
+    req.on('error', (e) => {
+      console.error('❌ [TURN_CONFIG] Twilio Token API request failed:', e.message);
+      reject(e);
+    });
+
+    req.end();
+  });
+}
+
 // TURN Server Configuration Endpoint
 // Returns TURN server configuration including ngrok TCP tunnel URL
 app.get('/api/webrtc/turn-config', async (req, res) => {
   try {
-    // TURN server credentials (should match your coturn configuration)
+    // TURN server credentials
+    // Option 1: Self-hosted coturn (requires router port forwarding)
+    // Option 2: Cloud TURN service (Twilio/Xirsys) - recommended for networks without router access
     const turnConfig = {
+      // Self-hosted TURN (coturn)
       username: 'soc-chat-turn',
       password: 'yG5EJFUdLgT7xqXr',
       port: '3478',
       localIp: '10.120.4.230', // Local network IP
+      publicIp: '41.33.106.54', // Public IP for direct access (media relay)
+      
+      // Cloud TURN Service (Twilio/Xirsys) - Set these if you don't have router access
+      // Get credentials from: https://www.twilio.com/docs/stun-turn
+      cloudTurnEnabled: process.env.CLOUD_TURN_ENABLED === 'true' || false,
+      cloudTurnUsername: process.env.CLOUD_TURN_USERNAME || '',
+      cloudTurnPassword: process.env.CLOUD_TURN_PASSWORD || '',
+      cloudTurnUrls: process.env.CLOUD_TURN_URLS ? process.env.CLOUD_TURN_URLS.split(',') : [],
+      // Twilio Account SID and Auth Token for Token API (recommended)
+      twilioAccountSid: process.env.TWILIO_ACCOUNT_SID || '',
+      twilioAuthToken: process.env.TWILIO_AUTH_TOKEN || '',
     };
     
     // Try to fetch ngrok TCP tunnel URL from ngrok API
@@ -894,50 +955,164 @@ app.get('/api/webrtc/turn-config', async (req, res) => {
     
     // Parse TCP tunnel URL if available
     let turnServers = [];
-    if (tcpTunnelUrl) {
-      try {
-        const url = new URL(tcpTunnelUrl);
-        const hostname = url.hostname;
-        const port = url.port || '3478';
+    
+    // PRIORITY 1: Cloud TURN Service (if configured) - Works without router access!
+    // This is the ONLY solution that works for cross-network calls without router access
+    if (turnConfig.cloudTurnEnabled && turnConfig.cloudTurnUrls.length > 0) {
+      console.log('✅ [TURN_CONFIG] Using CLOUD TURN service (Twilio/Xirsys) - no router config needed!');
+      console.log('   ✅ This is the ONLY solution that works for cross-network calls without router access');
+      
+      // Try to use Twilio Token API first (RECOMMENDED - generates proper credentials)
+      let twilioIceServers = null;
+      if (turnConfig.twilioAccountSid && turnConfig.twilioAuthToken) {
+        try {
+          console.log('🔵 [TURN_CONFIG] Attempting to generate Twilio TURN credentials via Token API...');
+          twilioIceServers = await generateTwilioTurnCredentials(turnConfig.twilioAccountSid, turnConfig.twilioAuthToken);
+          console.log(`✅ [TURN_CONFIG] Twilio Token API: Generated ${twilioIceServers.length} TURN servers`);
+          
+          // Add Twilio TURN servers from Token API
+          twilioIceServers.forEach((server) => {
+            turnServers.push({
+              urls: server.url || server.urls,
+              username: server.username,
+              credential: server.credential,
+            });
+          });
+          console.log(`   Configured ${turnServers.length} cloud TURN servers (via Twilio Token API)`);
+        } catch (twilioError) {
+          console.warn('⚠️ [TURN_CONFIG] Twilio Token API failed, falling back to static credentials:', twilioError.message);
+          console.warn('   Using static credentials (less secure, but may work for testing)');
+          twilioIceServers = null; // Fall through to static credentials
+        }
+      }
+      
+      // Fallback to static credentials if Token API failed or not configured
+      if (!twilioIceServers && turnConfig.cloudTurnUsername && turnConfig.cloudTurnPassword) {
+        console.log('🔵 [TURN_CONFIG] Using static Twilio TURN credentials (fallback)');
+        console.warn('   ⚠️  Static credentials are less secure - consider using Twilio Token API');
+        turnConfig.cloudTurnUrls.forEach((url) => {
+          const cleanUrl = url.trim();
+          if (cleanUrl.startsWith('turn:') || cleanUrl.startsWith('turns:')) {
+            turnServers.push({
+              urls: cleanUrl,
+              username: turnConfig.cloudTurnUsername,
+              credential: turnConfig.cloudTurnPassword,
+            });
+          } else {
+            // If URL doesn't have turn: prefix, add it
+            turnServers.push({
+              urls: `turn:${cleanUrl}`,
+              username: turnConfig.cloudTurnUsername,
+              credential: turnConfig.cloudTurnPassword,
+            });
+            turnServers.push({
+              urls: `turn:${cleanUrl}?transport=tcp`,
+              username: turnConfig.cloudTurnUsername,
+              credential: turnConfig.cloudTurnPassword,
+            });
+          }
+        });
+        console.log(`   Configured ${turnServers.length} cloud TURN servers (static credentials)`);
+      }
+      
+      if (turnServers.length > 0) {
+        console.log('   ✅ No router port forwarding needed!');
+        console.log('   ✅ Cross-network calls will work!');
+      } else {
+        console.error('❌ [TURN_CONFIG] No Twilio TURN servers configured!');
+        console.error('   Please set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN (for Token API)');
+        console.error('   OR set CLOUD_TURN_USERNAME and CLOUD_TURN_PASSWORD (for static credentials)');
+      }
+      
+      // CRITICAL: When cloud TURN is enabled, DO NOT add ngrok TCP or public IP TURN
+      // ngrok TCP cannot forward UDP traffic (media streams require UDP)
+      // Public IP TURN requires router port forwarding (user may not have access)
+      // Only cloud TURN works reliably for cross-network calls
+      console.log('   ⚠️  ngrok TCP and public IP TURN servers NOT added (cloud TURN is sufficient)');
+    } else {
+      // Cloud TURN not configured - fallback to self-hosted options
+      // WARNING: These options have limitations:
+      // - ngrok TCP cannot forward UDP (won't work for media relay)
+      // - Public IP requires router port forwarding
+      
+      console.warn('⚠️ [TURN_CONFIG] Cloud TURN not configured - using fallback options');
+      console.warn('   ⚠️  WARNING: Fallback options may not work for cross-network calls!');
+      
+      // PRIORITY 2: Self-hosted TURN via ngrok TCP (FALLBACK - has limitations)
+      // CRITICAL: ngrok TCP tunnels CANNOT forward UDP traffic required for media relay
+      // This is a fundamental limitation - ngrok TCP only forwards TCP, not UDP
+      // Media streams (RTP) require UDP, so ngrok TCP TURN servers will NOT work for media relay
+      // We include this as a fallback, but it will only work for signaling, not media
+      if (tcpTunnelUrl && !turnConfig.cloudTurnEnabled) {
+        console.warn('   ⚠️  [TURN_CONFIG] ngrok TCP tunnel found, but it CANNOT relay UDP media streams!');
+        console.warn('   ⚠️  ngrok TCP only forwards TCP traffic, not UDP (required for RTP media)');
+        console.warn('   ⚠️  This TURN server will NOT work for cross-network media streams!');
+        // NOTE: We're NOT adding ngrok TCP as TURN server because it cannot relay UDP media
+        // If you need cross-network calls, you MUST use cloud TURN service (Twilio/Xirsys)
+      }
+      
+      // PRIORITY 3: Self-hosted TURN with public IP (FALLBACK - requires router access)
+      // Requires router port forwarding for UDP ports 50000-50100
+      // Won't work if user doesn't have router access
+      if (!turnConfig.cloudTurnEnabled) {
+        if (turnConfig.publicIp) {
+          console.log('✅ [TURN_CONFIG] Adding PUBLIC IP TURN server for media relay (UDP)');
+          console.log(`   Public IP: ${turnConfig.publicIp}:${turnConfig.port}`);
+          console.log('   ⚠️  REQUIRES router port forwarding for UDP ports 50000-50100');
+          console.warn('   ⚠️  If router access is unavailable, this will NOT work for cross-network calls!');
+          turnServers.push(
+            {
+              urls: `turn:${turnConfig.publicIp}:${turnConfig.port}`,
+              username: turnConfig.username,
+              credential: turnConfig.password,
+            },
+            {
+              urls: `turn:${turnConfig.publicIp}:${turnConfig.port}?transport=tcp`,
+              username: turnConfig.username,
+              credential: turnConfig.password,
+            }
+          );
+        }
         
-        turnServers = [
+        // Include local IP as fallback (for same-network calls only)
+        console.log('✅ [TURN_CONFIG] Adding LOCAL IP TURN server (same network only)');
+        turnServers.push(
           {
-            urls: `turn:${hostname}:${port}`,
+            urls: `turn:${turnConfig.localIp}:${turnConfig.port}`,
             username: turnConfig.username,
             credential: turnConfig.password,
           },
           {
-            urls: `turn:${hostname}:${port}?transport=tcp`,
+            urls: `turn:${turnConfig.localIp}:${turnConfig.port}?transport=tcp`,
             username: turnConfig.username,
             credential: turnConfig.password,
-          },
-        ];
-        console.log('✅ [TURN_CONFIG] Configured TURN servers with ngrok TCP tunnel');
-      } catch (e) {
-        console.warn('⚠️ [TURN_CONFIG] Error parsing TCP tunnel URL:', e.message);
+          }
+        );
       }
     }
-    
-    // Always include local IP as fallback
-    turnServers.push(
-      {
-        urls: `turn:${turnConfig.localIp}:${turnConfig.port}`,
-        username: turnConfig.username,
-        credential: turnConfig.password,
-      },
-      {
-        urls: `turn:${turnConfig.localIp}:${turnConfig.port}?transport=tcp`,
-        username: turnConfig.username,
-        credential: turnConfig.password,
-      }
-    );
     
     // Log the TURN server configuration being returned
     console.log('📡 [TURN_CONFIG] Returning TURN configuration:');
     console.log(`   - Total TURN servers: ${turnServers.length}`);
     turnServers.forEach((server, index) => {
       const isNgrok = server.urls.includes('ngrok');
-      console.log(`   ${index + 1}. ${server.urls} ${isNgrok ? '(NGROK - for mobile data)' : '(Local IP - fallback)'}`);
+      const isCloud = server.urls.includes('twilio.com') || 
+                      server.urls.includes('turn.twilio.com') ||
+                      server.urls.includes('xirsys') ||
+                      server.urls.includes('metered.ca');
+      const isPublic = server.urls.includes(turnConfig.publicIp || '');
+      const isLocal = server.urls.includes(turnConfig.localIp);
+      let label = '';
+      if (isCloud) {
+        label = '(CLOUD TURN - Twilio/Xirsys - ✅ WORKS for cross-network calls!)';
+      } else if (isNgrok) {
+        label = '(NGROK - ⚠️  CANNOT relay UDP media - will NOT work for cross-network)';
+      } else if (isPublic) {
+        label = '(PUBLIC IP - ⚠️  requires router port forwarding)';
+      } else if (isLocal) {
+        label = '(Local IP - same network only)';
+      }
+      console.log(`   ${index + 1}. ${server.urls} ${label}`);
     });
     
     res.json({
@@ -3151,6 +3326,8 @@ io.use(async (socket, next) => {
 const activeConnections = new Map(); // Map<socketId, {userId, socket}>
 const userSockets = new Map(); // Map<userId, Set<socketId>>
 const activeCalls = new Map(); // Map<callId, {callId, type, participants, startedAt, callerId}>
+const callTimeouts = new Map(); // Map<callId, NodeJS.Timeout> - for auto-cleanup of unanswered calls
+const CALL_INVITATION_TIMEOUT_MS = 60000; // 60 seconds timeout for call invitations
 
 // Helper function to get user's sockets
 function getUserSockets(userId) {
@@ -3175,6 +3352,11 @@ function cleanupCallState(callId, reason = 'unknown') {
     });
     // Remove from active calls
     activeCalls.delete(callId);
+    // Clear timeout if exists
+    if (callTimeouts.has(callId)) {
+      clearTimeout(callTimeouts.get(callId));
+      callTimeouts.delete(callId);
+    }
     // Remove from participants' active calls
     call.participants.forEach(participantId => {
       const user = db ? db.collection('users').findOne({ _id: new ObjectId(participantId) }) : null;
@@ -3215,9 +3397,91 @@ app.post('/api/calls/start', authenticateToken, async (req, res) => {
     const callId = clientCallId || new ObjectId().toString();
     console.log(`📞 [CALL_START] Using callId: ${callId}`);
 
+    // Check if callId already exists in activeCalls (prevent overwriting)
+    if (activeCalls.has(callId)) {
+      const existingCall = activeCalls.get(callId);
+      const timeSinceStart = new Date() - existingCall.startedAt;
+      const minutesSinceStart = Math.floor(timeSinceStart / 1000 / 60);
+      
+      console.warn(`⚠️ [CALL_START] CallId ${callId} already exists in activeCalls`);
+      console.warn(`   Started: ${existingCall.startedAt}, ${minutesSinceStart} minutes ago`);
+      console.warn(`   Participants: ${existingCall.participants.join(', ')}`);
+      
+      // If call is older than 5 minutes, clean it up (likely stale)
+      if (minutesSinceStart > 5) {
+        console.log(`🧹 [CALL_START] Cleaning up stale call ${callId} (${minutesSinceStart} minutes old)`);
+        cleanupCallState(callId, 'stale_call_replaced');
+      } else {
+        // Call is recent - reject new call with same ID to prevent overwrite
+        console.error(`❌ [CALL_START] CallId ${callId} is already active (started ${minutesSinceStart} minutes ago)`);
+        return res.status(409).json({ 
+          error: 'Call ID already in use',
+          message: 'A call with this ID is already active. Please use a different call ID or wait for the existing call to end.'
+        });
+      }
+    }
+
     // Add caller to participants if not already included
     const allParticipants = [...new Set([callerId, ...participantIds])];
     console.log(`📞 [CALL_START] All participants: ${allParticipants.join(', ')}`);
+
+    // Validate participant count (max 10 for mesh topology with 101 TURN ports)
+    const MAX_PARTICIPANTS = 10;
+    if (allParticipants.length > MAX_PARTICIPANTS) {
+      console.error(`❌ [CALL_START] Too many participants: ${allParticipants.length} (max: ${MAX_PARTICIPANTS})`);
+      return res.status(400).json({ 
+        error: 'Too many participants',
+        message: `Maximum ${MAX_PARTICIPANTS} participants allowed per call. You have ${allParticipants.length}.`
+      });
+    }
+
+    // Validate that all participants exist and are in the chat (if group chat)
+    if (isGroupChat && chatId) {
+      try {
+        const chat = await db.collection('chats').findOne({ _id: new ObjectId(chatId) });
+        if (!chat) {
+          console.error(`❌ [CALL_START] Chat not found: ${chatId}`);
+          return res.status(404).json({ error: 'Chat not found' });
+        }
+
+        // Check if all participants are members of the chat
+        const chatMemberIds = chat.members.map(m => m.toString());
+        const invalidParticipants = allParticipants.filter(p => !chatMemberIds.includes(p));
+        
+        if (invalidParticipants.length > 0) {
+          console.error(`❌ [CALL_START] Invalid participants (not in chat): ${invalidParticipants.join(', ')}`);
+          return res.status(403).json({ 
+            error: 'Invalid participants',
+            message: `Some participants are not members of this chat: ${invalidParticipants.join(', ')}`
+          });
+        }
+      } catch (err) {
+        console.error(`❌ [CALL_START] Error validating chat membership:`, err);
+        return res.status(500).json({ error: 'Error validating chat membership' });
+      }
+    }
+
+    // Validate that all participant user IDs exist in database
+    try {
+      const participantObjectIds = allParticipants.map(id => new ObjectId(id));
+      const existingUsers = await db.collection('users').find({
+        _id: { $in: participantObjectIds }
+      }).toArray();
+      
+      const existingUserIds = existingUsers.map(u => u._id.toString());
+      const invalidUserIds = allParticipants.filter(id => !existingUserIds.includes(id));
+      
+      if (invalidUserIds.length > 0) {
+        console.error(`❌ [CALL_START] Invalid user IDs: ${invalidUserIds.join(', ')}`);
+        return res.status(400).json({ 
+          error: 'Invalid participants',
+          message: `Some user IDs do not exist: ${invalidUserIds.join(', ')}`
+        });
+      }
+    } catch (err) {
+      console.error(`❌ [CALL_START] Error validating user IDs:`, err);
+      return res.status(500).json({ error: 'Error validating participants' });
+    }
 
     // Store call in active calls
     activeCalls.set(callId, {
@@ -3364,6 +3628,20 @@ app.post('/api/calls/start', authenticateToken, async (req, res) => {
     }
 
     console.log(`📞 [CALL_START] Summary: ${onlineCount} online, ${offlineCount} offline, ${fcmCount} FCM sent`);
+
+    // Set timeout to auto-cleanup if call is not accepted within 60 seconds
+    const timeoutId = setTimeout(() => {
+      const call = activeCalls.get(callId);
+      if (call) {
+        // Check if call was accepted (if any participant accepted, don't timeout)
+        // For now, we'll timeout if no one accepted after 60 seconds
+        console.log(`⏰ [CALL_TIMEOUT] Call ${callId} timed out after ${CALL_INVITATION_TIMEOUT_MS / 1000} seconds`);
+        cleanupCallState(callId, 'timeout_no_answer');
+      }
+    }, CALL_INVITATION_TIMEOUT_MS);
+    
+    callTimeouts.set(callId, timeoutId);
+    console.log(`⏰ [CALL_START] Set timeout for call ${callId} (${CALL_INVITATION_TIMEOUT_MS / 1000}s)`);
 
     res.status(200).json({
       success: true,
@@ -4115,6 +4393,13 @@ io.on('connection', async (socket) => {
         return;
       }
 
+      // Clear timeout since call was accepted
+      if (callTimeouts.has(callId)) {
+        clearTimeout(callTimeouts.get(callId));
+        callTimeouts.delete(callId);
+        console.log(`⏰ [CALL_ACCEPT] Cleared timeout for call ${callId} (call was accepted)`);
+      }
+
       console.log(`📞 [CALL_ACCEPT] Call ${callId} accepted by user ${socket.userId}`);
       console.log(`   Participants: ${call.participants.join(', ')}`);
 
@@ -4235,6 +4520,17 @@ io.on('connection', async (socket) => {
         return;
       }
 
+      // Validate that sender is a participant in the call
+      if (!call.participants.includes(socket.userId)) {
+        console.warn(`❌ [CALL_END] User ${socket.userId} is not a participant in call ${callId} - ignoring`);
+        socket.emit('call_error', { 
+          callId, 
+          error: 'Not a participant',
+          message: 'You are not a participant in this call'
+        });
+        return;
+      }
+
       console.log(`🔴 [CALL_END] Call ${callId} ended by user ${socket.userId}`);
       console.log(`   Participants: ${call.participants.join(', ')}`);
 
@@ -4297,6 +4593,29 @@ io.on('connection', async (socket) => {
         console.warn('❌ [SERVER] webrtc_offer: missing callId or offer');
         console.warn('   callId:', callId);
         console.warn('   offer:', offer);
+        return;
+      }
+
+      // Validate that call exists in activeCalls
+      if (!activeCalls.has(callId)) {
+        console.warn(`❌ [SERVER] webrtc_offer: Call ${callId} does not exist in activeCalls - ignoring`);
+        socket.emit('webrtc_error', { 
+          callId, 
+          error: 'Call not found',
+          message: 'The call does not exist or has already ended'
+        });
+        return;
+      }
+
+      const call = activeCalls.get(callId);
+      // Validate that sender is a participant in the call
+      if (!call.participants.includes(socket.userId)) {
+        console.warn(`❌ [SERVER] webrtc_offer: User ${socket.userId} is not a participant in call ${callId} - ignoring`);
+        socket.emit('webrtc_error', { 
+          callId, 
+          error: 'Not a participant',
+          message: 'You are not a participant in this call'
+        });
         return;
       }
 
@@ -4441,6 +4760,38 @@ io.on('connection', async (socket) => {
         return;
       }
 
+      // Parse candidate type from candidate string
+      let candidateType = 'UNKNOWN';
+      let candidateInfo = '';
+      const candidateStr = typeof candidate === 'string' ? candidate : (candidate.candidate || JSON.stringify(candidate));
+      
+      if (candidateStr.includes('typ relay')) {
+        candidateType = 'RELAY (TURN)';
+        // Extract TURN server info if available
+        const raddrMatch = candidateStr.match(/raddr\s+([^\s]+)/);
+        const rportMatch = candidateStr.match(/rport\s+(\d+)/);
+        if (raddrMatch && rportMatch) {
+          const turnIp = raddrMatch[1];
+          const turnPort = rportMatch[1];
+          candidateInfo = `TURN: ${turnIp}:${turnPort}`;
+          
+          // Check if it's Twilio TURN
+          if (turnIp.includes('twilio.com') || turnIp.includes('turn.twilio.com') || turnIp.includes('global.turn.twilio.com')) {
+            candidateInfo += ' (CLOUD - Twilio ✅)';
+          } else if (turnIp.includes('ngrok')) {
+            candidateInfo += ' (NGROK - ⚠️ may not work for UDP)';
+          } else if (turnIp.includes('10.120.4.230') || turnIp.includes('192.168.')) {
+            candidateInfo += ' (LOCAL - same network only)';
+          } else if (turnIp.includes('41.33.106.54')) {
+            candidateInfo += ' (PUBLIC IP - requires router port forwarding)';
+          }
+        }
+      } else if (candidateStr.includes('typ srflx')) {
+        candidateType = 'SRFLX (STUN)';
+      } else if (candidateStr.includes('typ host')) {
+        candidateType = 'HOST (local)';
+      }
+
       const roomName = `call:${callId}`;
       const targetRoom = targetUserId ? `user:${targetUserId}` : null;
 
@@ -4462,7 +4813,14 @@ io.on('connection', async (socket) => {
         });
       }
 
-      console.log(`✅ [SERVER] WebRTC ICE candidate sent for call ${callId} from ${socket.userId} to ${targetUserId || 'call room'}`);
+      if (candidateType === 'RELAY (TURN)') {
+        console.log(`🔵 [SERVER] ✅✅✅ RELAY ICE candidate (TURN) for call ${callId} from ${socket.userId} to ${targetUserId || 'call room'}`);
+        if (candidateInfo) {
+          console.log(`   ${candidateInfo}`);
+        }
+      } else {
+        console.log(`🔵 [SERVER] ${candidateType} ICE candidate for call ${callId} from ${socket.userId} to ${targetUserId || 'call room'}`);
+      }
     } catch (error) {
       console.error('❌ [SERVER] Error in webrtc_ice_candidate handler:', error);
       console.error('❌ [SERVER] Error stack:', error.stack);

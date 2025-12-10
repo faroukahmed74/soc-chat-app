@@ -76,6 +76,10 @@ class ActiveCallTracker {
     }
   }
   static void clearAll() => _activeCallId = null;
+  
+  static String? getActiveCallId() {
+    return _activeCallId;
+  }
 }
 
 // =============================================================================
@@ -174,12 +178,65 @@ Future<void> main() async {
     // Don't report errors to avoid crashes - just continue
   }
 
-  // CRITICAL: Initialize TURN configuration in main() function
-  // This ensures TURN servers are configured regardless of MainApp initialization status
-  // This fixes the issue where Device 2 had 0 TURN servers because MainApp didn't initialize properly
+  // TURN initialization moved to _initializeApp() to prevent blocking app startup
+  // It will be called after app initialization completes
 
   Log.i('Starting main app', 'MAIN');
   runApp(const MyApp());
+}
+
+/// Initialize WebRTC Call Service with TURN server configuration (called from main())
+/// Mobile: Uses ngrok URL for TURN server access
+Future<void> _initializeWebRTCCallServiceInMain() async {
+  try {
+    print('🔵 [MAIN] ===========================================');
+    print('🔵 [MAIN] Initializing WebRTC Call Service in main()...');
+    print('🔵 [MAIN] Platform: Mobile');
+    print('🔵 [MAIN] ===========================================');
+    
+    final callService = WebRTCCallService();
+    
+    // Initialize the service first
+    print('🔵 [MAIN] Step 1: Initializing WebRTC service...');
+    await callService.initialize();
+    print('✅ [MAIN] Step 1: WebRTC Call Service initialized');
+    
+    // Mobile clients: MUST use ngrok TCP tunnel for cross-network calls
+    print('🔵 [MAIN] Step 2: Configuring TURN for Mobile...');
+    final ngrokUrl = DatabaseConfig.physicalServerUrl;
+    print('🔵 [MAIN] Server URL from DatabaseConfig: $ngrokUrl');
+    print('🔵 [MAIN] CRITICAL: Mobile devices MUST use ngrok TURN for cross-network calls');
+    
+    if (ngrokUrl.isEmpty) {
+      print('❌ [MAIN] ===========================================');
+      print('❌ [MAIN] ERROR: ngrokUrl is empty!');
+      print('❌ [MAIN] Cross-network calls will FAIL!');
+      print('❌ [MAIN] ===========================================');
+      Log.e('ngrokUrl is empty - cross-network calls will fail', 'MAIN');
+      throw Exception('ngrokUrl is empty - cannot configure TURN servers');
+    }
+    
+    print('🔵 [MAIN] Calling setTurnServerConfig with ngrokUrl=$ngrokUrl');
+    await callService.setTurnServerConfig(
+      ngrokUrl: ngrokUrl,  // Ngrok HTTP URL - will be used to find TCP tunnel
+      serverIp: null,  // CRITICAL: Don't add local IP for mobile - it breaks cross-network calls
+      port: '3478',
+      username: 'soc-chat-turn',
+      password: 'yG5EJFUdLgT7xqXr',
+    );
+    Log.i('✅ WebRTC Call Service initialized with TURN server (Mobile - ngrok TCP tunnel only)', 'MAIN');
+    print('✅ [MAIN] ===========================================');
+    print('✅ [MAIN] TURN configuration COMPLETE');
+    print('✅ [MAIN] ===========================================');
+  } catch (e, stackTrace) {
+    print('❌ [MAIN] ===========================================');
+    print('❌ [MAIN] ERROR initializing WebRTC Call Service in main()!');
+    print('❌ [MAIN] Error: $e');
+    print('❌ [MAIN] Stack trace: $stackTrace');
+    print('❌ [MAIN] ===========================================');
+    Log.e('Failed to initialize WebRTC Call Service in main()', 'MAIN', e, stackTrace);
+    // Don't rethrow - allow app to continue (calls just won't work cross-network)
+  }
 }
 
 Future<void> _pingApiHealth() async {
@@ -562,22 +619,18 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       try {
         final realtime = RealtimeService.instance;
         
-        // CRITICAL: Initialize TURN config FIRST (before realtime connection)
-        // For mobile: TURN is already initialized in main() function
-        // For web: Initialize TURN here (web doesn't initialize in main())
-        if (kIsWeb) {
-          print('🔵 [MAIN_APP] Initializing TURN configuration for Web BEFORE realtime connection...');
-          try {
-            await _initializeWebRTCCallService();
-            print('✅ [MAIN_APP] TURN configuration initialized successfully for Web');
-          } catch (turnError, turnStack) {
-            print('❌ [MAIN_APP] ERROR initializing TURN config for Web: $turnError');
-            Log.e('Failed to initialize TURN configuration for Web', 'MAIN_APP', turnError, turnStack);
-            // Continue - app will work but cross-network calls will fail
-          }
-        } else {
-          // Mobile: TURN already initialized in main() function
-          print('🔵 [MAIN_APP] TURN configuration already initialized in main() for Mobile');
+        // CRITICAL: Initialize TURN config AFTER app initialization
+        // This ensures TURN servers are configured before any calls can be made
+        // For both web and mobile, initialize TURN here after app is ready
+        print('🔵 [MAIN_APP] Initializing TURN configuration AFTER app initialization...');
+        // Initialize TURN - await to ensure it completes before calls start
+        try {
+          await _initializeWebRTCCallService();
+          print('✅ [MAIN_APP] TURN configuration initialized successfully');
+        } catch (turnError, turnStack) {
+          print('❌ [MAIN_APP] ERROR initializing TURN config: $turnError');
+          Log.e('Failed to initialize TURN configuration', 'MAIN_APP', turnError, turnStack);
+          // Continue - app will work but cross-network calls will fail
         }
         
         // For web offline mode, connect in background (non-blocking)
@@ -737,25 +790,27 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       // Web: Use local network IP (primary) + ngrok TCP tunnel (for cross-platform calls with mobile)
       // Mobile: Use ngrok TCP tunnel (required for cross-network calls)
       if (kIsWeb) {
-        // Web clients: Use local network IP (primary for web-to-web) + ngrok (for web-to-mobile)
+        // Web clients: Fetch TURN config from server (includes cloud TURN if configured)
+        // Server will return cloud TURN first (if enabled), then local IP as fallback
         final serverUrl = DatabaseConfig.physicalServerUrl;
         print('🔵 [MAIN_APP] Configuring TURN for Web: serverUrl=$serverUrl');
+        print('🔵 [MAIN_APP] Server will return cloud TURN (if enabled) or local IP fallback');
         await callService.setTurnServerConfig(
-          serverIp: '10.120.4.230',  // Main network IP for web clients (primary for web-to-web calls)
-          ngrokUrl: serverUrl,  // Also fetch ngrok TCP tunnel for cross-platform calls (web-to-mobile)
+          serverIp: '10.120.4.230',  // Local IP for same-network web-to-web calls (fallback)
+          ngrokUrl: serverUrl,  // Fetch TURN config from server (includes cloud TURN if configured)
           port: '3478',
           username: 'soc-chat-turn',
           password: 'yG5EJFUdLgT7xqXr',
         );
-        Log.i('✅ WebRTC Call Service initialized with TURN server (Web - local IP + ngrok for cross-platform)', 'MAIN_APP');
+        Log.i('✅ WebRTC Call Service initialized with TURN server (Web - cloud TURN preferred, local IP fallback)', 'MAIN_APP');
         print('✅ [MAIN_APP] Web TURN configuration complete');
       } else {
-        // Mobile clients: MUST use ngrok TCP tunnel for cross-network calls
-        // The ngrok config file includes both HTTP (API) and TCP (TURN) tunnels
+        // Mobile clients: Fetch TURN config from server (includes cloud TURN if enabled)
+        // Cloud TURN (Twilio) is used for cross-network calls (no router access needed)
         print('🔵 [MAIN_APP] Step 2: Configuring TURN for Mobile...');
         final ngrokUrl = DatabaseConfig.physicalServerUrl;
         print('🔵 [MAIN_APP] Server URL from DatabaseConfig: $ngrokUrl');
-        print('🔵 [MAIN_APP] CRITICAL: Mobile devices MUST use ngrok TURN for cross-network calls');
+        print('🔵 [MAIN_APP] Mobile devices will fetch TURN config from server (includes cloud TURN if enabled)');
         
         if (ngrokUrl.isEmpty) {
           print('❌ [MAIN_APP] ===========================================');
@@ -774,7 +829,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
           username: 'soc-chat-turn',
           password: 'yG5EJFUdLgT7xqXr',
         );
-        Log.i('✅ WebRTC Call Service initialized with TURN server (Mobile - ngrok TCP tunnel only)', 'MAIN_APP');
+        Log.i('✅ WebRTC Call Service initialized with TURN server (Mobile - cloud TURN preferred)', 'MAIN_APP');
         print('✅ [MAIN_APP] ===========================================');
         print('✅ [MAIN_APP] Mobile TURN configuration COMPLETE');
         print('✅ [MAIN_APP] ===========================================');
@@ -803,7 +858,8 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
             final isGroupChat = data['isGroupChat'] ?? false;
             
             // Handle both 'voice' and 'audio' (server normalizes 'voice' to 'audio')
-            // Convert to CallType enum for proper handling
+            // Convert to string for navigation (CallScreen expects 'voice' or 'video' string)
+            // Note: CallTypeHelper handles the conversion, but we need string for navigation
             final callType = (callTypeStr == 'voice' || callTypeStr == 'audio') ? 'voice' : 'video';
             
             Log.i('📞 Call invitation details: chatId=$chatId, callId=$callId, callType=$callType (from $callTypeStr)', 'MAIN_APP');
@@ -816,6 +872,14 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
             // CRITICAL: Try to set active call atomically - if it fails, another handler got there first
             final wasSet = ActiveCallTracker.setActiveCall(callId);
             if (!wasSet) {
+              // Check if we're already in a call - if so, reject the new call
+              final currentActiveCallId = ActiveCallTracker.getActiveCallId();
+              if (currentActiveCallId != null && currentActiveCallId != callId) {
+                Log.w('⚠️ [MAIN_APP] User already in call $currentActiveCallId, rejecting new call $callId');
+                // Optionally: Show a notification that a call was missed
+                // For now, we'll just ignore it (caller will see timeout)
+                return;
+              }
               Log.w('⚠️ [MAIN_APP] Call screen already being opened for callId: $callId, ignoring duplicate invitation');
               return;
             }

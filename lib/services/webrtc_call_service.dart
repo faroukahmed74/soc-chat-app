@@ -59,9 +59,31 @@ class WebRTCCallService {
   // Using Google's public STUN servers for NAT traversal
   // TURN servers for strict NAT/firewall scenarios (self-hosted coturn)
   List<Map<String, dynamic>> _iceServers = [];
+  bool _turnServersConfigured = false; // Flag to track if TURN servers have been configured
   
   /// Initialize ICE servers (STUN + TURN)
+  /// CRITICAL: This should NOT reset _iceServers if TURN servers have already been configured
   void _initializeIceServers() {
+    // SAFEGUARD: Don't reset _iceServers if TURN servers have been configured
+    // This prevents clearing TURN servers that were added via setTurnServerConfig()
+    if (_turnServersConfigured) {
+      print('⚠️ [ICE_SERVERS] TURN servers already configured - skipping reset to preserve TURN servers');
+      print('⚠️ [ICE_SERVERS] Current _iceServers count: ${_iceServers.length}');
+      // Only add STUN servers if they're not already present
+      final hasStunServers = _iceServers.any((s) => s['urls']?.toString().startsWith('stun:') == true);
+      if (!hasStunServers) {
+        print('🔵 [ICE_SERVERS] Adding STUN servers (TURN servers preserved)');
+        _iceServers.insertAll(0, [
+          {'urls': 'stun:stun.l.google.com:19302'},
+          {'urls': 'stun:stun1.l.google.com:19302'},
+          {'urls': 'stun:stun2.l.google.com:19302'},
+          {'urls': 'stun:stun3.l.google.com:19302'},
+          {'urls': 'stun:stun4.l.google.com:19302'},
+        ]);
+      }
+      return;
+    }
+    
     _iceServers = [
       // STUN servers (always included)
       {'urls': 'stun:stun.l.google.com:19302'},
@@ -155,23 +177,50 @@ class WebRTCCallService {
           print('🔵 [TURN_CONFIG] Mobile device - fetching ngrok TURN servers...');
           await _configureMobileTurnWithNgrok(ngrokUrl, username!, password!);
           
-          // Check if we have ngrok TURN servers
-          final hasNgrokTurn = _iceServers.any((server) => 
-            server['urls']?.toString().contains('ngrok') == true
-          );
+          // Check if we have cloud/ngrok TURN servers (cross-network capable)
+          final hasCloudOrNgrokTurn = _iceServers.any((server) {
+            final urls = server['urls']?.toString() ?? '';
+            return urls.contains('ngrok') ||
+                   urls.contains('twilio.com') ||
+                   urls.contains('turn.twilio.com') ||
+                   urls.contains('xirsys') ||
+                   urls.contains('metered.ca');
+          });
           
-          if (hasNgrokTurn) {
-            print('✅ [TURN_CONFIG] Mobile TURN servers configured with ngrok (for cross-network calls)');
-            Log.i('✅ Mobile TURN servers configured with ngrok (local IP NOT added - would break cross-network)', 'WEBRTC_CALL_SERVICE');
+          if (hasCloudOrNgrokTurn) {
+            // Check which type we have
+            final hasCloudTurn = _iceServers.any((server) {
+              final urls = server['urls']?.toString() ?? '';
+              return urls.contains('twilio.com') ||
+                     urls.contains('turn.twilio.com') ||
+                     urls.contains('xirsys') ||
+                     urls.contains('metered.ca');
+            });
+            
+            final hasNgrokTurn = _iceServers.any((server) => 
+              server['urls']?.toString().contains('ngrok') == true
+            );
+            
+            if (hasCloudTurn) {
+              print('✅ [TURN_CONFIG] Mobile TURN servers configured with CLOUD TURN service (Twilio/Xirsys)');
+              print('✅ [TURN_CONFIG] Cross-network calls will work!');
+              Log.i('✅ Mobile TURN servers configured with cloud TURN (local IP NOT added - would break cross-network)', 'WEBRTC_CALL_SERVICE');
+            } else if (hasNgrokTurn) {
+              print('✅ [TURN_CONFIG] Mobile TURN servers configured with ngrok (for cross-network calls)');
+              Log.i('✅ Mobile TURN servers configured with ngrok (local IP NOT added - would break cross-network)', 'WEBRTC_CALL_SERVICE');
+            }
             
             // CRITICAL: Do NOT add local IP TURN servers for mobile
             // Local TURN servers (10.120.4.230) only work on same network
-            // For cross-network calls, we MUST use ngrok TURN servers only
+            // For cross-network calls, we MUST use cloud/ngrok TURN servers only
             print('⚠️ [TURN_CONFIG] Local IP TURN servers NOT added for mobile (would prevent cross-network calls)');
           } else {
-            // No ngrok TURN servers found - this is a problem for cross-network calls
-            print('❌ [TURN_CONFIG] WARNING: No ngrok TURN servers found! Cross-network calls will fail!');
-            Log.e('No ngrok TURN servers found - cross-network calls will fail', 'WEBRTC_CALL_SERVICE');
+            // No cloud/ngrok TURN servers found - this is a problem for cross-network calls
+            print('❌ [TURN_CONFIG] ===========================================');
+            print('❌ [TURN_CONFIG] WARNING: No cloud/ngrok TURN servers found!');
+            print('❌ [TURN_CONFIG] Cross-network calls will FAIL!');
+            print('❌ [TURN_CONFIG] ===========================================');
+            Log.e('No cloud/ngrok TURN servers found - cross-network calls will fail', 'WEBRTC_CALL_SERVICE');
             
             // Still don't add local IP - it won't help for cross-network calls
             // Better to fail clearly than silently use wrong server
@@ -218,41 +267,136 @@ class WebRTCCallService {
           final turnServers = List<Map<String, dynamic>>.from(data['turnServers']);
           
           // Remove any existing TURN servers (keep STUN servers)
-          _iceServers.removeWhere((server) => 
-            server['urls']?.toString().startsWith('turn:') == true
-          );
+          // CRITICAL: Remove both 'turn:' and 'turns:' (secure TURN) servers
+          _iceServers.removeWhere((server) {
+            final urls = server['urls']?.toString() ?? '';
+            return urls.startsWith('turn:') == true || urls.startsWith('turns:') == true;
+          });
+          print('🔵 [TURN_CONFIG] Removed existing TURN servers (if any)');
           
-          // IMPORTANT: For mobile devices, prioritize ngrok TURN servers
-          // Server returns: ngrok TURN servers FIRST, then local IP fallback
-          // We need to ensure ngrok servers are at the beginning of _iceServers list
+          // IMPORTANT: For mobile devices, prioritize cloud/ngrok TURN servers
+          // Server returns: cloud TURN servers (Twilio) FIRST, then ngrok, then local IP fallback
+          // We need to ensure cloud/ngrok servers are at the beginning of _iceServers list
           // so WebRTC tries them first for cross-network calls
-          List<Map<String, dynamic>> ngrokServers = [];
-          List<Map<String, dynamic>> localServers = [];
+          List<Map<String, dynamic>> cloudServers = []; // Twilio or other cloud TURN
+          List<Map<String, dynamic>> ngrokServers = []; // ngrok TURN
+          List<Map<String, dynamic>> localServers = []; // Local IP TURN
           
           for (final server in turnServers) {
-            final isNgrok = server['urls']?.toString().contains('ngrok') ?? false;
-            if (isNgrok) {
+            final urls = server['urls']?.toString() ?? '';
+            final isNgrok = urls.contains('ngrok');
+            final isCloud = urls.contains('twilio.com') || 
+                           urls.contains('turn.twilio.com') || 
+                           urls.contains('xirsys') ||
+                           urls.contains('metered.ca');
+            final isLocal = urls.contains('10.120.4.230') || 
+                           urls.contains('192.168.') || 
+                           urls.contains('172.16.') ||
+                           urls.contains('172.17.') ||
+                           urls.contains('172.18.') ||
+                           urls.contains('172.19.') ||
+                           urls.contains('172.2') ||
+                           urls.contains('172.3') ||
+                           (urls.startsWith('turn:') && !isNgrok && !isCloud && !urls.contains('global'));
+            
+            if (isCloud) {
+              cloudServers.add(server);
+            } else if (isNgrok) {
               ngrokServers.add(server);
-            } else {
+            } else if (isLocal) {
               localServers.add(server);
+            } else {
+              // Unknown - treat as cloud/ngrok for safety (better than excluding)
+              cloudServers.add(server);
             }
           }
           
-          // For mobile: Add ONLY ngrok servers (local servers break cross-network calls)
-          // For web: Add local servers first (for same-network), then ngrok (for cross-platform)
+          // For mobile: Add ONLY cloud/ngrok servers (local servers break cross-network calls)
+          // For web: Add local servers first (for same-network), then cloud/ngrok (for cross-platform)
           if (!kIsWeb) {
-            // Mobile: ONLY ngrok servers - local servers would break cross-network calls
+            // Mobile: ONLY cloud/ngrok servers - local servers would break cross-network calls
             // Local TURN servers (10.120.4.230) only work on same network
-            // For cross-network calls, we MUST use ngrok TURN servers only
+            // For cross-network calls, we MUST use cloud/ngrok TURN servers only
+            print('🔵 [TURN_CONFIG] Adding TURN servers to _iceServers for mobile:');
+            print('🔵 [TURN_CONFIG]   Cloud servers to add: ${cloudServers.length}');
+            print('🔵 [TURN_CONFIG]   Ngrok servers to add: ${ngrokServers.length}');
+            
+            // Log each server being added
+            for (final server in cloudServers) {
+              final urls = server['urls']?.toString() ?? 'unknown';
+              final username = server['username']?.toString() ?? 'missing';
+              final credential = server['credential']?.toString() ?? 'missing';
+              print('🔵 [TURN_CONFIG]   Adding cloud TURN: $urls (username: ${username.isNotEmpty ? "✅" : "❌"}, credential: ${credential.isNotEmpty ? "✅" : "❌"})');
+            }
+            
+            // DEBUG: Log what we're about to add
+            print('🔵 [TURN_CONFIG] DEBUG: About to add ${cloudServers.length} cloud servers to _iceServers');
+            for (int i = 0; i < cloudServers.length; i++) {
+              final server = cloudServers[i];
+              print('🔵 [TURN_CONFIG] DEBUG: Cloud server $i: urls=${server['urls']}, username=${server['username'] != null ? "present" : "null"}, credential=${server['credential'] != null ? "present" : "null"}');
+            }
+            
+            _iceServers.addAll(cloudServers);
             _iceServers.addAll(ngrokServers);
             // DO NOT add localServers for mobile - they prevent cross-network calls
-            print('🔵 [TURN_CONFIG] ✅ Mobile TURN servers (ONLY ngrok - local servers NOT added):');
+            
+            // DEBUG: Log what's actually in _iceServers now
+            print('🔵 [TURN_CONFIG] DEBUG: _iceServers now has ${_iceServers.length} total servers');
+            for (int i = 0; i < _iceServers.length; i++) {
+              final server = _iceServers[i];
+              final urls = server['urls']?.toString() ?? 'NULL';
+              print('🔵 [TURN_CONFIG] DEBUG: _iceServers[$i]: urls=$urls');
+            }
+            
+            // VERIFICATION: Log all TURN servers now in _iceServers
+            final finalTurnServers = _iceServers.where((s) => 
+              s['urls']?.toString().startsWith('turn:') == true || 
+              s['urls']?.toString().startsWith('turns:') == true
+            ).toList();
+            
+            print('🔵 [TURN_CONFIG] ✅ Mobile TURN servers added to _iceServers:');
+            print('🔵 [TURN_CONFIG]   Total TURN servers in _iceServers: ${finalTurnServers.length}');
             print('🔵 [TURN_CONFIG] ⚠️  Local TURN servers excluded for mobile (would break cross-network calls)');
+            
+            // CRITICAL VERIFICATION: Log each TURN server with full details
+            print('🔵 [TURN_CONFIG] ========== VERIFICATION: TURN Servers in _iceServers ==========');
+            for (int i = 0; i < finalTurnServers.length; i++) {
+              final server = finalTurnServers[i];
+              final urls = server['urls']?.toString() ?? 'MISSING';
+              final username = server['username']?.toString() ?? 'MISSING';
+              final credential = server['credential']?.toString() ?? 'MISSING';
+              final isTwilio = urls.contains('twilio.com') || urls.contains('turn.twilio.com');
+              print('   ${i + 1}. URL: $urls');
+              print('      Username: ${username.isNotEmpty ? "✅ Present (${username.length} chars)" : "❌ MISSING"}');
+              print('      Credential: ${credential.isNotEmpty ? "✅ Present (${credential.length} chars)" : "❌ MISSING"}');
+              print('      Type: ${isTwilio ? "✅ Twilio TURN" : "Other"}');
+              if (isTwilio && (username.isEmpty || credential.isEmpty)) {
+                print('      ❌❌❌ CRITICAL: Twilio TURN server missing credentials!');
+              }
+            }
+            print('🔵 [TURN_CONFIG] ============================================================');
+            
+            // CRITICAL: Mark TURN servers as configured to prevent reset
+            if (finalTurnServers.isNotEmpty) {
+              _turnServersConfigured = true;
+              print('✅ [TURN_CONFIG] TURN servers configured flag set - _iceServers will NOT be reset');
+            }
           } else {
-            // Web: local first (for web-to-web), then ngrok (for web-to-mobile)
+            // Web: local first (for web-to-web), then cloud/ngrok (for web-to-mobile)
             _iceServers.addAll(localServers);
+            _iceServers.addAll(cloudServers);
             _iceServers.addAll(ngrokServers);
             print('🔵 [TURN_CONFIG] ✅ Web TURN servers (local FIRST for web-to-web):');
+            
+            // CRITICAL: Mark TURN servers as configured to prevent reset
+            final webTurnServers = _iceServers.where((s) => 
+              s['urls']?.toString().startsWith('turn:') == true || 
+              s['urls']?.toString().startsWith('turns:') == true
+            ).toList();
+            if (webTurnServers.isNotEmpty) {
+              _turnServersConfigured = true;
+              print('✅ [TURN_CONFIG] TURN servers configured flag set - _iceServers will NOT be reset');
+            }
           }
           
           // Log the final order
@@ -260,19 +404,25 @@ class WebRTCCallService {
             final server = _iceServers[i];
             final urls = server['urls']?.toString() ?? 'unknown';
             final isNgrok = urls.contains('ngrok');
-            final isTurn = urls.startsWith('turn:');
+            final isCloud = urls.contains('twilio.com') || urls.contains('xirsys') || urls.contains('metered.ca');
+            final isTurn = urls.startsWith('turn:') || urls.startsWith('turns:');
             if (isTurn) {
-              print('   ${i + 1}. $urls ${isNgrok ? "(NGROK - for cross-network)" : "(Local IP - same network)"}');
+              String type = isCloud ? "(CLOUD - Twilio/Xirsys - for cross-network)" : 
+                           (isNgrok ? "(NGROK - for cross-network)" : "(Local IP - same network)");
+              print('   ${i + 1}. $urls $type');
             }
           }
           
           final tcpTunnelUrl = data['tcpTunnelUrl'];
-          if (tcpTunnelUrl != null) {
+          if (cloudServers.isNotEmpty) {
+            print('✅ [TURN_CONFIG] TURN servers configured with CLOUD TURN service (Twilio/Xirsys)');
+            Log.i('TURN servers configured for Mobile (Cloud TURN service)', 'WEBRTC_CALL_SERVICE');
+          } else if (tcpTunnelUrl != null) {
             print('✅ [TURN_CONFIG] TURN servers configured with ngrok TCP tunnel: $tcpTunnelUrl');
             Log.i('TURN servers configured for Mobile (ngrok TCP): $tcpTunnelUrl', 'WEBRTC_CALL_SERVICE');
           } else {
-            print('⚠️ [TURN_CONFIG] TURN servers configured with local IP only (ngrok TCP tunnel not available)');
-            Log.w('TURN servers configured with local IP only (ngrok TCP tunnel not available)', 'WEBRTC_CALL_SERVICE');
+            print('⚠️ [TURN_CONFIG] TURN servers configured with local IP only (cloud/ngrok not available)');
+            Log.w('TURN servers configured with local IP only (cloud/ngrok not available)', 'WEBRTC_CALL_SERVICE');
           }
           
           // Log final ICE server configuration
@@ -282,8 +432,15 @@ class WebRTCCallService {
             final urls = server['urls']?.toString() ?? 'unknown';
             final isTurn = urls.startsWith('turn:');
             final isNgrok = urls.contains('ngrok');
+            final isCloud = urls.contains('twilio.com') || 
+                           urls.contains('turn.twilio.com') ||
+                           urls.contains('xirsys') || 
+                           urls.contains('metered.ca');
             final isStun = urls.startsWith('stun:');
-            String type = isStun ? 'STUN' : (isNgrok ? 'TURN (NGROK)' : (isTurn ? 'TURN (Local)' : 'Unknown'));
+            String type = isStun ? 'STUN' : 
+                         (isCloud ? 'TURN (CLOUD - Twilio/Xirsys)' : 
+                         (isNgrok ? 'TURN (NGROK)' : 
+                         (isTurn ? 'TURN (Local)' : 'Unknown')));
             print('   ${i + 1}. $urls - $type');
           }
           return;
@@ -440,7 +597,7 @@ class WebRTCCallService {
         final callerId = callData['callerId']?.toString();
         final callTypeStr = callData['callType']?.toString() ?? 'video';
         // Handle both 'voice' and 'audio' from server (normalize to CallType.voice)
-        final callType = (callTypeStr == 'voice' || callTypeStr == 'audio') ? CallType.voice : CallType.video;
+        final callType = CallTypeHelper.fromString(callTypeStr);
         final chatId = callData['chatId']?.toString() ?? '';
         final chatName = callData['chatName']?.toString() ?? 'Unknown';
         final participantIds = (callData['participantIds'] as List<dynamic>?)
@@ -623,10 +780,22 @@ class WebRTCCallService {
         return;
       }
       
-      // If we don't have a current call ID but we're receiving an offer, set it
+      // If we don't have a current call ID but we're receiving an offer, validate it first
+      // Only set _currentCallId if we've received a call_invitation for this callId
+      // This prevents processing offers for non-existent or invalid calls
       if (type == 'offer' && _currentCallId == null && callId != null) {
-        print('🔵 [SIGNAL] Setting current call ID from offer: $callId');
-        _currentCallId = callId;
+        // Check if we have a pending offer for this callId (means call_invitation was received)
+        // OR if _currentCallId was set from call_invitation handler
+        final hasPendingOffer = _pendingOffers.values.any((data) => data['callId'] == callId);
+        if (hasPendingOffer) {
+          print('🔵 [SIGNAL] Setting current call ID from offer: $callId (validated - has pending offer)');
+          _currentCallId = callId;
+        } else {
+          // Offer received but no call_invitation - this is suspicious, log and ignore
+          print('⚠️ [SIGNAL] Received offer for call $callId but no call_invitation received - ignoring');
+          Log.w('Received offer for call without invitation - possible invalid call', 'WEBRTC_CALL_SERVICE');
+          return;
+        }
       }
       
       if (userId == null) {
@@ -902,22 +1071,67 @@ class WebRTCCallService {
     Log.i('Creating peer connection for user $userId from $platform', 'WEBRTC_CALL_SERVICE');
     
     // Log ICE servers being used
+    print('🔵 [PEER_CONNECTION] ===========================================');
+    print('🔵 [PEER_CONNECTION] Creating peer connection for $userId');
     print('🔵 [PEER_CONNECTION] ICE servers configuration:');
-    final turnServers = _iceServers.where((s) => s['urls']?.toString().startsWith('turn:') == true).toList();
+    final turnServers = _iceServers.where((s) => 
+      s['urls']?.toString().startsWith('turn:') == true || 
+      s['urls']?.toString().startsWith('turns:') == true
+    ).toList();
     final stunServers = _iceServers.where((s) => s['urls']?.toString().startsWith('stun:') == true).toList();
     
     print('   STUN servers: ${stunServers.length}');
     print('   TURN servers: ${turnServers.length}');
     
-    // Check if we have ngrok TURN servers (critical for cross-network calls on mobile)
+    // Log each TURN server with details
+    if (turnServers.isEmpty) {
+      print('   ❌ [PEER_CONNECTION] CRITICAL: No TURN servers configured!');
+      print('   ❌ [PEER_CONNECTION] Cross-network calls will FAIL!');
+      Log.e('No TURN servers in _iceServers when creating peer connection - cross-network calls will fail', 'WEBRTC_CALL_SERVICE');
+    } else {
+      print('   ✅ [PEER_CONNECTION] TURN servers found:');
+      for (int i = 0; i < turnServers.length; i++) {
+        final server = turnServers[i];
+        final urls = server['urls']?.toString() ?? 'unknown';
+        final username = server['username']?.toString() ?? 'missing';
+        final credential = server['credential']?.toString() ?? 'missing';
+        final hasCredentials = username != 'missing' && credential != 'missing' && username.isNotEmpty && credential.isNotEmpty;
+        final isCloud = urls.contains('twilio.com') || urls.contains('turn.twilio.com') || urls.contains('xirsys') || urls.contains('metered.ca');
+        final type = isCloud ? 'CLOUD (Twilio/Xirsys)' : (urls.contains('ngrok') ? 'NGROK' : 'LOCAL');
+        print('      ${i + 1}. $urls');
+        print('         Type: $type');
+        print('         Credentials: ${hasCredentials ? "✅ Present" : "❌ MISSING"}');
+      }
+    }
+    print('🔵 [PEER_CONNECTION] ===========================================');
+    
+    // Check if we have cloud/ngrok TURN servers (critical for cross-network calls on mobile)
     if (!kIsWeb) {
+      final hasCloudTurn = turnServers.any((s) {
+        final urls = s['urls']?.toString() ?? '';
+        return urls.contains('twilio.com') ||
+               urls.contains('turn.twilio.com') ||
+               urls.contains('xirsys') ||
+               urls.contains('metered.ca');
+      });
       final hasNgrokTurn = turnServers.any((s) => s['urls']?.toString().contains('ngrok') == true);
-      if (hasNgrokTurn) {
+      
+      if (hasCloudTurn) {
+        print('   ✅ CLOUD TURN servers configured (Twilio/Xirsys - for cross-network calls)');
+        final cloudServers = turnServers.where((s) {
+          final urls = s['urls']?.toString() ?? '';
+          return urls.contains('twilio.com') ||
+                 urls.contains('turn.twilio.com') ||
+                 urls.contains('xirsys') ||
+                 urls.contains('metered.ca');
+        }).toList();
+        cloudServers.forEach((s) => print('      - ${s['urls']} (CLOUD TURN)'));
+      } else if (hasNgrokTurn) {
         print('   ✅ ngrok TURN servers configured (for cross-network calls)');
         final ngrokServers = turnServers.where((s) => s['urls']?.toString().contains('ngrok') == true).toList();
         ngrokServers.forEach((s) => print('      - ${s['urls']}'));
       } else {
-        print('   ⚠️  WARNING: No ngrok TURN servers found! Cross-network calls may fail!');
+        print('   ⚠️  WARNING: No cloud/ngrok TURN servers found! Cross-network calls may fail!');
         print('   ⚠️  Only local TURN servers available (will only work on same network)');
       }
     }
@@ -931,10 +1145,37 @@ class WebRTCCallService {
     }
     Log.i('ICE Servers: ${_iceServers.map((s) => s['urls']).join(", ")}', 'WEBRTC_CALL_SERVICE');
     
+    // CRITICAL: Ensure TURN servers are prioritized for cross-network calls
+    // Reorder _iceServers to put TURN servers first (WebRTC tries them in order)
+    final reorderedIceServers = <Map<String, dynamic>>[];
+    final turnServersList = _iceServers.where((s) => 
+      s['urls']?.toString().startsWith('turn:') == true || 
+      s['urls']?.toString().startsWith('turns:') == true
+    ).toList();
+    final stunServersList = _iceServers.where((s) => 
+      s['urls']?.toString().startsWith('stun:') == true
+    ).toList();
+    
+    // For mobile: TURN servers FIRST (critical for cross-network calls)
+    // For web: STUN first (for same-network), then TURN (for cross-platform)
+    if (!kIsWeb) {
+      // Mobile: TURN first, then STUN
+      reorderedIceServers.addAll(turnServersList);
+      reorderedIceServers.addAll(stunServersList);
+      print('🔵 [PEER_CONNECTION] Reordered ICE servers for mobile: TURN first (${turnServersList.length}), then STUN (${stunServersList.length})');
+    } else {
+      // Web: STUN first, then TURN
+      reorderedIceServers.addAll(stunServersList);
+      reorderedIceServers.addAll(turnServersList);
+      print('🔵 [PEER_CONNECTION] Reordered ICE servers for web: STUN first (${stunServersList.length}), then TURN (${turnServersList.length})');
+    }
+    
     final configuration = {
-      'iceServers': _iceServers,
+      'iceServers': reorderedIceServers.isNotEmpty ? reorderedIceServers : _iceServers,
       // Enable ICE candidate gathering for cross-platform calls
       'iceCandidatePoolSize': 10,
+      // Force ICE restart if needed
+      'iceTransportPolicy': 'all', // Try all: host, srflx, relay
     };
 
     final constraints = {
@@ -960,9 +1201,40 @@ class WebRTCCallService {
         final isHost = candidateStr.contains('typ host') || candidateStr.contains('host');
         
         if (isRelay) {
-          print('🔵 [ICE_CANDIDATE] ✅✅✅ RELAY candidate (TURN server) from $userId');
-          print('   Full candidate: $candidateStr');
-          Log.i('RELAY ICE candidate (TURN) from $userId - CROSS-NETWORK SUPPORT', 'WEBRTC_CALL_SERVICE');
+          // Extract TURN server info from relay candidate
+          String? turnServerInfo;
+          // Try to extract TURN server address from candidate
+          // Format: candidate:... raddr <ip> rport <port> ...
+          final raddrMatch = RegExp(r'raddr\s+([^\s]+)').firstMatch(candidateStr);
+          final rportMatch = RegExp(r'rport\s+(\d+)').firstMatch(candidateStr);
+          if (raddrMatch != null && rportMatch != null) {
+            final turnIp = raddrMatch.group(1);
+            final turnPort = rportMatch.group(1);
+            turnServerInfo = '$turnIp:$turnPort';
+            
+            // Determine TURN server type
+            String turnType = 'Unknown';
+            if (turnIp?.contains('twilio.com') == true || turnIp?.contains('turn.twilio.com') == true) {
+              turnType = 'CLOUD (Twilio)';
+            } else if (turnIp?.contains('ngrok') == true) {
+              turnType = 'NGROK (Note: ngrok TCP cannot relay UDP - may not work)';
+            } else if (turnIp?.contains('xirsys') == true || turnIp?.contains('metered.ca') == true) {
+              turnType = 'CLOUD (Xirsys/Metered)';
+            } else if (turnIp?.contains('10.120.4.230') == true || turnIp?.contains('192.168.') == true) {
+              turnType = 'LOCAL (same network only)';
+            } else if (turnIp?.contains('41.33.106.54') == true) {
+              turnType = 'PUBLIC IP (requires router port forwarding)';
+            }
+            
+            print('🔵 [ICE_CANDIDATE] ✅✅✅ RELAY candidate (TURN server) from $userId');
+            print('   TURN Server: $turnServerInfo ($turnType)');
+            print('   Full candidate: $candidateStr');
+            Log.i('RELAY ICE candidate (TURN) from $userId - TURN: $turnServerInfo ($turnType) - CROSS-NETWORK SUPPORT', 'WEBRTC_CALL_SERVICE');
+          } else {
+            print('🔵 [ICE_CANDIDATE] ✅✅✅ RELAY candidate (TURN server) from $userId');
+            print('   Full candidate: $candidateStr');
+            Log.i('RELAY ICE candidate (TURN) from $userId - CROSS-NETWORK SUPPORT', 'WEBRTC_CALL_SERVICE');
+          }
         } else if (isSrflx) {
           print('🔵 [ICE_CANDIDATE] Server reflexive candidate (STUN) from $userId');
           print('   Candidate: ${candidateStr.length > 150 ? candidateStr.substring(0, 150) + "..." : candidateStr}');
@@ -995,6 +1267,23 @@ class WebRTCCallService {
       print('🔵 [ON_ADD_STREAM] Stream ID: ${stream.id}');
       print('🔵 [ON_ADD_STREAM] Audio tracks: ${stream.getAudioTracks().length}');
       print('🔵 [ON_ADD_STREAM] Video tracks: ${stream.getVideoTracks().length}');
+      
+      // CRITICAL: Ensure all tracks are enabled
+      print('🔵 [ON_ADD_STREAM] Verifying track states...');
+      for (final track in stream.getAudioTracks()) {
+        if (!track.enabled) {
+          print('🔵 [ON_ADD_STREAM] Enabling audio track: ${track.id}');
+          track.enabled = true;
+        }
+        print('🔵 [ON_ADD_STREAM] Audio track ${track.id}: enabled=${track.enabled}, muted=${track.muted}');
+      }
+      for (final track in stream.getVideoTracks()) {
+        if (!track.enabled) {
+          print('🔵 [ON_ADD_STREAM] Enabling video track: ${track.id}');
+          track.enabled = true;
+        }
+        print('🔵 [ON_ADD_STREAM] Video track ${track.id}: enabled=${track.enabled}, muted=${track.muted}');
+      }
       
       // Store the stream
       _remoteStreams[userId] = stream;
@@ -1029,6 +1318,29 @@ class WebRTCCallService {
         print('🔵 [ON_TRACK] Stream ID: ${stream.id}');
         print('🔵 [ON_TRACK] Audio tracks: ${stream.getAudioTracks().length}');
         print('🔵 [ON_TRACK] Video tracks: ${stream.getVideoTracks().length}');
+        
+        // CRITICAL: Ensure all tracks in the stream are enabled
+        print('🔵 [ON_TRACK] Verifying track states...');
+        for (final track in stream.getAudioTracks()) {
+          if (!track.enabled) {
+            print('🔵 [ON_TRACK] Enabling audio track: ${track.id}');
+            track.enabled = true;
+          }
+          print('🔵 [ON_TRACK] Audio track ${track.id}: enabled=${track.enabled}, muted=${track.muted}');
+        }
+        for (final track in stream.getVideoTracks()) {
+          if (!track.enabled) {
+            print('🔵 [ON_TRACK] Enabling video track: ${track.id}');
+            track.enabled = true;
+          }
+          print('🔵 [ON_TRACK] Video track ${track.id}: enabled=${track.enabled}, muted=${track.muted}');
+        }
+        
+        // Also ensure the received track is enabled
+        if (event.track != null && !event.track!.enabled) {
+          print('🔵 [ON_TRACK] Enabling received track: ${event.track!.kind}, id: ${event.track!.id}');
+          event.track!.enabled = true;
+        }
         
         // Store the stream
         _remoteStreams[userId] = stream;
@@ -1179,6 +1491,53 @@ class WebRTCCallService {
         // Check if we have remote streams
         if (_remoteStreams.containsKey(userId)) {
           print('🔵 [ICE_CONNECTION] Remote stream exists for $userId');
+          final stream = _remoteStreams[userId]!;
+          
+          // CRITICAL: Verify and enable all tracks when connection is established
+          print('🔵 [ICE_CONNECTION] Verifying track states for $userId...');
+          final audioTracks = stream.getAudioTracks();
+          final videoTracks = stream.getVideoTracks();
+          
+          print('🔵 [ICE_CONNECTION] Audio tracks: ${audioTracks.length}, Video tracks: ${videoTracks.length}');
+          
+          // Ensure all tracks are enabled
+          bool tracksUpdated = false;
+          for (final track in audioTracks) {
+            if (!track.enabled) {
+              print('🔵 [ICE_CONNECTION] Enabling audio track: ${track.id}');
+              track.enabled = true;
+              tracksUpdated = true;
+            }
+            print('🔵 [ICE_CONNECTION] Audio track ${track.id}: enabled=${track.enabled}, muted=${track.muted}');
+          }
+          
+          for (final track in videoTracks) {
+            if (!track.enabled) {
+              print('🔵 [ICE_CONNECTION] Enabling video track: ${track.id}');
+              track.enabled = true;
+              tracksUpdated = true;
+            }
+            print('🔵 [ICE_CONNECTION] Video track ${track.id}: enabled=${track.enabled}, muted=${track.muted}');
+          }
+          
+          if (tracksUpdated) {
+            print('✅ [ICE_CONNECTION] Tracks enabled - triggering UI update');
+            // Trigger callback to update UI with enabled tracks
+            if (onRemoteStream != null) {
+              onRemoteStream!.call(userId, stream);
+            }
+          }
+          
+          // Verify local stream tracks are also enabled
+          if (_localStream != null) {
+            print('🔵 [ICE_CONNECTION] Verifying local stream tracks...');
+            for (final track in _localStream!.getTracks()) {
+              if (!track.enabled) {
+                print('🔵 [ICE_CONNECTION] Enabling local ${track.kind} track: ${track.id}');
+                track.enabled = true;
+              }
+            }
+          }
         } else {
           print('⚠️ [ICE_CONNECTION] WARNING: No remote stream yet for $userId - waiting for onTrack event');
         }
@@ -1446,6 +1805,13 @@ class WebRTCCallService {
       }
       print('🔵 Current user ID: $_currentUserId');
 
+      // Check if already in a call - prevent starting new call while in active call
+      if (_currentCallId != null || _isInCall) {
+        print('❌ Cannot start call: Already in a call (callId: $_currentCallId, isInCall: $_isInCall)');
+        Log.w('Cannot start call: Already in a call', 'WEBRTC_CALL_SERVICE');
+        return null;
+      }
+
       if (participantIds.isEmpty) {
         print('❌ Cannot start call: No participants');
         Log.e('Cannot start call: No participants', 'WEBRTC_CALL_SERVICE');
@@ -1493,90 +1859,9 @@ class WebRTCCallService {
         return null;
       }
 
-      // Join call room for signaling
-      print('🔵 Joining call room: call:$callId');
-      _realtime.emit('join_call', {'callId': callId});
-      print('🔵 Joined call room');
-
-      // Create peer connections for each participant
-      print('🔵 Creating peer connections for ${filteredParticipants.length} participants...');
-      for (final participantId in filteredParticipants) {
-        print('🔵 Creating peer connection for participant: $participantId');
-        final peerConnection = await _createPeerConnection(participantId);
-        _peerConnections[participantId] = peerConnection;
-        print('🔵 Peer connection created for $participantId');
-
-        // Add local stream tracks to peer connection
-        print('🔵 [CALLER] Adding local stream tracks to peer connection for $participantId...');
-        localStream.getTracks().forEach((track) {
-          print('🔵 [CALLER] Adding track: ${track.kind}, enabled: ${track.enabled}, id: ${track.id}');
-          peerConnection.addTrack(track, localStream);
-        });
-        print('🔵 [CALLER] ✅ Added ${localStream.getTracks().length} local stream tracks to peer connection');
-
-        // Create and send offer
-        // CRITICAL: Tracks must be added BEFORE creating offer
-        print('🔵 [CALLER] Creating offer for $participantId...');
-        print('🔵 [CALLER] Verifying tracks are added before creating offer...');
-        final sendersBeforeOffer = await peerConnection.getSenders();
-        print('🔵 [CALLER] Senders count: ${sendersBeforeOffer.length}');
-        for (final sender in sendersBeforeOffer) {
-          print('🔵 [CALLER]   Sender track: ${sender.track?.kind}, enabled: ${sender.track?.enabled}, id: ${sender.track?.id}');
-        }
-        
-        RTCSessionDescription offer;
-        try {
-          offer = await peerConnection.createOffer();
-          print('🔵 [CALLER] ✅ Offer created, SDP length: ${offer.sdp?.length ?? 0}');
-        } catch (e) {
-          print('❌ [CALLER] ERROR creating offer: $e');
-          Log.e('Error creating offer', 'WEBRTC_CALL_SERVICE', e);
-          continue; // Skip this participant and continue with others
-        }
-        
-        // Verify tracks are in the offer SDP BEFORE setting local description
-        if (offer.sdp != null) {
-          final hasAudio = offer.sdp!.contains('m=audio');
-          final hasVideo = offer.sdp!.contains('m=video');
-          print('🔵 [CALLER] Offer SDP contains - Audio: $hasAudio, Video: $hasVideo');
-          if (!hasAudio && !hasVideo) {
-            print('⚠️ [CALLER] WARNING: Offer SDP does not contain media! This might cause no media streams.');
-            print('⚠️ [CALLER] Senders count: ${sendersBeforeOffer.length}');
-            Log.w('Offer SDP does not contain media tracks - sending anyway', 'WEBRTC_CALL_SERVICE');
-            // Still send the offer - sometimes SDP format varies and media might still work
-          }
-        } else {
-          print('❌ [CALLER] ERROR: Offer SDP is null!');
-          Log.e('Offer SDP is null', 'WEBRTC_CALL_SERVICE');
-          continue; // Skip this participant and continue with others
-        }
-        
-        try {
-          await peerConnection.setLocalDescription(offer);
-          print('🔵 [CALLER] ✅ Offer set as local description');
-        } catch (e) {
-          print('❌ [CALLER] ERROR setting local description: $e');
-          Log.e('Error setting local description', 'WEBRTC_CALL_SERVICE', e);
-          continue; // Skip this participant and continue with others
-        }
-        
-        try {
-          await sendWebRTCSignal('offer', {
-            'offer': {
-              'sdp': offer.sdp,
-              'type': offer.type,
-            },
-          }, callId: callId, targetUserId: participantId); // Send to specific participant
-          print('🔵 [CALLER] ✅ WebRTC offer signal sent for $participantId');
-        } catch (e) {
-          print('❌ [CALLER] ERROR sending offer signal: $e');
-          Log.e('Error sending offer signal', 'WEBRTC_CALL_SERVICE', e);
-          // Continue with other participants even if one fails
-        }
-      }
-      print('🔵 All peer connections created');
-
-      // Send call invitation via API
+      // CRITICAL: Send call invitation via API FIRST
+      // This ensures the call exists in activeCalls before we send WebRTC offers
+      // Otherwise, the server will reject offers because the call doesn't exist yet
       print('🔵 Getting auth token...');
       final prefs = await SharedPreferences.getInstance();
       final token = prefs.getString('auth_token');
@@ -1621,7 +1906,7 @@ class WebRTCCallService {
           'chatId': chatId,
           'chatName': chatName,
           'callerId': _currentUserId,
-          'callType': callType == CallType.voice ? 'voice' : 'video',
+          'callType': CallTypeHelper.toServerString(callType),
           'participantIds': filteredParticipants,
           'isGroupChat': isGroupChat,
         }),
@@ -1632,18 +1917,160 @@ class WebRTCCallService {
       Log.i('API Response Status: ${response.statusCode}', 'WEBRTC_CALL_SERVICE');
       Log.i('API Response Body: ${response.body}', 'WEBRTC_CALL_SERVICE');
       
-      if (response.statusCode == 200) {
-        _currentCallId = callId;
-        _currentCallType = callType;
-        print('✅ Call started successfully: $callId');
-        Log.i('✅ Call started successfully: $callId', 'WEBRTC_CALL_SERVICE');
-        return callId;
-      } else {
+      if (response.statusCode != 200) {
         print('❌ Failed to start call: ${response.statusCode} - ${response.body}');
         Log.e('❌ Failed to start call: ${response.statusCode} - ${response.body}', 'WEBRTC_CALL_SERVICE');
         await _cleanup();
         return null;
       }
+
+      // Call was successfully created on server - now safe to send WebRTC offers
+      _currentCallId = callId;
+      _currentCallType = callType;
+      print('✅ Call created on server: $callId (now safe to send offers)');
+      Log.i('✅ Call created on server: $callId', 'WEBRTC_CALL_SERVICE');
+
+      // Join call room for signaling
+      print('🔵 Joining call room: call:$callId');
+      _realtime.emit('join_call', {'callId': callId});
+      print('🔵 Joined call room');
+
+      // CRITICAL: Verify TURN servers are configured before creating peer connections
+      // For mobile devices, TURN servers are essential for cross-network calls
+      if (!kIsWeb) {
+        final turnServers = _iceServers.where((s) => 
+          s['urls']?.toString().startsWith('turn:') == true || 
+          s['urls']?.toString().startsWith('turns:') == true
+        ).toList();
+        
+        final hasCloudTurn = turnServers.any((s) {
+          final urls = s['urls']?.toString() ?? '';
+          return urls.contains('twilio.com') ||
+                 urls.contains('turn.twilio.com') ||
+                 urls.contains('xirsys') ||
+                 urls.contains('metered.ca');
+        });
+        
+        if (turnServers.isEmpty) {
+          print('❌ [CALL_START] CRITICAL: No TURN servers configured!');
+          print('❌ [CALL_START] Attempting to fetch TURN configuration now...');
+          Log.e('No TURN servers configured - attempting to fetch now', 'WEBRTC_CALL_SERVICE');
+          
+          // CRITICAL FIX: If TURN servers are missing, try to fetch them now
+          try {
+            final ngrokUrl = DatabaseConfig.physicalServerUrl;
+            if (ngrokUrl.isNotEmpty) {
+              print('🔵 [CALL_START] Fetching TURN config from server: $ngrokUrl');
+              await setTurnServerConfig(
+                ngrokUrl: ngrokUrl,
+                serverIp: null,
+                port: '3478',
+                username: 'soc-chat-turn',
+                password: 'yG5EJFUdLgT7xqXr',
+              );
+              
+              // Re-check after fetching
+              final turnServersAfterFetch = _iceServers.where((s) => 
+                s['urls']?.toString().startsWith('turn:') == true || 
+                s['urls']?.toString().startsWith('turns:') == true
+              ).toList();
+              
+              if (turnServersAfterFetch.isEmpty) {
+                print('❌ [CALL_START] CRITICAL: TURN config fetch failed - no TURN servers available!');
+                print('❌ [CALL_START] Cross-network calls will FAIL!');
+                Log.e('TURN config fetch failed - cross-network calls will fail', 'WEBRTC_CALL_SERVICE');
+                // Continue anyway - might work on same network
+              } else {
+                print('✅ [CALL_START] TURN config fetched successfully: ${turnServersAfterFetch.length} server(s)');
+                Log.i('TURN config fetched successfully during call start', 'WEBRTC_CALL_SERVICE');
+              }
+            } else {
+              print('❌ [CALL_START] Cannot fetch TURN config - ngrokUrl is empty!');
+              Log.e('Cannot fetch TURN config - ngrokUrl is empty', 'WEBRTC_CALL_SERVICE');
+            }
+          } catch (e) {
+            print('❌ [CALL_START] ERROR fetching TURN config: $e');
+            Log.e('Error fetching TURN config during call start', 'WEBRTC_CALL_SERVICE', e);
+            // Continue anyway - might work on same network
+          }
+        } else if (!hasCloudTurn) {
+          print('⚠️ [CALL_START] WARNING: No cloud TURN servers found!');
+          print('⚠️ [CALL_START] Only ${turnServers.length} TURN server(s) configured (may be local/ngrok)');
+          print('⚠️ [CALL_START] Cross-network calls may fail without cloud TURN (Twilio/Xirsys)');
+          Log.w('No cloud TURN servers - cross-network calls may fail', 'WEBRTC_CALL_SERVICE');
+        } else {
+          print('✅ [CALL_START] TURN servers configured: ${turnServers.length} server(s)');
+          print('✅ [CALL_START] Cloud TURN (Twilio/Xirsys) detected - cross-network calls supported');
+        }
+      }
+
+      // NOW create peer connections and send offers (call exists in activeCalls)
+      print('🔵 Creating peer connections for ${filteredParticipants.length} participants...');
+      for (final participantId in filteredParticipants) {
+        print('🔵 Creating peer connection for participant: $participantId');
+        final peerConnection = await _createPeerConnection(participantId);
+        _peerConnections[participantId] = peerConnection;
+        print('🔵 Peer connection created for $participantId');
+
+        // Add local stream tracks to peer connection
+        print('🔵 [CALLER] Adding local stream tracks to peer connection for $participantId...');
+        localStream.getTracks().forEach((track) {
+          print('🔵 [CALLER] Adding track: ${track.kind}, enabled: ${track.enabled}, id: ${track.id}');
+          peerConnection.addTrack(track, localStream);
+        });
+        print('🔵 [CALLER] ✅ Added ${localStream.getTracks().length} local stream tracks to peer connection');
+
+        // Create and send offer
+        print('🔵 [CALLER] Creating offer for $participantId...');
+        RTCSessionDescription offer;
+        try {
+          offer = await peerConnection.createOffer();
+          print('🔵 [CALLER] ✅ Offer created, SDP length: ${offer.sdp?.length ?? 0}');
+          
+          // CRITICAL: Verify SDP includes media tracks
+          final sdp = offer.sdp ?? '';
+          final hasAudio = sdp.contains('m=audio');
+          final hasVideo = sdp.contains('m=video');
+          print('🔵 [CALLER] SDP verification - Audio: $hasAudio, Video: $hasVideo');
+          if (!hasAudio && !hasVideo) {
+            print('❌ [CALLER] CRITICAL: SDP does not contain media tracks!');
+            print('❌ [CALLER] This will prevent media streams from working!');
+            Log.e('SDP does not contain media tracks', 'WEBRTC_CALL_SERVICE');
+          } else {
+            print('✅ [CALLER] SDP contains media tracks - media should work');
+          }
+        } catch (e) {
+          print('❌ [CALLER] ERROR creating offer: $e');
+          Log.e('Error creating offer', 'WEBRTC_CALL_SERVICE', e);
+          continue;
+        }
+        
+        try {
+          await peerConnection.setLocalDescription(offer);
+          print('🔵 [CALLER] ✅ Offer set as local description');
+        } catch (e) {
+          print('❌ [CALLER] ERROR setting local description: $e');
+          Log.e('Error setting local description', 'WEBRTC_CALL_SERVICE', e);
+          continue;
+        }
+        
+        try {
+          await sendWebRTCSignal('offer', {
+            'offer': {
+              'sdp': offer.sdp,
+              'type': offer.type,
+            },
+          }, callId: callId, targetUserId: participantId);
+          print('🔵 [CALLER] ✅ WebRTC offer signal sent for $participantId');
+        } catch (e) {
+          print('❌ [CALLER] ERROR sending offer signal: $e');
+          Log.e('Error sending offer signal', 'WEBRTC_CALL_SERVICE', e);
+        }
+      }
+      print('🔵 All peer connections created and offers sent');
+      print('✅ Call started successfully: $callId');
+      Log.i('✅ Call started successfully: $callId', 'WEBRTC_CALL_SERVICE');
+      return callId;
     } catch (e, stackTrace) {
       print('❌ Error starting call: $e');
       print('❌ Stack trace: $stackTrace');
@@ -1662,11 +2089,25 @@ class WebRTCCallService {
         return false;
       }
 
+      // Check if call is already accepted - prevent duplicate acceptance
+      if (_isInCall && _currentCallId == callId) {
+        print('⚠️ [ACCEPT] Call $callId already accepted - returning success');
+        Log.w('Call already accepted', 'WEBRTC_CALL_SERVICE');
+        return true; // Already accepted, return success
+      }
+
+      // Check if accepting a different call while in a call
+      if (_isInCall && _currentCallId != null && _currentCallId != callId) {
+        print('❌ [ACCEPT] Cannot accept call $callId: Already in call $_currentCallId');
+        Log.w('Cannot accept call: Already in different call', 'WEBRTC_CALL_SERVICE');
+        return false;
+      }
+
       // Set current call ID and type before handling offers
       _currentCallId = callId;
-      // Set _isInCall early so offer handler knows call is accepted
-      _isInCall = true;
-      print('🔵 [ACCEPT] Current call ID set: $callId, call type: $_currentCallType, _isInCall: $_isInCall');
+      // Note: _isInCall will be set AFTER successfully getting local stream
+      // This prevents state inconsistency if stream acquisition fails
+      print('🔵 [ACCEPT] Current call ID set: $callId, call type: $_currentCallType');
 
       // Join call room for signaling
       print('🔵 [ACCEPT] Joining call room: call:$callId');
@@ -1685,7 +2126,84 @@ class WebRTCCallService {
       print('🔵 [ACCEPT] Audio tracks: ${localStream.getAudioTracks().length}');
       print('🔵 [ACCEPT] Video tracks: ${localStream.getVideoTracks().length}');
       
+      // Set _isInCall AFTER successfully getting local stream
+      // This ensures state is consistent - if stream fails, _isInCall remains false
+      _isInCall = true;
+      print('🔵 [ACCEPT] _isInCall set to true (stream obtained successfully)');
+      
+      // CRITICAL: Verify TURN servers are configured before creating peer connections
+      // For mobile devices, TURN servers are essential for cross-network calls
+      if (!kIsWeb) {
+        final turnServers = _iceServers.where((s) => 
+          s['urls']?.toString().startsWith('turn:') == true || 
+          s['urls']?.toString().startsWith('turns:') == true
+        ).toList();
+        
+        if (turnServers.isEmpty) {
+          print('❌ [ACCEPT] CRITICAL: No TURN servers configured!');
+          print('❌ [ACCEPT] Attempting to fetch TURN configuration now...');
+          Log.e('No TURN servers configured - attempting to fetch now', 'WEBRTC_CALL_SERVICE');
+          
+          // CRITICAL FIX: If TURN servers are missing, try to fetch them now
+          try {
+            final ngrokUrl = DatabaseConfig.physicalServerUrl;
+            if (ngrokUrl.isNotEmpty) {
+              print('🔵 [ACCEPT] Fetching TURN config from server: $ngrokUrl');
+              await setTurnServerConfig(
+                ngrokUrl: ngrokUrl,
+                serverIp: null,
+                port: '3478',
+                username: 'soc-chat-turn',
+                password: 'yG5EJFUdLgT7xqXr',
+              );
+              
+              // Re-check after fetching
+              final turnServersAfterFetch = _iceServers.where((s) => 
+                s['urls']?.toString().startsWith('turn:') == true || 
+                s['urls']?.toString().startsWith('turns:') == true
+              ).toList();
+              
+              if (turnServersAfterFetch.isEmpty) {
+                print('❌ [ACCEPT] CRITICAL: TURN config fetch failed - no TURN servers available!');
+                print('❌ [ACCEPT] Cross-network calls will FAIL!');
+                Log.e('TURN config fetch failed - cross-network calls will fail', 'WEBRTC_CALL_SERVICE');
+                // Continue anyway - might work on same network
+              } else {
+                print('✅ [ACCEPT] TURN config fetched successfully: ${turnServersAfterFetch.length} server(s)');
+                Log.i('TURN config fetched successfully during call accept', 'WEBRTC_CALL_SERVICE');
+              }
+            } else {
+              print('❌ [ACCEPT] Cannot fetch TURN config - ngrokUrl is empty!');
+              Log.e('Cannot fetch TURN config - ngrokUrl is empty', 'WEBRTC_CALL_SERVICE');
+            }
+          } catch (e) {
+            print('❌ [ACCEPT] ERROR fetching TURN config: $e');
+            Log.e('Error fetching TURN config during call accept', 'WEBRTC_CALL_SERVICE', e);
+            // Continue anyway - might work on same network
+          }
+        } else {
+          final hasCloudTurn = turnServers.any((s) {
+            final urls = s['urls']?.toString() ?? '';
+            return urls.contains('twilio.com') ||
+                   urls.contains('turn.twilio.com') ||
+                   urls.contains('xirsys') ||
+                   urls.contains('metered.ca');
+          });
+          if (hasCloudTurn) {
+            print('✅ [ACCEPT] TURN servers configured: ${turnServers.length} server(s)');
+            print('✅ [ACCEPT] Cloud TURN (Twilio/Xirsys) detected - cross-network calls supported');
+          } else {
+            print('⚠️ [ACCEPT] WARNING: No cloud TURN servers found!');
+            print('⚠️ [ACCEPT] Only ${turnServers.length} TURN server(s) configured (may be local/ngrok)');
+            print('⚠️ [ACCEPT] Cross-network calls may fail without cloud TURN (Twilio/Xirsys)');
+          }
+        }
+      }
+      
       // First, process any pending offers (offers that arrived before acceptance)
+      // Store processed user IDs to avoid duplicate processing later
+      final Set<String> processedUserIds = {};
+      
       print('🔵 [ACCEPT] Checking for pending offers: ${_pendingOffers.length} found');
       for (final entry in _pendingOffers.entries) {
         final userId = entry.key;
@@ -1755,6 +2273,9 @@ class WebRTCCallService {
             },
           }, callId: callId, targetUserId: userId);
           print('🔵 [ACCEPT] ✅ Answer sent to $userId');
+          
+          // Mark this user as processed
+          processedUserIds.add(userId);
         } catch (e, stackTrace) {
           print('❌ [ACCEPT] ERROR creating/sending answer: $e');
           print('❌ [ACCEPT] Stack trace: $stackTrace');
@@ -1774,7 +2295,8 @@ class WebRTCCallService {
           final peerConnection = entry.value;
           
           // Skip if we already processed this user's pending offer
-          if (_pendingOffers.containsKey(userId)) {
+          if (processedUserIds.contains(userId)) {
+            print('🔵 [ACCEPT] Skipping $userId - already processed from pending offers');
             continue;
           }
           
@@ -1912,6 +2434,10 @@ class WebRTCCallService {
 
       await _cleanup();
       _resetCallState();
+      
+      // Clear ActiveCallTracker to allow new calls
+      ActiveCallTracker.clearActiveCall(callId);
+      print('🔴 [END_CALL] Cleared ActiveCallTracker for call: $callId');
       Log.i('Call ended: $callId', 'WEBRTC_CALL_SERVICE');
       print('🔴 [END_CALL] Call ended successfully');
       return true;
@@ -2074,6 +2600,10 @@ class WebRTCCallService {
     _currentParticipantIds = null;
     _currentIsGroupChat = false;
     
+    // Clear pending offers to prevent memory leaks
+    _pendingOffers.clear();
+    print('🔵 [RESET] Cleared pending offers');
+    
     // NOTE: Do NOT clear callbacks here - they are set by the call screen
     // and should remain active until the screen is disposed
     // Clearing them here causes issues where callbacks are null when events arrive
@@ -2109,7 +2639,7 @@ class WebRTCCallService {
         chatName: _currentChatName ?? 'Unknown',
         callerId: _currentUserId!,
         participantIds: _currentParticipantIds ?? [],
-        callType: _currentCallType == CallType.video ? 'video' : 'voice',
+        callType: _currentCallType != null ? CallTypeHelper.toServerString(_currentCallType!) : 'voice',
         direction: direction,
         status: status,
         startedAt: _callStartTime!,
