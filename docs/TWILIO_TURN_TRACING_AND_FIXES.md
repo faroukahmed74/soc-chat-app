@@ -96,7 +96,7 @@ cd servers/local_api_server
 ```
 
 This will set:
-- `TWILIO_ACCOUNT_SID=ACbd7662379a26ed6cde62bfbc8a9a998e`
+- `TWILIO_ACCOUNT_SID=ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` (configured in .env)
 - `TWILIO_AUTH_TOKEN=c788ffd577dfa3455492f90ea0ebf35a`
 - `CLOUD_TURN_ENABLED=true`
 - `CLOUD_TURN_URLS=...` (Twilio TURN URLs)

@@ -1,0 +1,500 @@
+﻿12-10 14:02:52.493 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2415
+12-10 14:02:52.493 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba238, frame_number 2415
+12-10 14:02:52.495 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2411, capture_time = 647987678777033
+12-10 14:02:52.513 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba148 at result frame_number 2412
+12-10 14:02:52.523 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1616 , sof_frame_id 1615
+12-10 14:02:52.526 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1616 , sof_frame_id 1616
+12-10 14:02:52.526 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1616: Book-keeping (frame_num, ack_frame_id) = [2415, 1619] in list
+12-10 14:02:52.528 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2416
+12-10 14:02:52.528 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2c70, frame_number 2416
+12-10 14:02:52.536 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2412, capture_time = 647987712336033
+12-10 14:02:52.552 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e4a40 at result frame_number 2413
+12-10 14:02:52.556 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:52.556 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1617 , sof_frame_id 1616
+12-10 14:02:52.556 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1617 , sof_frame_id 1617
+12-10 14:02:52.557 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1617: Book-keeping (frame_num, ack_frame_id) = [2416, 1620] in list
+12-10 14:02:52.558 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2417
+12-10 14:02:52.559 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2b08, frame_number 2417
+12-10 14:02:52.561 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2413, capture_time = 647987745884033
+12-10 14:02:52.579 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2ac0 at result frame_number 2414
+12-10 14:02:52.590 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1618 , sof_frame_id 1617
+12-10 14:02:52.590 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1618 , sof_frame_id 1618
+12-10 14:02:52.592 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1618: Book-keeping (frame_num, ack_frame_id) = [2417, 1621] in list
+12-10 14:02:52.594 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2418
+12-10 14:02:52.595 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2bb0, frame_number 2418
+12-10 14:02:52.597 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2414, capture_time = 647987779481033
+12-10 14:02:52.612 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba238 at result frame_number 2415
+12-10 14:02:52.623 E/libc    ( 9707): Access denied finding property "ro.hwfix.ro.process_list"
+12-10 14:02:52.623 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1619 , sof_frame_id 1618
+12-10 14:02:52.624 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1619 , sof_frame_id 1619
+12-10 14:02:52.625 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1619: Book-keeping (frame_num, ack_frame_id) = [2418, 1622] in list
+12-10 14:02:52.626 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4002 ms. Frames received: 0. Dropped: 0. Rendered: 0. Render fps: .0. Average render time: NA. Average swapBuffer time: NA.
+12-10 14:02:52.627 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2419
+12-10 14:02:52.628 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba148, frame_number 2419
+12-10 14:02:52.630 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2415, capture_time = 647987813065033
+12-10 14:02:52.636 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:52.644 E/libc    ( 9707): Access denied finding property "ro.hwfix.ro.process_list"
+12-10 14:02:52.647 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2c70 at result frame_number 2416
+12-10 14:02:52.657 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1620 , sof_frame_id 1619
+12-10 14:02:52.657 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1620 , sof_frame_id 1620
+12-10 14:02:52.658 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1620: Book-keeping (frame_num, ack_frame_id) = [2419, 1623] in list
+12-10 14:02:52.660 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2420
+12-10 14:02:52.661 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e4a40, frame_number 2420
+12-10 14:02:52.663 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2416, capture_time = 647987846496033
+12-10 14:02:52.673 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4002 ms. Frames received: 0. Dropped: 0. Rendered: 0. Render fps: .0. Average render time: NA. Average swapBuffer time: NA.
+12-10 14:02:52.679 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2b08 at result frame_number 2417
+12-10 14:02:52.683 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4001 ms. Frames received: 0. Dropped: 0. Rendered: 0. Render fps: .0. Average render time: NA. Average swapBuffer time: NA.
+12-10 14:02:52.691 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1621 , sof_frame_id 1620
+12-10 14:02:52.691 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1621 , sof_frame_id 1621
+12-10 14:02:52.692 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1621: Book-keeping (frame_num, ack_frame_id) = [2420, 1624] in list
+12-10 14:02:52.694 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2421
+12-10 14:02:52.694 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2ac0, frame_number 2421
+12-10 14:02:52.697 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2417, capture_time = 647987880054033
+12-10 14:02:52.714 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2bb0 at result frame_number 2418
+12-10 14:02:52.716 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:52.724 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1622 , sof_frame_id 1621
+12-10 14:02:52.724 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1622 , sof_frame_id 1622
+12-10 14:02:52.725 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1622: Book-keeping (frame_num, ack_frame_id) = [2421, 1625] in list
+12-10 14:02:52.727 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2422
+12-10 14:02:52.728 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba238, frame_number 2422
+12-10 14:02:52.730 I/flutter (28191): Platform: Mobile/Desktop detected
+12-10 14:02:52.730 I/flutter (28191): Using mobile server URL: https://soc-chat-app.ngrok-free.app
+12-10 14:02:52.732 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2418, capture_time = 647987913821033
+12-10 14:02:52.748 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba148 at result frame_number 2419
+12-10 14:02:52.758 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1623 , sof_frame_id 1622
+12-10 14:02:52.758 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1623 , sof_frame_id 1623
+12-10 14:02:52.759 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1623: Book-keeping (frame_num, ack_frame_id) = [2422, 1626] in list
+12-10 14:02:52.760 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2423
+12-10 14:02:52.760 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2c70, frame_number 2423
+12-10 14:02:52.764 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2419, capture_time = 647987947132033
+12-10 14:02:52.776 E/asd     (  722): there is more data buffers [primary_out] in circular queue!
+12-10 14:02:52.781 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e4a40 at result frame_number 2420
+12-10 14:02:52.791 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1624 , sof_frame_id 1623
+12-10 14:02:52.792 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1624 , sof_frame_id 1624
+12-10 14:02:52.792 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1624: Book-keeping (frame_num, ack_frame_id) = [2423, 1627] in list
+12-10 14:02:52.794 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2424
+12-10 14:02:52.794 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2b08, frame_number 2424
+12-10 14:02:52.795 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:52.796 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2420, capture_time = 647987980661033
+12-10 14:02:52.814 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2ac0 at result frame_number 2421
+12-10 14:02:52.825 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1625 , sof_frame_id 1624
+12-10 14:02:52.825 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1625 , sof_frame_id 1625
+12-10 14:02:52.826 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1625: Book-keeping (frame_num, ack_frame_id) = [2424, 1628] in list
+12-10 14:02:52.828 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2425
+12-10 14:02:52.828 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2bb0, frame_number 2425
+12-10 14:02:52.830 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2421, capture_time = 647988014211033
+12-10 14:02:52.847 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba238 at result frame_number 2422
+12-10 14:02:52.858 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1626 , sof_frame_id 1625
+12-10 14:02:52.858 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1626 , sof_frame_id 1626
+12-10 14:02:52.860 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1626: Book-keeping (frame_num, ack_frame_id) = [2425, 1629] in list
+12-10 14:02:52.861 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2426
+12-10 14:02:52.861 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba148, frame_number 2426
+12-10 14:02:52.863 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2422, capture_time = 647988047749033
+12-10 14:02:52.876 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:52.881 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2c70 at result frame_number 2423
+12-10 14:02:52.892 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1627 , sof_frame_id 1626
+12-10 14:02:52.892 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1627 , sof_frame_id 1627
+12-10 14:02:52.893 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1627: Book-keeping (frame_num, ack_frame_id) = [2426, 1630] in list
+12-10 14:02:52.895 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2427
+12-10 14:02:52.896 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e4a40, frame_number 2427
+12-10 14:02:52.897 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2423, capture_time = 647988081504033
+12-10 14:02:52.917 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2b08 at result frame_number 2424
+12-10 14:02:52.925 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1628 , sof_frame_id 1627
+12-10 14:02:52.926 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1628 , sof_frame_id 1628
+12-10 14:02:52.927 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1628: Book-keeping (frame_num, ack_frame_id) = [2427, 1631] in list
+12-10 14:02:52.929 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2428
+12-10 14:02:52.929 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2ac0, frame_number 2428
+12-10 14:02:52.932 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2424, capture_time = 647988114830033
+12-10 14:02:52.950 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2bb0 at result frame_number 2425
+12-10 14:02:52.956 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:52.959 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1629 , sof_frame_id 1628
+12-10 14:02:52.960 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1629 , sof_frame_id 1629
+12-10 14:02:52.961 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1629: Book-keeping (frame_num, ack_frame_id) = [2428, 1632] in list
+12-10 14:02:52.965 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2425, capture_time = 647988148396033
+12-10 14:02:52.970 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2429
+12-10 14:02:52.971 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba238, frame_number 2429
+12-10 14:02:52.985 E/asd     (  722): there is more data buffers [primary_out] in circular queue!
+12-10 14:02:52.985 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba148 at result frame_number 2426
+12-10 14:02:52.989 I/flutter (28191): Platform: Mobile/Desktop detected
+12-10 14:02:52.989 I/flutter (28191): Using mobile server URL: https://soc-chat-app.ngrok-free.app
+12-10 14:02:52.992 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1630 , sof_frame_id 1629
+12-10 14:02:52.994 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1630 , sof_frame_id 1630
+12-10 14:02:52.995 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1630: Book-keeping (frame_num, ack_frame_id) = [2429, 1633] in list
+12-10 14:02:52.997 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2430
+12-10 14:02:52.997 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2c70, frame_number 2430
+12-10 14:02:53.000 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2426, capture_time = 647988181921033
+12-10 14:02:53.015 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e4a40 at result frame_number 2427
+12-10 14:02:53.026 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1631 , sof_frame_id 1630
+12-10 14:02:53.026 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1631 , sof_frame_id 1631
+12-10 14:02:53.027 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1631: Book-keeping (frame_num, ack_frame_id) = [2430, 1634] in list
+12-10 14:02:53.030 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2431
+12-10 14:02:53.030 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2b08, frame_number 2431
+12-10 14:02:53.032 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2427, capture_time = 647988215468033
+12-10 14:02:53.036 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.048 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2ac0 at result frame_number 2428
+12-10 14:02:53.060 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1632 , sof_frame_id 1631
+12-10 14:02:53.060 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1632 , sof_frame_id 1632
+12-10 14:02:53.062 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1632: Book-keeping (frame_num, ack_frame_id) = [2431, 1635] in list
+12-10 14:02:53.064 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2432
+12-10 14:02:53.064 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2bb0, frame_number 2432
+12-10 14:02:53.072 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2428, capture_time = 647988249083033
+12-10 14:02:53.083 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba238 at result frame_number 2429
+12-10 14:02:53.093 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1633 , sof_frame_id 1632
+12-10 14:02:53.093 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1633 , sof_frame_id 1633
+12-10 14:02:53.094 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1633: Book-keeping (frame_num, ack_frame_id) = [2432, 1636] in list
+12-10 14:02:53.096 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2433
+12-10 14:02:53.096 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba148, frame_number 2433
+12-10 14:02:53.098 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2429, capture_time = 647988282553033
+12-10 14:02:53.115 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2c70 at result frame_number 2430
+12-10 14:02:53.116 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.127 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1634 , sof_frame_id 1633
+12-10 14:02:53.127 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1634 , sof_frame_id 1634
+12-10 14:02:53.128 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1634: Book-keeping (frame_num, ack_frame_id) = [2433, 1637] in list
+12-10 14:02:53.130 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2434
+12-10 14:02:53.131 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e4a40, frame_number 2434
+12-10 14:02:53.134 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2430, capture_time = 647988316306033
+12-10 14:02:53.149 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2b08 at result frame_number 2431
+12-10 14:02:53.160 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1635 , sof_frame_id 1634
+12-10 14:02:53.160 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1635 , sof_frame_id 1635
+12-10 14:02:53.161 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1635: Book-keeping (frame_num, ack_frame_id) = [2434, 1638] in list
+12-10 14:02:53.164 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2435
+12-10 14:02:53.164 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2ac0, frame_number 2435
+12-10 14:02:53.166 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2431, capture_time = 647988349639033
+12-10 14:02:53.182 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2bb0 at result frame_number 2432
+12-10 14:02:53.194 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1636 , sof_frame_id 1635
+12-10 14:02:53.194 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1636 , sof_frame_id 1636
+12-10 14:02:53.194 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1636: Book-keeping (frame_num, ack_frame_id) = [2435, 1639] in list
+12-10 14:02:53.196 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.197 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2436
+12-10 14:02:53.197 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba238, frame_number 2436
+12-10 14:02:53.199 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2432, capture_time = 647988383284033
+12-10 14:02:53.217 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba148 at result frame_number 2433
+12-10 14:02:53.227 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1637 , sof_frame_id 1636
+12-10 14:02:53.227 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1637 , sof_frame_id 1637
+12-10 14:02:53.228 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1637: Book-keeping (frame_num, ack_frame_id) = [2436, 1640] in list
+12-10 14:02:53.230 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2437
+12-10 14:02:53.230 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2c70, frame_number 2437
+12-10 14:02:53.233 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2433, capture_time = 647988416722033
+12-10 14:02:53.249 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e4a40 at result frame_number 2434
+12-10 14:02:53.261 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1638 , sof_frame_id 1637
+12-10 14:02:53.261 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1638 , sof_frame_id 1638
+12-10 14:02:53.262 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1638: Book-keeping (frame_num, ack_frame_id) = [2437, 1641] in list
+12-10 14:02:53.264 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2438
+12-10 14:02:53.265 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2b08, frame_number 2438
+12-10 14:02:53.266 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4004 ms. Frames received: 0. Dropped: 0. Rendered: 0. Render fps: .0. Average render time: NA. Average swapBuffer time: NA.
+12-10 14:02:53.268 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2434, capture_time = 647988450374033
+12-10 14:02:53.276 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.283 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2ac0 at result frame_number 2435
+12-10 14:02:53.294 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1639 , sof_frame_id 1638
+12-10 14:02:53.295 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1639 , sof_frame_id 1639
+12-10 14:02:53.296 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1639: Book-keeping (frame_num, ack_frame_id) = [2438, 1642] in list
+12-10 14:02:53.298 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2439
+12-10 14:02:53.298 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2bb0, frame_number 2439
+12-10 14:02:53.302 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2435, capture_time = 647988483817033
+12-10 14:02:53.316 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba238 at result frame_number 2436
+12-10 14:02:53.328 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1640 , sof_frame_id 1639
+12-10 14:02:53.328 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1640 , sof_frame_id 1640
+12-10 14:02:53.329 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1640: Book-keeping (frame_num, ack_frame_id) = [2439, 1643] in list
+12-10 14:02:53.330 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2440
+12-10 14:02:53.330 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba148, frame_number 2440
+12-10 14:02:53.332 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2436, capture_time = 647988517352033
+12-10 14:02:53.350 E/OMX-VENC(  870): Poll timedout, pipeline stalled due to client/firmware ETB: 0, EBD: 0, FTB: 4, FBD: 0
+12-10 14:02:53.351 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2c70 at result frame_number 2437
+12-10 14:02:53.356 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.361 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1641 , sof_frame_id 1640
+12-10 14:02:53.362 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1641 , sof_frame_id 1641
+12-10 14:02:53.363 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1641: Book-keeping (frame_num, ack_frame_id) = [2440, 1644] in list
+12-10 14:02:53.366 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2441
+12-10 14:02:53.366 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e4a40, frame_number 2441
+12-10 14:02:53.371 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2437, capture_time = 647988550890033
+12-10 14:02:53.381 E/asd     (  722): there is more data buffers [primary_out] in circular queue!
+12-10 14:02:53.385 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2b08 at result frame_number 2438
+12-10 14:02:53.395 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1642 , sof_frame_id 1641
+12-10 14:02:53.396 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1642 , sof_frame_id 1642
+12-10 14:02:53.397 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1642: Book-keeping (frame_num, ack_frame_id) = [2441, 1645] in list
+12-10 14:02:53.400 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2442
+12-10 14:02:53.400 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2ac0, frame_number 2442
+12-10 14:02:53.403 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2438, capture_time = 647988584544033
+12-10 14:02:53.417 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2bb0 at result frame_number 2439
+12-10 14:02:53.429 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1643 , sof_frame_id 1642
+12-10 14:02:53.429 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1643 , sof_frame_id 1643
+12-10 14:02:53.430 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1643: Book-keeping (frame_num, ack_frame_id) = [2442, 1646] in list
+12-10 14:02:53.432 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2443
+12-10 14:02:53.432 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba238, frame_number 2443
+12-10 14:02:53.435 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2439, capture_time = 647988618094033
+12-10 14:02:53.436 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.449 D/BluetoothManagerService( 1419): before bindService, unbind service with intent: Intent { act=android.bluetooth.IBluetoothHeadset cmp=com.android.bluetooth/.hfp.HeadsetService }
+12-10 14:02:53.451 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba148 at result frame_number 2440
+12-10 14:02:53.462 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1644 , sof_frame_id 1643
+12-10 14:02:53.462 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1644 , sof_frame_id 1644
+12-10 14:02:53.463 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1644: Book-keeping (frame_num, ack_frame_id) = [2443, 1647] in list
+12-10 14:02:53.466 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2444
+12-10 14:02:53.466 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2c70, frame_number 2444
+12-10 14:02:53.469 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2440, capture_time = 647988651780033
+12-10 14:02:53.483 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4004 ms. Frames received: 0. Dropped: 0. Rendered: 0. Render fps: .0. Average render time: NA. Average swapBuffer time: NA.
+12-10 14:02:53.484 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4004 ms. Frames received: 0. Dropped: 0. Rendered: 0. Render fps: .0. Average render time: NA. Average swapBuffer time: NA.
+12-10 14:02:53.485 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e4a40 at result frame_number 2441
+12-10 14:02:53.496 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1645 , sof_frame_id 1644
+12-10 14:02:53.496 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1645 , sof_frame_id 1645
+12-10 14:02:53.497 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1645: Book-keeping (frame_num, ack_frame_id) = [2444, 1648] in list
+12-10 14:02:53.499 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2445
+12-10 14:02:53.499 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2b08, frame_number 2445
+12-10 14:02:53.502 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2441, capture_time = 647988685074033
+12-10 14:02:53.516 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.518 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2ac0 at result frame_number 2442
+12-10 14:02:53.529 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1646 , sof_frame_id 1645
+12-10 14:02:53.531 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1646 , sof_frame_id 1646
+12-10 14:02:53.532 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1646: Book-keeping (frame_num, ack_frame_id) = [2445, 1649] in list
+12-10 14:02:53.533 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2446
+12-10 14:02:53.534 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2bb0, frame_number 2446
+12-10 14:02:53.537 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2442, capture_time = 647988718608033
+12-10 14:02:53.552 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba238 at result frame_number 2443
+12-10 14:02:53.563 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1647 , sof_frame_id 1646
+12-10 14:02:53.563 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1647 , sof_frame_id 1647
+12-10 14:02:53.564 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1647: Book-keeping (frame_num, ack_frame_id) = [2446, 1650] in list
+12-10 14:02:53.566 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2447
+12-10 14:02:53.566 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba148, frame_number 2447
+12-10 14:02:53.569 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2443, capture_time = 647988752149033
+12-10 14:02:53.587 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2c70 at result frame_number 2444
+12-10 14:02:53.596 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.596 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1648 , sof_frame_id 1647
+12-10 14:02:53.596 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1648 , sof_frame_id 1648
+12-10 14:02:53.597 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1648: Book-keeping (frame_num, ack_frame_id) = [2447, 1651] in list
+12-10 14:02:53.599 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2448
+12-10 14:02:53.600 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e4a40, frame_number 2448
+12-10 14:02:53.602 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2444, capture_time = 647988785816033
+12-10 14:02:53.618 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2b08 at result frame_number 2445
+12-10 14:02:53.631 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1649 , sof_frame_id 1648
+12-10 14:02:53.631 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1649 , sof_frame_id 1649
+12-10 14:02:53.632 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1649: Book-keeping (frame_num, ack_frame_id) = [2448, 1652] in list
+12-10 14:02:53.634 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2449
+12-10 14:02:53.635 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2ac0, frame_number 2449
+12-10 14:02:53.637 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2445, capture_time = 647988819242033
+12-10 14:02:53.653 E/libc    ( 9714): Access denied finding property "ro.hwfix.ro.process_list"
+12-10 14:02:53.654 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2bb0 at result frame_number 2446
+12-10 14:02:53.663 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1650 , sof_frame_id 1649
+12-10 14:02:53.663 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1650 , sof_frame_id 1650
+12-10 14:02:53.664 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1650: Book-keeping (frame_num, ack_frame_id) = [2449, 1653] in list
+12-10 14:02:53.666 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2450
+12-10 14:02:53.666 E/libc    ( 9714): Access denied finding property "ro.hwfix.ro.process_list"
+12-10 14:02:53.666 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba238, frame_number 2450
+12-10 14:02:53.670 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2446, capture_time = 647988852902033
+12-10 14:02:53.676 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.687 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba148 at result frame_number 2447
+12-10 14:02:53.697 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1651 , sof_frame_id 1650
+12-10 14:02:53.697 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1651 , sof_frame_id 1651
+12-10 14:02:53.698 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1651: Book-keeping (frame_num, ack_frame_id) = [2450, 1654] in list
+12-10 14:02:53.699 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2451
+12-10 14:02:53.699 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2c70, frame_number 2451
+12-10 14:02:53.703 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2447, capture_time = 647988886321033
+12-10 14:02:53.719 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e4a40 at result frame_number 2448
+12-10 14:02:53.730 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1652 , sof_frame_id 1651
+12-10 14:02:53.730 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1652 , sof_frame_id 1652
+12-10 14:02:53.733 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1652: Book-keeping (frame_num, ack_frame_id) = [2451, 1655] in list
+12-10 14:02:53.736 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2452
+12-10 14:02:53.736 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2b08, frame_number 2452
+12-10 14:02:53.740 E/asd     (  722): there is more data buffers [primary_out] in circular queue!
+12-10 14:02:53.749 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2448, capture_time = 647988919864033
+12-10 14:02:53.753 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2ac0 at result frame_number 2449
+12-10 14:02:53.756 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.764 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1653 , sof_frame_id 1652
+12-10 14:02:53.764 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1653 , sof_frame_id 1653
+12-10 14:02:53.765 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1653: Book-keeping (frame_num, ack_frame_id) = [2452, 1656] in list
+12-10 14:02:53.766 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2453
+12-10 14:02:53.766 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2bb0, frame_number 2453
+12-10 14:02:53.769 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2449, capture_time = 647988953516033
+12-10 14:02:53.786 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba238 at result frame_number 2450
+12-10 14:02:53.797 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1654 , sof_frame_id 1653
+12-10 14:02:53.798 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1654 , sof_frame_id 1654
+12-10 14:02:53.799 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1654: Book-keeping (frame_num, ack_frame_id) = [2453, 1657] in list
+12-10 14:02:53.801 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2454
+12-10 14:02:53.802 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba148, frame_number 2454
+12-10 14:02:53.806 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2450, capture_time = 647988987083033
+12-10 14:02:53.820 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2c70 at result frame_number 2451
+12-10 14:02:53.831 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1655 , sof_frame_id 1654
+12-10 14:02:53.833 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1655 , sof_frame_id 1655
+12-10 14:02:53.835 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1655: Book-keeping (frame_num, ack_frame_id) = [2454, 1658] in list
+12-10 14:02:53.838 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2455
+12-10 14:02:53.838 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e4a40, frame_number 2455
+12-10 14:02:53.839 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.839 E/asd     (  722): there is more data buffers [primary_out] in circular queue!
+12-10 14:02:53.843 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2451, capture_time = 647989020515033
+12-10 14:02:53.856 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2b08 at result frame_number 2452
+12-10 14:02:53.865 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1656 , sof_frame_id 1655
+12-10 14:02:53.865 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1656 , sof_frame_id 1656
+12-10 14:02:53.866 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1656: Book-keeping (frame_num, ack_frame_id) = [2455, 1659] in list
+12-10 14:02:53.868 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2456
+12-10 14:02:53.868 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2ac0, frame_number 2456
+12-10 14:02:53.871 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2452, capture_time = 647989054058033
+12-10 14:02:53.886 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2bb0 at result frame_number 2453
+12-10 14:02:53.898 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1657 , sof_frame_id 1656
+12-10 14:02:53.898 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1657 , sof_frame_id 1657
+12-10 14:02:53.900 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1657: Book-keeping (frame_num, ack_frame_id) = [2456, 1660] in list
+12-10 14:02:53.901 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2457
+12-10 14:02:53.902 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba238, frame_number 2457
+12-10 14:02:53.906 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2453, capture_time = 647989087578033
+12-10 14:02:53.916 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.920 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba148 at result frame_number 2454
+12-10 14:02:53.932 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1658 , sof_frame_id 1657
+12-10 14:02:53.932 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1658 , sof_frame_id 1658
+12-10 14:02:53.933 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1658: Book-keeping (frame_num, ack_frame_id) = [2457, 1661] in list
+12-10 14:02:53.935 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2458
+12-10 14:02:53.935 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2c70, frame_number 2458
+12-10 14:02:53.937 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2454, capture_time = 647989121185033
+12-10 14:02:53.954 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e4a40 at result frame_number 2455
+12-10 14:02:53.966 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1659 , sof_frame_id 1658
+12-10 14:02:53.967 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1659 , sof_frame_id 1659
+12-10 14:02:53.968 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1659: Book-keeping (frame_num, ack_frame_id) = [2458, 1662] in list
+12-10 14:02:53.970 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2459
+12-10 14:02:53.970 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2b08, frame_number 2459
+12-10 14:02:53.976 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2455, capture_time = 647989154663033
+12-10 14:02:53.991 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2ac0 at result frame_number 2456
+12-10 14:02:53.996 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:53.999 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1660 , sof_frame_id 1659
+12-10 14:02:54.000 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1660 , sof_frame_id 1660
+12-10 14:02:54.003 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1660: Book-keeping (frame_num, ack_frame_id) = [2459, 1663] in list
+12-10 14:02:54.005 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2460
+12-10 14:02:54.006 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2bb0, frame_number 2460
+12-10 14:02:54.007 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2456, capture_time = 647989188331033
+12-10 14:02:54.020 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba238 at result frame_number 2457
+12-10 14:02:54.033 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1661 , sof_frame_id 1660
+12-10 14:02:54.033 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1661 , sof_frame_id 1661
+12-10 14:02:54.034 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1661: Book-keeping (frame_num, ack_frame_id) = [2460, 1664] in list
+12-10 14:02:54.035 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2461
+12-10 14:02:54.035 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba148, frame_number 2461
+12-10 14:02:54.038 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2457, capture_time = 647989221759033
+12-10 14:02:54.055 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2c70 at result frame_number 2458
+12-10 14:02:54.066 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1662 , sof_frame_id 1661
+12-10 14:02:54.067 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1662 , sof_frame_id 1662
+12-10 14:02:54.068 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1662: Book-keeping (frame_num, ack_frame_id) = [2461, 1665] in list
+12-10 14:02:54.070 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2462
+12-10 14:02:54.070 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e4a40, frame_number 2462
+12-10 14:02:54.072 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2458, capture_time = 647989255296033
+12-10 14:02:54.076 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:54.081 D/lux trace:( 1419): [551.0/647985299, 551.0/647985502, 552.0/647985906, 551.0/647986108, 551.0/647986309, 552.0/647986511, 552.0/647986714, 552.0/647986916, 552.0/647987118, 552.0/647987522, 552.0/647987723, 552.0/647987928, 552.0/647988332, 553.0/647988532, 552.0/647988734, 552.0/647988937, 552.0/647989138]
+12-10 14:02:54.088 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2b08 at result frame_number 2459
+12-10 14:02:54.100 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1663 , sof_frame_id 1662
+12-10 14:02:54.100 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1663 , sof_frame_id 1663
+12-10 14:02:54.101 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1663: Book-keeping (frame_num, ack_frame_id) = [2462, 1666] in list
+12-10 14:02:54.103 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2463
+12-10 14:02:54.103 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2ac0, frame_number 2463
+12-10 14:02:54.105 W/ActivityManager( 1419): Sending non-protected broadcast telephony.dataconnection.DNS_MONITOR_ACTION from system uid 1000 pkg android
+12-10 14:02:54.107 V/BroadcastQueue( 1419): Finished with ordered broadcast BroadcastRecord{b60f945 u0 telephony.dataconnection.DNS_MONITOR_ACTION}
+12-10 14:02:54.108 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2459, capture_time = 647989288893033
+12-10 14:02:54.121 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2bb0 at result frame_number 2460
+12-10 14:02:54.133 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1664 , sof_frame_id 1663
+12-10 14:02:54.134 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1664 , sof_frame_id 1664
+12-10 14:02:54.135 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1664: Book-keeping (frame_num, ack_frame_id) = [2463, 1667] in list
+12-10 14:02:54.136 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2464
+12-10 14:02:54.137 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba238, frame_number 2464
+12-10 14:02:54.138 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2460, capture_time = 647989322381033
+12-10 14:02:54.155 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba148 at result frame_number 2461
+12-10 14:02:54.156 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:54.167 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1665 , sof_frame_id 1664
+12-10 14:02:54.167 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1665 , sof_frame_id 1665
+12-10 14:02:54.168 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1665: Book-keeping (frame_num, ack_frame_id) = [2464, 1668] in list
+12-10 14:02:54.169 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2465
+12-10 14:02:54.170 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2c70, frame_number 2465
+12-10 14:02:54.173 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2461, capture_time = 647989355921033
+12-10 14:02:54.186 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4004 ms. Frames received: 0. Dropped: 0. Rendered: 0. Render fps: .0. Average render time: NA. Average swapBuffer time: NA.
+12-10 14:02:54.190 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e4a40 at result frame_number 2462
+12-10 14:02:54.200 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1666 , sof_frame_id 1665
+12-10 14:02:54.200 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1666 , sof_frame_id 1666
+12-10 14:02:54.201 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1666: Book-keeping (frame_num, ack_frame_id) = [2465, 1669] in list
+12-10 14:02:54.204 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2466
+12-10 14:02:54.204 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2b08, frame_number 2466
+12-10 14:02:54.206 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2462, capture_time = 647989389678033
+12-10 14:02:54.214 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4000 ms. Frames received: 120. Dropped: 0. Rendered: 120. Render fps: 30.0. Average render time: 2571 us. Average swapBuffer time: 1338 us.
+12-10 14:02:54.217 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4004 ms. Frames received: 0. Dropped: 0. Rendered: 0. Render fps: .0. Average render time: NA. Average swapBuffer time: NA.
+12-10 14:02:54.222 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2ac0 at result frame_number 2463
+12-10 14:02:54.234 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1667 , sof_frame_id 1666
+12-10 14:02:54.234 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1667 , sof_frame_id 1667
+12-10 14:02:54.235 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1667: Book-keeping (frame_num, ack_frame_id) = [2466, 1670] in list
+12-10 14:02:54.236 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:54.237 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2467
+12-10 14:02:54.237 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2bb0, frame_number 2467
+12-10 14:02:54.239 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2463, capture_time = 647989423010033
+12-10 14:02:54.257 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba238 at result frame_number 2464
+12-10 14:02:54.265 I/org.webrtc.Logging(28191): CameraStatistics: Camera fps: 30.
+12-10 14:02:54.267 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1668 , sof_frame_id 1667
+12-10 14:02:54.267 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1668 , sof_frame_id 1668
+12-10 14:02:54.268 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1668: Book-keeping (frame_num, ack_frame_id) = [2467, 1671] in list
+12-10 14:02:54.270 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2468
+12-10 14:02:54.271 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba148, frame_number 2468
+12-10 14:02:54.273 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2464, capture_time = 647989456556033
+12-10 14:02:54.290 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2c70 at result frame_number 2465
+12-10 14:02:54.301 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1669 , sof_frame_id 1668
+12-10 14:02:54.301 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1669 , sof_frame_id 1669
+12-10 14:02:54.302 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1669: Book-keeping (frame_num, ack_frame_id) = [2468, 1672] in list
+12-10 14:02:54.303 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2469
+12-10 14:02:54.304 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e4a40, frame_number 2469
+12-10 14:02:54.306 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2465, capture_time = 647989490119033
+12-10 14:02:54.316 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:54.322 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2b08 at result frame_number 2466
+12-10 14:02:54.334 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1670 , sof_frame_id 1669
+12-10 14:02:54.335 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1670 , sof_frame_id 1670
+12-10 14:02:54.336 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1670: Book-keeping (frame_num, ack_frame_id) = [2469, 1673] in list
+12-10 14:02:54.338 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2470
+12-10 14:02:54.338 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2ac0, frame_number 2470
+12-10 14:02:54.340 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2466, capture_time = 647989523694033
+12-10 14:02:54.351 E/OMX-VENC(  870): Poll timedout, pipeline stalled due to client/firmware ETB: 0, EBD: 0, FTB: 4, FBD: 0
+12-10 14:02:54.358 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2bb0 at result frame_number 2467
+12-10 14:02:54.368 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1671 , sof_frame_id 1670
+12-10 14:02:54.368 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1671 , sof_frame_id 1671
+12-10 14:02:54.369 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1671: Book-keeping (frame_num, ack_frame_id) = [2470, 1674] in list
+12-10 14:02:54.372 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2471
+12-10 14:02:54.372 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba238, frame_number 2471
+12-10 14:02:54.374 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2467, capture_time = 647989557188033
+12-10 14:02:54.390 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba148 at result frame_number 2468
+12-10 14:02:54.396 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:54.401 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1672 , sof_frame_id 1671
+12-10 14:02:54.401 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1672 , sof_frame_id 1672
+12-10 14:02:54.404 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1672: Book-keeping (frame_num, ack_frame_id) = [2471, 1675] in list
+12-10 14:02:54.406 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2472
+12-10 14:02:54.406 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2c70, frame_number 2472
+12-10 14:02:54.408 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2468, capture_time = 647989590725033
+12-10 14:02:54.424 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e4a40 at result frame_number 2469
+12-10 14:02:54.435 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1673 , sof_frame_id 1672
+12-10 14:02:54.435 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1673 , sof_frame_id 1673
+12-10 14:02:54.436 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1673: Book-keeping (frame_num, ack_frame_id) = [2472, 1676] in list
+12-10 14:02:54.438 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2473
+12-10 14:02:54.438 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2b08, frame_number 2473
+12-10 14:02:54.440 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2469, capture_time = 647989624268033
+12-10 14:02:54.457 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2ac0 at result frame_number 2470
+12-10 14:02:54.468 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1674 , sof_frame_id 1673
+12-10 14:02:54.469 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1674 , sof_frame_id 1674
+12-10 14:02:54.470 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1674: Book-keeping (frame_num, ack_frame_id) = [2473, 1677] in list
+12-10 14:02:54.471 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2474
+12-10 14:02:54.472 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2bb0, frame_number 2474
+12-10 14:02:54.473 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2470, capture_time = 647989657809033
+12-10 14:02:54.476 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:54.491 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xe5dba238 at result frame_number 2471
+12-10 14:02:54.502 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1675 , sof_frame_id 1674
+12-10 14:02:54.502 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1675 , sof_frame_id 1675
+12-10 14:02:54.503 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1675: Book-keeping (frame_num, ack_frame_id) = [2474, 1678] in list
+12-10 14:02:54.504 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2475
+12-10 14:02:54.505 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba148, frame_number 2475
+12-10 14:02:54.507 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2471, capture_time = 647989691569033
+12-10 14:02:54.524 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2c70 at result frame_number 2472
+12-10 14:02:54.536 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1676 , sof_frame_id 1675
+12-10 14:02:54.536 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1676 , sof_frame_id 1676
+12-10 14:02:54.537 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1676: Book-keeping (frame_num, ack_frame_id) = [2475, 1679] in list
+12-10 14:02:54.539 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2476
+12-10 14:02:54.539 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e4a40, frame_number 2476
+12-10 14:02:54.541 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2472, capture_time = 647989724899033
+12-10 14:02:54.556 D/asd_primary_out(  722): L[0],R[0], continus 20 times!
+12-10 14:02:54.557 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2b08 at result frame_number 2473
+12-10 14:02:54.569 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1677 , sof_frame_id 1676
+12-10 14:02:54.569 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1677 , sof_frame_id 1677
+12-10 14:02:54.570 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1677: Book-keeping (frame_num, ack_frame_id) = [2476, 1680] in list
+12-10 14:02:54.572 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2477
+12-10 14:02:54.572 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xf09e2ac0, frame_number 2477
+12-10 14:02:54.573 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4003 ms. Frames received: 0. Dropped: 0. Rendered: 0. Render fps: .0. Average render time: NA. Average swapBuffer time: NA.
+12-10 14:02:54.574 I/QCamera (  724): <HAL><INFO> handleMetadataWithLock: 3880: valid frame_number = 2473, capture_time = 647989758553033
+12-10 14:02:54.580 I/org.webrtc.Logging(28191): EglRenderer: Duration: 4005 ms. Frames received: 0. Dropped: 0. Rendered: 0. Render fps: .0. Average render time: NA. Average swapBuffer time: NA.
+12-10 14:02:54.592 I/QCamera (  724): <HAL><INFO> handleBufferWithLock: 4577: cache buffer 0xf09e2bb0 at result frame_number 2474
+12-10 14:02:54.603 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1678 , sof_frame_id 1677
+12-10 14:02:54.603 E/mm-camera(  724): <IFACE ><ERROR> 9026: iface_util_hw_notify_sof: iface_util_hw_notify_sof SOF event frame_id 1678 , sof_frame_id 1678
+12-10 14:02:54.604 I/mm-camera(  724): <MCT   >< INFO> 1164: mct_stream_map_frame_number: SOF 1678: Book-keeping (frame_num, ack_frame_id) = [2477, 1681] in list
+12-10 14:02:54.605 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6046: num_output_buffers = 1 input_buffer = 0x0 frame_number = 2478
+12-10 14:02:54.605 I/QCamera (  724): <HAL><INFO> processCaptureRequest: 6483: request with buffer 0xe5dba238, frame_number 2478
