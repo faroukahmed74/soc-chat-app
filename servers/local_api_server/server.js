@@ -2637,6 +2637,13 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       const sockets = await io.in(chatId).fetchSockets();
       for (const socket of sockets) {
         const mediaUrlForThisSocket = rewriteMediaUrlIfNeeded(message.mediaUrl, socket.handshake?.headers || {});
+        // CRITICAL: Ensure createdAt is sent as ISO string for consistent parsing
+        const createdAtIso = message.createdAt instanceof Date 
+          ? message.createdAt.toISOString() 
+          : (typeof message.createdAt === 'string' 
+              ? message.createdAt 
+              : new Date().toISOString());
+        
         socket.emit('new_message', {
           id: result.insertedId.toString(),
           _id: result.insertedId.toString(),
@@ -2646,7 +2653,8 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
           content: message.content,
           messageType: message.messageType,
           mediaUrl: mediaUrlForThisSocket,
-          createdAt: message.createdAt,
+          createdAt: createdAtIso, // Always send as ISO string
+          timestamp: createdAtIso, // Also include as timestamp for compatibility
           readBy: [], // Include readBy array (empty for new messages)
           status: 'sent' // Include status (sent for new messages)
         });

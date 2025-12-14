@@ -69,10 +69,34 @@
 
   <!-- Responsive Configuration -->
   <script>
+    // Set CanvasKit base URL early to prevent CDN loading
     window.flutterConfiguration = {
       canvasKitBaseUrl: './canvaskit/',
-      useHostedFonts: false
+      useHostedFonts: false,
+      assetBase: window.location.origin + '/'
     };
+    
+    // Ensure _flutter object exists and set CanvasKit path
+    if (!window._flutter) {
+      window._flutter = {};
+    }
+    window._flutter.canvasKitBaseUrl = './canvaskit/';
+    
+    // Intercept fetch requests to prevent CanvasKit CDN loading
+    (function() {
+      const originalFetch = window.fetch;
+      window.fetch = function(...args) {
+        const url = args[0];
+        if (typeof url === 'string' && url.includes('gstatic.com/flutter-canvaskit')) {
+          // Replace gstatic.com URL with local path
+          const localPath = url.replace(/https?:\/\/[^\/]+/, '');
+          const newUrl = './canvaskit' + localPath.split('canvaskit')[1] || localPath.replace(/.*\/canvaskit/, './canvaskit');
+          console.log('Intercepted CanvasKit CDN request, using local:', newUrl);
+          args[0] = newUrl;
+        }
+        return originalFetch.apply(this, args);
+      };
+    })();
   (function(){
       function removeGF() {
         try {
@@ -285,17 +309,60 @@
         }
       });
     }
+    let startFlutterAttempts = 0;
+    const MAX_START_ATTEMPTS = 50; // Max 5 seconds (50 * 100ms)
+    
     function startFlutter() {
       try {
+        startFlutterAttempts++;
+        
+        // Safety check: prevent infinite loops
+        if (startFlutterAttempts > MAX_START_ATTEMPTS) {
+          console.error('Flutter initialization timeout - giving up after', MAX_START_ATTEMPTS, 'attempts');
+          document.getElementById('loading').style.display = 'none';
+          document.body.innerHTML = '<div style="padding: 20px; text-align: center;"><h2>Failed to load app</h2><p>Please refresh the page.</p></div>';
+          return;
+        }
+        
+        // Wait for Flutter scripts to load
         if (typeof _flutter === 'undefined' || !_flutter.loader || !window._flutter.buildConfig) {
           setTimeout(startFlutter, 100);
           return;
         }
+        
+        // Ensure configuration is set
+        if (!window.flutterConfiguration) {
+          window.flutterConfiguration = {
+            canvasKitBaseUrl: './canvaskit/',
+            useHostedFonts: false,
+            assetBase: window.location.origin + '/'
+          };
+        }
+        
+        // Set CanvasKit base URL early to prevent CDN loading
+        if (window._flutter) {
+          window._flutter.canvasKitBaseUrl = './canvaskit/';
+        }
+        
+        console.log('Starting Flutter with configuration:', window.flutterConfiguration);
+        
+        // Suppress service worker errors for HTTP (expected behavior)
+        const originalConsoleError = console.error;
+        console.error = function(...args) {
+          if (args[0] && typeof args[0] === 'string' && args[0].includes('Service Worker API unavailable')) {
+            // Suppress service worker errors for HTTP - this is expected
+            return;
+          }
+          originalConsoleError.apply(console, args);
+        };
+        
         _flutter.loader.load({
-          serviceWorkerSettings: { serviceWorkerVersion: serviceWorkerVersion },
+          serviceWorkerSettings: serviceWorkerVersion ? { serviceWorkerVersion: serviceWorkerVersion } : null,
           config: window.flutterConfiguration,
           onEntrypointLoaded: function(engineInitializer) {
+            console.log('Flutter entrypoint loaded, initializing engine...');
             engineInitializer.initializeEngine().then(function(appRunner) {
+              console.log('Flutter engine initialized, running app...');
               document.getElementById('loading').style.display = 'none';
               appRunner.runApp();
             }).catch(function(error) {
@@ -309,9 +376,16 @@
         document.getElementById('loading').style.display = 'none';
       }
     }
-    window.addEventListener('load', startFlutter);
+    
+    // Wait for all scripts to load before starting
+    window.addEventListener('load', function() {
+      // Give scripts a moment to execute
+      setTimeout(startFlutter, 200);
+    });
+    
+    // Also try if DOM is already ready
     if (document.readyState === 'complete' || document.readyState === 'interactive') {
-      setTimeout(startFlutter, 100);
+      setTimeout(startFlutter, 300);
     }
   </script>
 </body>

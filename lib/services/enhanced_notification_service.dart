@@ -421,10 +421,16 @@ class EnhancedNotificationService {
   }
 
   Future<void> _playNotificationSound() async {
+    // Skip sound on mobile - use device notification sound only
+    if (!kIsWeb) {
+      Log.i('🔇 Notification sound skipped on Mobile (using device notification sound)', 'ENHANCED_NOTIF');
+      return;
+    }
+    
     try {
       Log.i('🔊 Playing notification sound...', 'ENHANCED_NOTIF');
       
-      // Play the noti_sound.wav file for all notifications (messages and broadcasts)
+      // Play the noti_sound.wav file for all notifications (messages and broadcasts) - WEB ONLY
       // Note: Browsers require prior user interaction to allow audio.
       await _audioPlayer.stop();
       await _audioPlayer.setReleaseMode(ReleaseMode.stop);
@@ -432,21 +438,21 @@ class EnhancedNotificationService {
       try {
         // Primary sound: noti_sound.wav
         await _audioPlayer.play(AssetSource('noti_sound.wav'));
-        Log.i('✅ Notification sound played (noti_sound.wav)', 'ENHANCED_NOTIF');
+        Log.i('✅ Notification sound played (noti_sound.wav) on Web', 'ENHANCED_NOTIF');
       } catch (e) {
-        Log.w('noti_sound.wav failed, trying fallback...', 'ENHANCED_NOTIF');
+        Log.w('noti_sound.wav failed on Web, trying fallback...', 'ENHANCED_NOTIF');
         try {
           // Fallback to notification_sound.mp3
           await _audioPlayer.play(AssetSource('notification_sound.mp3'));
-          Log.i('✅ Notification sound played (notification_sound.mp3 fallback)', 'ENHANCED_NOTIF');
+          Log.i('✅ Notification sound played (notification_sound.mp3 fallback) on Web', 'ENHANCED_NOTIF');
         } catch (e2) {
-          Log.w('Fallback asset failed: $e2. Trying additional fallback.', 'ENHANCED_NOTIF');
+          Log.w('Fallback asset failed on Web: $e2. Trying additional fallback.', 'ENHANCED_NOTIF');
           try {
             // Try notification_sounds folder
             await _audioPlayer.play(AssetSource('notification_sounds/chat_notification.mp3'));
-            Log.i('✅ Notification sound played (chat_notification.mp3 fallback)', 'ENHANCED_NOTIF');
+            Log.i('✅ Notification sound played (chat_notification.mp3 fallback) on Web', 'ENHANCED_NOTIF');
           } catch (e3) {
-            Log.w('All sound assets failed: $e3. Using programmatic tone.', 'ENHANCED_NOTIF');
+            Log.w('All sound assets failed on Web: $e3. Using programmatic tone.', 'ENHANCED_NOTIF');
             await _playProgrammaticTone();
           }
         }

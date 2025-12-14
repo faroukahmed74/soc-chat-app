@@ -166,7 +166,13 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('User Profile'),
+        backgroundColor: _themeService.isDarkMode ? const Color(0xFF353941) : Colors.white,
+        title: Text(
+          'User Profile',
+          style: TextStyle(
+            color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+          ),
+        ),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -214,13 +220,22 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('Close'),
+            child: Text(
+              'Close',
+              style: TextStyle(
+                color: _themeService.isDarkMode ? Colors.white70 : Colors.black54,
+              ),
+            ),
           ),
           ElevatedButton(
             onPressed: () {
               Navigator.pop(context);
               _startChat(user.id);
             },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF5F85DB),
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Start Chat'),
           ),
         ],
@@ -425,18 +440,27 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
     final isWideScreen = MediaQuery.of(context).size.width > 600;
     final currentUser = null; // We'll get this from token if needed
 
+    final isDarkMode = _themeService.isDarkMode;
+
     return Scaffold(
+      backgroundColor: isDarkMode ? const Color(0xFF26282B) : const Color(0xFFFAFAFA),
       appBar: AppBar(
-        title: const Text('Search Users'),
-        backgroundColor: _themeService.isDarkMode ? Colors.grey[900] : Colors.blue,
-        foregroundColor: Colors.white,
+        title: Text(
+          'Search Users',
+          style: TextStyle(
+            color: isDarkMode ? Colors.white : Colors.black87,
+          ),
+        ),
+        backgroundColor: isDarkMode ? const Color(0xFF353941) : Colors.white,
+        foregroundColor: isDarkMode ? Colors.white : Colors.black87,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: Icon(_themeService.isDarkMode ? Icons.light_mode : Icons.dark_mode),
+            icon: Icon(isDarkMode ? Icons.light_mode : Icons.dark_mode),
             onPressed: () {
               _themeService.toggleTheme();
             },
-            tooltip: _themeService.isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode',
+            tooltip: isDarkMode ? 'Switch to Light Mode' : 'Switch to Dark Mode',
           ),
         ],
       ),
@@ -447,10 +471,39 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
               padding: const EdgeInsets.all(16.0),
               child: TextField(
                 controller: _searchController,
-                decoration: const InputDecoration(
+                style: TextStyle(
+                  color: isDarkMode ? Colors.white : Colors.black87,
+                ),
+                decoration: InputDecoration(
                   labelText: 'Search users by username or email',
-                  prefixIcon: Icon(Icons.search),
-                  border: OutlineInputBorder(),
+                  labelStyle: TextStyle(
+                    color: isDarkMode ? Colors.white70 : Colors.black54,
+                  ),
+                  prefixIcon: Icon(
+                    Icons.search,
+                    color: isDarkMode ? Colors.white70 : Colors.black54,
+                  ),
+                  filled: true,
+                  fillColor: isDarkMode ? const Color(0xFF353941) : Colors.white,
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: isDarkMode ? Colors.white24 : Colors.grey.shade300,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: isDarkMode ? Colors.white24 : Colors.grey.shade300,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide(
+                      color: isDarkMode ? const Color(0xFF5F85DB) : const Color(0xFF5F85DB),
+                      width: 2,
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -464,7 +517,14 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                     final blockedIds = <String>{}; // Empty for now, can be implemented later
                     final visibleUsers = _getVisibleUsers(blockedIds);
                     if (visibleUsers.isEmpty) {
-                      return const Center(child: Text('No users found.'));
+                      return Center(
+                        child: Text(
+                          'No users found.',
+                          style: TextStyle(
+                            color: isDarkMode ? Colors.white70 : Colors.black54,
+                          ),
+                        ),
+                      );
                     }
                     return ListView.builder(
                       itemCount: visibleUsers.length,
@@ -486,24 +546,40 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                         
                         return Card(
                           margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                          color: isDarkMode ? const Color(0xFF353941) : Colors.white,
+                          elevation: 0,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            side: BorderSide(
+                              color: isDarkMode ? Colors.white24 : Colors.grey.shade200,
+                              width: 1,
+                            ),
+                          ),
                           child: ListTile(
                             leading: CircleAvatar(
+                              backgroundColor: isDarkMode ? const Color(0xFF5F85DB) : const Color(0xFF5F85DB),
                               backgroundImage: photoUrl.isNotEmpty
                                   ? NetworkImage(photoUrl)
                                   : null,
                               child: photoUrl.isEmpty
-                                  ? const Icon(Icons.person)
+                                  ? Icon(
+                                      Icons.person,
+                                      color: Colors.white,
+                                    )
                                   : null,
                             ),
                             title: Text(
                               displayName.isNotEmpty ? displayName : (username.isNotEmpty ? username : 'Unknown User'),
-                              style: const TextStyle(fontWeight: FontWeight.w500),
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: isDarkMode ? Colors.white : Colors.black87,
+                              ),
                             ),
                             subtitle: Text(
                               email.isNotEmpty ? email : 'No email provided',
                               style: TextStyle(
                                 fontSize: 13,
-                                color: _themeService.isDarkMode ? Colors.white70 : Colors.grey[600],
+                                color: isDarkMode ? Colors.white70 : Colors.black54,
                               ),
                             ),
                             trailing: isWideScreen
@@ -515,7 +591,8 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                                         label: const Text('Profile'),
                                         style: ElevatedButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                                          backgroundColor: Colors.grey[600],
+                                          backgroundColor: isDarkMode ? Colors.grey[700] : Colors.grey[300],
+                                          foregroundColor: isDarkMode ? Colors.white : Colors.black87,
                                         ),
                                         onPressed: () => _showUserProfile(user),
                                       ),
@@ -525,6 +602,8 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
                                         label: const Text('Chat'),
                                         style: ElevatedButton.styleFrom(
                                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                          backgroundColor: isDarkMode ? const Color(0xFF5F85DB) : const Color(0xFF5F85DB),
+                                          foregroundColor: Colors.white,
                                         ),
                                         onPressed: () => _startChat(userId),
                                       ),

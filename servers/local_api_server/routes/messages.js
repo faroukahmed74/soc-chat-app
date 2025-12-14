@@ -101,28 +101,32 @@ router.post('/', authenticateToken, async (req, res) => {
     
     const result = await messagesCollection.insertOne(newMessage);
     
-    // Update chat's last message
+    // Get sender's display name for notifications
+    const usersCollection = database.collection('users');
+    const sender = await usersCollection.findOne({ _id: new ObjectId(req.user.id) });
+    const senderName = sender?.displayName || sender?.username || 'Someone';
+    
+    // CRITICAL: Update chat's lastMessageTime - this is what causes the frozen timestamp issue!
+    const now = new Date();
     await chatsCollection.updateOne(
       { _id: new ObjectId(chatId) },
       {
         $set: {
+          updatedAt: now,
+          lastMessageTime: now, // CRITICAL: This field is used for chat list sorting
           lastMessage: {
             content,
             senderId: new ObjectId(req.user.id),
-            createdAt: new Date()
-          },
-          updatedAt: new Date()
+            senderName: senderName,
+            timestamp: now.toISOString(), // ISO string for client parsing
+            createdAt: now
+          }
         },
         $pull: {
           deletedFor: { $in: chat.members }
         }
       }
     );
-    
-    // Get sender's display name for notifications
-    const usersCollection = database.collection('users');
-    const sender = await usersCollection.findOne({ _id: new ObjectId(req.user.id) });
-    const senderName = sender?.displayName || sender?.username || 'Someone';
     
     // Get other chat members (not the sender) for FCM notifications
     const otherMembers = chat.members
@@ -851,6 +855,13 @@ router.post('/:messageId/reply', authenticateToken, async (req, res) => {
     try {
       const io = req.app.get('io');
       if (io) {
+        // CRITICAL: Ensure createdAt is sent as ISO string for consistent parsing
+        const createdAtIso = replyMessage.createdAt instanceof Date 
+          ? replyMessage.createdAt.toISOString() 
+          : (typeof replyMessage.createdAt === 'string' 
+              ? replyMessage.createdAt 
+              : new Date().toISOString());
+        
         // Emit to the entire chat room
         io.to(originalMessage.chatId.toString()).emit('new_message', {
           id: result.insertedId.toString(),
@@ -861,7 +872,8 @@ router.post('/:messageId/reply', authenticateToken, async (req, res) => {
           content: replyMessage.content,
           messageType: replyMessage.messageType,
           mediaUrl: rewriteMediaUrlIfNeeded(replyMessage.mediaUrl, req),
-          createdAt: replyMessage.createdAt,
+          createdAt: createdAtIso, // Always send as ISO string
+          timestamp: createdAtIso, // Also include as timestamp for compatibility
           replyTo: messageId,
           replyToContent: replyMessage.replyToContent,
           replyToSenderName: replyMessage.replyToSenderName,
@@ -880,7 +892,8 @@ router.post('/:messageId/reply', authenticateToken, async (req, res) => {
             content: replyMessage.content,
             messageType: replyMessage.messageType,
             mediaUrl: rewriteMediaUrlIfNeeded(replyMessage.mediaUrl, req),
-            createdAt: replyMessage.createdAt,
+            createdAt: createdAtIso, // Always send as ISO string
+            timestamp: createdAtIso, // Also include as timestamp for compatibility
             replyTo: messageId,
             replyToContent: replyMessage.replyToContent,
             replyToSenderName: replyMessage.replyToSenderName,

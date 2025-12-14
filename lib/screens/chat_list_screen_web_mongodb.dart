@@ -12,6 +12,7 @@ import '../services/mongodb_chat_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
 import '../services/version_check_service.dart';
+import '../services/realtime_service.dart';
 import '../utils/group_chat_naming_utility.dart';
 import '../utils/cairo_time_utils.dart';
 import 'chat_screen_mongodb.dart';
@@ -39,6 +40,7 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
   late ThemeService _themeService;
   final Map<String, String> _userNameCache = {};
   final Set<String> _userNameFetching = {};
+  final RealtimeService _realtime = RealtimeService.instance;
 
   // Timestamp parsing utilities (same as main chat list screen)
   DateTime? _parseChatTimestamp(dynamic value) {
@@ -55,14 +57,35 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
           trimmed == '0') {
         return null;
       }
+      
+      // Try parsing as ISO 8601 string first (most common format from server)
       final parsed = DateTime.tryParse(trimmed);
-      if (parsed != null) {
+      if (parsed != null && parsed.isAfter(DateTime(2000))) {
+        // Valid date after year 2000
         return parsed;
       }
+      
+      // Try parsing as epoch milliseconds
       final numeric = int.tryParse(trimmed);
       if (numeric != null) {
+        // If it's a large number (likely milliseconds), use it
+        if (numeric > 946684800000) { // Year 2000 in milliseconds
+          return DateTime.fromMillisecondsSinceEpoch(numeric);
+        }
+        // Otherwise treat as seconds
         return _dateTimeFromEpoch(numeric);
       }
+      
+      // Try parsing as epoch seconds (if it's a number string)
+      final doubleNumeric = double.tryParse(trimmed);
+      if (doubleNumeric != null) {
+        final intValue = doubleNumeric.toInt();
+        if (intValue > 946684800) { // Year 2000 in seconds
+          return DateTime.fromMillisecondsSinceEpoch(intValue * 1000);
+        }
+        return _dateTimeFromEpoch(intValue);
+      }
+      
       return null;
     }
 
@@ -306,6 +329,116 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
       // Load initial chats
       await _loadChats();
 
+      // Connect to realtime service for instant updates
+      await _realtime.connect();
+      
+      // Listen for new messages to update unread count and sorting immediately
+      // This handles BOTH received messages AND messages sent by current user
+      _realtime.onNewMessage((msg) {
+        final chatId = (msg['chatId'] ?? msg['chat_id'] ?? '').toString();
+        if (chatId.isEmpty) {
+          Log.w('Received new message with empty chatId', 'CHAT_LIST_WEB_MONGODB');
+          return;
+        }
+        
+        final isFromCurrentUser = msg['senderId']?.toString() == _currentUserId?.toString();
+        Log.i('📨 Real-time new message received for chat: $chatId (from ${isFromCurrentUser ? "current user" : "other user"})', 'CHAT_LIST_WEB_MONGODB');
+        
+        // Update the chat in the list immediately (for both sent and received messages)
+        final chatIndex = _chats.indexWhere((c) => 
+          (c['_id'] ?? c['id'] ?? '').toString() == chatId
+        );
+        
+        if (chatIndex != -1) {
+          // Update lastMessage and lastMessageTime
+          final chat = Map<String, dynamic>.from(_chats[chatIndex]);
+          
+          // Parse the timestamp properly - CRITICAL: Use the actual message timestamp from server
+          DateTime? messageTime;
+          
+          // Priority 1: Try createdAt from message (most reliable - comes from server)
+          if (msg['createdAt'] != null) {
+            messageTime = _parseChatTimestamp(msg['createdAt']);
+            if (messageTime != null) {
+              Log.i('📅 Using createdAt from message: ${messageTime.toIso8601String()}', 'CHAT_LIST_WEB_MONGODB');
+            }
+          }
+          
+          // Priority 2: Try timestamp field
+          if (messageTime == null && msg['timestamp'] != null) {
+            messageTime = _parseChatTimestamp(msg['timestamp']);
+            if (messageTime != null) {
+              Log.i('📅 Using timestamp from message: ${messageTime.toIso8601String()}', 'CHAT_LIST_WEB_MONGODB');
+            }
+          }
+          
+          // Priority 3: Try created_at (alternative field name)
+          if (messageTime == null && msg['created_at'] != null) {
+            messageTime = _parseChatTimestamp(msg['created_at']);
+            if (messageTime != null) {
+              Log.i('📅 Using created_at from message: ${messageTime.toIso8601String()}', 'CHAT_LIST_WEB_MONGODB');
+            }
+          }
+          
+          // CRITICAL: Only use DateTime.now() as absolute last resort - log warning
+          if (messageTime == null) {
+            Log.w('⚠️ No valid timestamp found in message, using current time. Message: ${msg.toString()}', 'CHAT_LIST_WEB_MONGODB');
+            messageTime = DateTime.now();
+          }
+          
+          // Log the final timestamp being used
+          Log.i('📅 Final messageTime for chat $chatId: ${messageTime.toIso8601String()}', 'CHAT_LIST_WEB_MONGODB');
+          
+          // Always update lastMessage and lastMessageTime (for both sent and received)
+          chat['lastMessage'] = {
+            'content': msg['content'] ?? '',
+            'senderId': msg['senderId'] ?? msg['sender_id'],
+            'senderName': msg['senderName'] ?? msg['sender_name'] ?? '',
+            'timestamp': messageTime.toIso8601String(),
+            'createdAt': messageTime.toIso8601String(),
+          };
+          chat['lastMessageTime'] = messageTime.toIso8601String();
+          chat['updatedAt'] = messageTime.toIso8601String();
+          
+          // Increment unreadCount ONLY if message is from someone else
+          if (!isFromCurrentUser) {
+            final unreadCountObj = chat['unreadCount'] ?? {};
+            final unreadCountMap = unreadCountObj is Map 
+                ? Map<String, dynamic>.from(unreadCountObj)
+                : <String, dynamic>{};
+            final userIdStr = _currentUserId?.toString() ?? '';
+            if (userIdStr.isNotEmpty) {
+              final currentCount = (unreadCountMap[userIdStr] as int?) ?? 0;
+              unreadCountMap[userIdStr] = currentCount + 1;
+              chat['unreadCount'] = unreadCountMap;
+            }
+          }
+          
+          // Update the chat in the list
+          _chats[chatIndex] = chat;
+          
+          // ALWAYS re-sort chats by newest message first (for both individual and group chats)
+          final sortedChats = _sortChatsByNewestMessage(_chats);
+          
+          Log.i('🔄 Re-sorting chats after real-time update. New top chat: ${sortedChats.isNotEmpty ? sortedChats[0]['name'] : "none"} (${sortedChats.isNotEmpty ? (sortedChats[0]['type'] ?? 'individual') : "none"})', 'CHAT_LIST_WEB_MONGODB');
+          
+          // Update state with sorted chats immediately
+          if (mounted) {
+            setState(() {
+              _chats = sortedChats;
+              _filteredChats = _searchQuery.isEmpty ? sortedChats : sortedChats.where((chat) {
+                final name = (chat['name'] ?? '').toString().toLowerCase();
+                return name.contains(_searchQuery.toLowerCase());
+              }).toList();
+            });
+          }
+        } else {
+          // Chat not in list, reload all chats to get the new chat
+          Log.w('Chat $chatId not found in list, reloading all chats', 'CHAT_LIST_WEB_MONGODB');
+          _loadChats();
+        }
+      });
+
       // Start listening for chat updates
       _startChatListener();
     } catch (e) {
@@ -344,12 +477,71 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
     _chatsSubscription = _chatService.watchUserChats().listen(
       (chats) {
         if (mounted) {
+          // Merge stream updates with any real-time updates we have
+          // This ensures real-time updates aren't lost when stream fires
+          final mergedChats = <String, Map<String, dynamic>>{};
+          
+          // First, add all chats from stream
+          for (final chat in chats) {
+            final chatId = (chat['_id'] ?? chat['id'] ?? '').toString();
+            if (chatId.isNotEmpty) {
+              mergedChats[chatId] = Map<String, dynamic>.from(chat);
+            }
+          }
+          
+          // Then, merge with any real-time updates from _chats (preserve newer data)
+          // CRITICAL: Always prefer real-time updates if they're recent (within last 5 minutes)
+          // This prevents stream from overwriting real-time timestamp updates
+          final now = DateTime.now();
+          for (final chat in _chats) {
+            final chatId = (chat['_id'] ?? chat['id'] ?? '').toString();
+            if (chatId.isEmpty) continue;
+            
+            final streamChat = mergedChats[chatId];
+            final realtimeTime = _getLastMessageTime(chat);
+            
+            if (streamChat != null) {
+              final streamTime = _getLastMessageTime(streamChat);
+              
+              // CRITICAL: If real-time timestamp is recent (within 5 minutes), ALWAYS use it
+              // This ensures that real-time updates aren't overwritten by stale stream data
+              if (realtimeTime != null) {
+                final timeDiff = now.difference(realtimeTime).abs();
+                if (timeDiff.inMinutes < 5) {
+                  // Real-time timestamp is recent, prefer it over stream
+                  Log.i('🔄 Preserving recent real-time timestamp for chat $chatId: ${realtimeTime.toIso8601String()} (${timeDiff.inSeconds}s ago)', 'CHAT_LIST_WEB_MONGODB');
+                  mergedChats[chatId] = Map<String, dynamic>.from(chat);
+                } else if (streamTime != null && realtimeTime.isAfter(streamTime)) {
+                  // Real-time is older but still newer than stream, use it
+                  mergedChats[chatId] = Map<String, dynamic>.from(chat);
+                }
+              } else if (streamTime == null && realtimeTime != null) {
+                // Real-time has time but stream doesn't, use real-time
+                mergedChats[chatId] = Map<String, dynamic>.from(chat);
+              }
+            } else {
+              // Chat exists in real-time but not in stream, add it
+              mergedChats[chatId] = Map<String, dynamic>.from(chat);
+            }
+          }
+          
+          // Convert merged map back to list
+          final mergedChatsList = mergedChats.values.toList();
+          
           // Sort chats by newest message first
-          final sortedChats = _sortChatsByNewestMessage(chats);
-          setState(() {
-            _chats = sortedChats;
-            _filteredChats = sortedChats;
-          });
+          final sortedChats = _sortChatsByNewestMessage(mergedChatsList);
+          
+          Log.i('📊 Stream update: Merged ${mergedChatsList.length} chats, sorted. Top chat: ${sortedChats.isNotEmpty ? sortedChats[0]['name'] : "none"}', 'CHAT_LIST_WEB_MONGODB');
+          
+          if (mounted) {
+            setState(() {
+              _chats = sortedChats;
+              _filteredChats = _searchQuery.isEmpty ? sortedChats : sortedChats.where((chat) {
+                final name = (chat['name'] ?? '').toString().toLowerCase();
+                return name.contains(_searchQuery.toLowerCase());
+              }).toList();
+            });
+          }
         }
       },
       onError: (error) {
@@ -499,6 +691,7 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
                 name,
                 style: TextStyle(
                   fontWeight: FontWeight.w500,
+                  color: _themeService.isDarkMode ? Colors.white : Colors.black87, // White in dark mode, dark in light mode
                   fontFamilyFallback: kIsWeb ? const ['NotoNaskhArabic', 'NotoSansArabic'] : null,
                 ),
                 overflow: TextOverflow.ellipsis,
@@ -508,9 +701,7 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
               Icon(
                 Icons.group,
                 size: 16,
-                color: _themeService.isDarkMode
-                    ? Colors.white54
-                    : Colors.black54,
+                color: _themeService.isDarkMode ? Colors.white70 : Colors.black54, // White in dark mode, dark in light mode
               ),
           ],
         ),
@@ -518,7 +709,7 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
           lastMessage,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
-            color: _themeService.isDarkMode ? Colors.white70 : Colors.black87,
+            color: _themeService.isDarkMode ? Colors.white : Colors.black87, // White in dark mode, dark in light mode
             fontFamilyFallback: kIsWeb ? const ['NotoNaskhArabic', 'NotoSansArabic'] : null,
           ),
         ),
@@ -530,10 +721,9 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
               _formatTimestamp(lastMessageTime),
               style: TextStyle(
                 fontSize: 12,
-                color: _themeService.isDarkMode
-                    ? Colors.white54
-                    : Colors.black54,
+                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7), // Use theme color
               ),
+              key: ValueKey('timestamp_${chatId}_${lastMessageTime.millisecondsSinceEpoch}'), // Force rebuild on timestamp change
             ),
             if (unreadCount > 0)
               Container(

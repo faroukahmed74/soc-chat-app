@@ -97,28 +97,34 @@ class UnifiedNotificationService {
   }
 
   Future<void> _playNotificationSound() async {
+    // Skip sound on mobile - use device notification sound only
+    if (!kIsWeb) {
+      Log.i('🔇 Unified notification sound skipped on Mobile (using device notification sound)', 'UNIFIED');
+      return;
+    }
+    
     try {
       await _audioPlayer.stop();
       await _audioPlayer.setReleaseMode(ReleaseMode.stop);
       await _audioPlayer.setVolume(1.0);
       try {
-        // Primary sound: noti_sound.wav
+        // Primary sound: noti_sound.wav (WEB ONLY)
         await _audioPlayer.play(AssetSource('noti_sound.wav'));
-        Log.i('✅ Unified notification sound played (noti_sound.wav)', 'UNIFIED');
+        Log.i('✅ Unified notification sound played (noti_sound.wav) on Web', 'UNIFIED');
       } catch (e) {
-        Log.w('noti_sound.wav failed, trying fallback...', 'UNIFIED');
+        Log.w('noti_sound.wav failed on Web, trying fallback...', 'UNIFIED');
         try {
           // Fallback to notification_sound.mp3
           await _audioPlayer.play(AssetSource('notification_sound.mp3'));
-          Log.i('✅ Unified notification sound played (notification_sound.mp3 fallback)', 'UNIFIED');
+          Log.i('✅ Unified notification sound played (notification_sound.mp3 fallback) on Web', 'UNIFIED');
         } catch (e2) {
-          Log.w('Fallback asset failed: $e2. Trying additional fallback.', 'UNIFIED');
+          Log.w('Fallback asset failed on Web: $e2. Trying additional fallback.', 'UNIFIED');
           try {
             // Try notification_sounds folder
             await _audioPlayer.play(AssetSource('notification_sounds/chat_notification.mp3'));
-            Log.i('✅ Unified notification sound played (chat_notification.mp3 fallback)', 'UNIFIED');
+            Log.i('✅ Unified notification sound played (chat_notification.mp3 fallback) on Web', 'UNIFIED');
           } catch (e3) {
-            Log.w('All sound assets failed: $e3. Using programmatic tone.', 'UNIFIED');
+            Log.w('All sound assets failed on Web: $e3. Using programmatic tone.', 'UNIFIED');
             await _playProgrammaticTone();
           }
         }

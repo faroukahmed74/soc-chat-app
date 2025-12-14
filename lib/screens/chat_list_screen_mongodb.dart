@@ -79,14 +79,35 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
           trimmed == '0') {
         return null;
       }
+      
+      // Try parsing as ISO 8601 string first (most common format from server)
       final parsed = DateTime.tryParse(trimmed);
-      if (parsed != null) {
+      if (parsed != null && parsed.isAfter(DateTime(2000))) {
+        // Valid date after year 2000
         return parsed;
       }
+      
+      // Try parsing as epoch milliseconds
       final numeric = int.tryParse(trimmed);
       if (numeric != null) {
+        // If it's a large number (likely milliseconds), use it
+        if (numeric > 946684800000) { // Year 2000 in milliseconds
+          return DateTime.fromMillisecondsSinceEpoch(numeric);
+        }
+        // Otherwise treat as seconds
         return _dateTimeFromEpoch(numeric);
       }
+      
+      // Try parsing as epoch seconds (if it's a number string)
+      final doubleNumeric = double.tryParse(trimmed);
+      if (doubleNumeric != null) {
+        final intValue = doubleNumeric.toInt();
+        if (intValue > 946684800) { // Year 2000 in seconds
+          return DateTime.fromMillisecondsSinceEpoch(intValue * 1000);
+        }
+        return _dateTimeFromEpoch(intValue);
+      }
+      
       return null;
     }
 
@@ -266,14 +287,41 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
           // Update lastMessage and lastMessageTime
           final chat = Map<String, dynamic>.from(_chats[chatIndex]);
           
-          // Parse the timestamp properly
+          // Parse the timestamp properly - CRITICAL: Use the actual message timestamp from server
           DateTime? messageTime;
+          
+          // Priority 1: Try createdAt from message (most reliable - comes from server)
           if (msg['createdAt'] != null) {
             messageTime = _parseChatTimestamp(msg['createdAt']);
-          } else if (msg['timestamp'] != null) {
-            messageTime = _parseChatTimestamp(msg['timestamp']);
+            if (messageTime != null) {
+              Log.i('📅 Using createdAt from message: ${messageTime.toIso8601String()}', 'CHAT_LIST_MONGODB');
+            }
           }
-          messageTime ??= DateTime.now();
+          
+          // Priority 2: Try timestamp field
+          if (messageTime == null && msg['timestamp'] != null) {
+            messageTime = _parseChatTimestamp(msg['timestamp']);
+            if (messageTime != null) {
+              Log.i('📅 Using timestamp from message: ${messageTime.toIso8601String()}', 'CHAT_LIST_MONGODB');
+            }
+          }
+          
+          // Priority 3: Try created_at (alternative field name)
+          if (messageTime == null && msg['created_at'] != null) {
+            messageTime = _parseChatTimestamp(msg['created_at']);
+            if (messageTime != null) {
+              Log.i('📅 Using created_at from message: ${messageTime.toIso8601String()}', 'CHAT_LIST_MONGODB');
+            }
+          }
+          
+          // CRITICAL: Only use DateTime.now() as absolute last resort - log warning
+          if (messageTime == null) {
+            Log.w('⚠️ No valid timestamp found in message, using current time. Message: ${msg.toString()}', 'CHAT_LIST_MONGODB');
+            messageTime = DateTime.now();
+          }
+          
+          // Log the final timestamp being used
+          Log.i('📅 Final messageTime for chat $chatId: ${messageTime.toIso8601String()}', 'CHAT_LIST_MONGODB');
           
           // Always update lastMessage and lastMessageTime (for both sent and received)
           chat['lastMessage'] = {
@@ -317,6 +365,8 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
               _chats = sortedChats;
               _filteredChats = _applySearchFilter(sortedChats);
             });
+            // Force a rebuild to ensure timestamp display updates
+            Log.i('🔄 UI updated for chat $chatId. New timestamp: ${messageTime.toIso8601String()}', 'CHAT_LIST_MONGODB');
           }
         } else {
           // Chat not in list, reload all chats to get the new chat
@@ -425,27 +475,38 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
           }
           
           // Then, merge with any real-time updates from _chats (preserve newer data)
+          // CRITICAL: Always prefer real-time updates if they're recent (within last 5 minutes)
+          // This prevents stream from overwriting real-time timestamp updates
+          final now = DateTime.now();
           for (final chat in _chats) {
             final chatId = (chat['_id'] ?? chat['id'] ?? '').toString();
-            if (chatId.isNotEmpty) {
-              final streamChat = mergedChats[chatId];
-              if (streamChat != null) {
-                // Merge: prefer real-time lastMessageTime if it's newer
-                final realtimeTime = _getLastMessageTime(chat);
-                final streamTime = _getLastMessageTime(streamChat);
-                if (realtimeTime != null && streamTime != null) {
-                  if (realtimeTime.isAfter(streamTime)) {
-                    // Real-time update is newer, use it
-                    mergedChats[chatId] = Map<String, dynamic>.from(chat);
-                  }
-                } else if (realtimeTime != null) {
-                  // Real-time has time but stream doesn't, use real-time
+            if (chatId.isEmpty) continue;
+            
+            final streamChat = mergedChats[chatId];
+            final realtimeTime = _getLastMessageTime(chat);
+            
+            if (streamChat != null) {
+              final streamTime = _getLastMessageTime(streamChat);
+              
+              // CRITICAL: If real-time timestamp is recent (within 5 minutes), ALWAYS use it
+              // This ensures that real-time updates aren't overwritten by stale stream data
+              if (realtimeTime != null) {
+                final timeDiff = now.difference(realtimeTime).abs();
+                if (timeDiff.inMinutes < 5) {
+                  // Real-time timestamp is recent, prefer it over stream
+                  Log.i('🔄 Preserving recent real-time timestamp for chat $chatId: ${realtimeTime.toIso8601String()} (${timeDiff.inSeconds}s ago)', 'CHAT_LIST_MONGODB');
+                  mergedChats[chatId] = Map<String, dynamic>.from(chat);
+                } else if (streamTime != null && realtimeTime.isAfter(streamTime)) {
+                  // Real-time is older but still newer than stream, use it
                   mergedChats[chatId] = Map<String, dynamic>.from(chat);
                 }
-              } else {
-                // Chat exists in real-time but not in stream, add it
+              } else if (streamTime == null && realtimeTime != null) {
+                // Real-time has time but stream doesn't, use real-time
                 mergedChats[chatId] = Map<String, dynamic>.from(chat);
               }
+            } else {
+              // Chat exists in real-time but not in stream, add it
+              mergedChats[chatId] = Map<String, dynamic>.from(chat);
             }
           }
           
@@ -528,12 +589,8 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
 
         // If timestamp is newer, it's a new message
         if (previousTime == null || currentMessageTime.isAfter(previousTime)) {
-          // Play sound for new message
-          Log.i(
-            '🔊 New message detected in chat list, playing sound...',
-            'CHAT_LIST_MONGODB',
-          );
-          MessageSoundService().playMessageSound();
+          // Don't play sound here - let device notification sound handle it
+          // MessageSoundService().playMessageSound(); // Removed - use device notification sound
 
           // Update timestamp
           _lastMessageTimes[chatId] = currentMessageTime;
@@ -959,9 +1016,9 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                   fontWeight: hasUnreadMessage
                       ? FontWeight.bold
                       : FontWeight.w600,
-                  color: hasUnreadMessage
-                      ? Theme.of(context).colorScheme.onSurface
-                      : null,
+                  color: Theme.of(context).brightness == Brightness.dark 
+                      ? Colors.white 
+                      : Colors.black87, // White in dark mode, dark in light mode
                   fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
                   fontFamilyFallback: kIsWeb
                       ? const [
@@ -991,7 +1048,9 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
               Icon(
                 Icons.group,
                 size: 16,
-                color: Theme.of(context).colorScheme.onSurfaceVariant,
+                color: Theme.of(context).brightness == Brightness.dark 
+                    ? Colors.white70 
+                    : Colors.black54, // White in dark mode, dark in light mode
               ),
             ],
           ],
@@ -1000,9 +1059,9 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
           lastMessage.isNotEmpty ? lastMessage : 'No messages yet',
           overflow: TextOverflow.ellipsis,
           style: AppDesignSystem.bodyMedium.copyWith(
-            color: hasUnreadMessage 
-                ? Theme.of(context).colorScheme.onSurface
-                : Theme.of(context).colorScheme.onSurfaceVariant,
+            color: Theme.of(context).brightness == Brightness.dark 
+                ? Colors.white 
+                : Colors.black87, // White in dark mode, dark in light mode
             fontWeight: hasUnreadMessage ? FontWeight.bold : FontWeight.normal,
             fontSize: hasUnreadMessage ? 14 : 13,
             fontFamily: kIsWeb ? 'NotoNaskhArabic' : null,
@@ -1036,11 +1095,10 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
               Text(
                 _formatTimestamp(lastMessageTime),
                 style: AppDesignSystem.bodySmall.copyWith(
-                  color: Theme.of(
-                    context,
-                  ).colorScheme.onSurfaceVariant.withOpacity(0.7),
+                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.7), // Use theme color
                   fontSize: 11,
                 ),
+                key: ValueKey('timestamp_${chatId}_${lastMessageTime.millisecondsSinceEpoch}'), // Force rebuild on timestamp change
               ),
             // Unread count is now shown beside the red dot on avatar, not here
           ],

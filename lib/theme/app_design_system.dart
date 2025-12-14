@@ -8,37 +8,40 @@ import 'package:flutter/material.dart';
 
 class AppDesignSystem {
   // =============================================================================
-  // COLOR SYSTEM
+  // COLOR SYSTEM - Modern Gray & Blue Palette
   // =============================================================================
+  // Based on: #353941, #26282B, #5F85DB, #90B8F8
   
-  // Primary Colors
-  static const Color primaryColor = Color(0xFF6366F1); // Indigo
-  static const Color primaryDark = Color(0xFF4F46E5);
-  static const Color primaryLight = Color(0xFF818CF8);
+  // Primary Colors (Blue Palette)
+  static const Color primaryColor = Color(0xFF5F85DB); // Medium blue #5F85DB
+  static const Color primaryDark = Color(0xFF353941); // Dark charcoal gray #353941
+  static const Color primaryLight = Color(0xFF90B8F8); // Light pastel blue #90B8F8
   
   // Secondary Colors
-  static const Color secondaryColor = Color(0xFF8B5CF6); // Purple
-  static const Color secondaryDark = Color(0xFF7C3AED);
-  static const Color secondaryLight = Color(0xFFA78BFA);
+  static const Color secondaryColor = Color(0xFF90B8F8); // Light pastel blue
+  static const Color secondaryDark = Color(0xFF5F85DB); // Medium blue
+  static const Color secondaryLight = Color(0xFFA8C7FF); // Lighter blue variant
   
   // Accent Colors
-  static const Color accentColor = Color(0xFF06B6D4); // Cyan
+  static const Color accentColor = Color(0xFF90B8F8); // Light pastel blue #90B8F8
   static const Color successColor = Color(0xFF10B981); // Green
   static const Color warningColor = Color(0xFFF59E0B); // Amber
   static const Color errorColor = Color(0xFFEF4444); // Red
-  static const Color infoColor = Color(0xFF3B82F6); // Blue
+  static const Color infoColor = Color(0xFF5F85DB); // Medium blue
   
-  // Neutral Colors
-  static const Color neutral50 = Color(0xFFFAFAFA);
-  static const Color neutral100 = Color(0xFFF5F5F5);
-  static const Color neutral200 = Color(0xFFE5E5E5);
-  static const Color neutral300 = Color(0xFFD4D4D4);
-  static const Color neutral400 = Color(0xFFA3A3A3);
-  static const Color neutral500 = Color(0xFF737373);
-  static const Color neutral600 = Color(0xFF525252);
-  static const Color neutral700 = Color(0xFF404040);
-  static const Color neutral800 = Color(0xFF262626);
-  static const Color neutral900 = Color(0xFF171717);
+  // Neutral Colors (Light Mode - Light Grays)
+  static const Color neutral50 = Color(0xFFFAFAFA); // Very light gray
+  static const Color neutral100 = Color(0xFFF5F5F5); // Light gray
+  static const Color neutral200 = Color(0xFFE5E5E5); // Light gray
+  static const Color neutral300 = Color(0xFFD4D4D4); // Medium light gray
+  static const Color neutral400 = Color(0xFFA3A3A3); // Medium gray
+  static const Color neutral500 = Color(0xFF737373); // Medium gray
+  static const Color neutral600 = Color(0xFF525252); // Dark gray
+  
+  // Neutral Colors (Dark Mode - Charcoal & Dark Grays)
+  static const Color neutral700 = Color(0xFF353941); // Dark charcoal gray #353941
+  static const Color neutral800 = Color(0xFF26282B); // Very dark gray #26282B
+  static const Color neutral900 = Color(0xFF1A1C1E); // Almost black (slightly lighter than #26282B)
   
   // =============================================================================
   // LIGHT THEME
@@ -51,26 +54,26 @@ class AppDesignSystem {
     fontFamily: 'Roboto',
     fontFamilyFallback: const ['NotoColorEmoji', 'NotoNaskhArabic', 'NotoSansArabic', 'Arial', 'Helvetica', 'Segoe UI', 'Tahoma', 'sans-serif'],
     primaryColor: primaryColor,
-    scaffoldBackgroundColor: neutral50,
+    scaffoldBackgroundColor: neutral50, // Very light gray background
     colorScheme: const ColorScheme.light(
-      primary: primaryColor,
-      secondary: secondaryColor,
+      primary: primaryColor, // Medium blue #5F85DB
+      secondary: secondaryColor, // Light pastel blue #90B8F8
       surface: Colors.white,
-      background: neutral50,
+      background: neutral50, // Very light gray
       error: errorColor,
       onPrimary: Colors.white,
-      onSecondary: Colors.white,
-      onSurface: neutral900,
-      onBackground: neutral900,
+      onSecondary: primaryDark, // Dark charcoal for text on light blue
+      onSurface: primaryDark, // Dark charcoal gray for text
+      onBackground: primaryDark, // Dark charcoal gray for text
       onError: Colors.white,
     ),
     appBarTheme: const AppBarTheme(
       backgroundColor: Colors.white,
-      foregroundColor: neutral900,
+      foregroundColor: primaryDark, // Dark charcoal gray #353941
       elevation: 0,
       centerTitle: true,
       titleTextStyle: TextStyle(
-        color: neutral900,
+        color: primaryDark,
         fontSize: 20,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.5,
@@ -86,10 +89,10 @@ class AppDesignSystem {
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: neutral100,
+      fillColor: neutral100, // Light gray fill
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: neutral300, width: 1),
+        borderSide: BorderSide(color: neutral300, width: 1), // Gray border
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -97,7 +100,7 @@ class AppDesignSystem {
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: primaryColor, width: 2),
+        borderSide: BorderSide(color: primaryColor, width: 2), // Medium blue focus
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -148,54 +151,54 @@ class AppDesignSystem {
     // Use local bundled Roboto fonts for consistent offline web rendering
     fontFamily: 'Roboto',
     fontFamilyFallback: const ['NotoColorEmoji', 'NotoNaskhArabic', 'NotoSansArabic', 'Arial', 'Helvetica', 'Segoe UI', 'Tahoma', 'sans-serif'],
-    primaryColor: primaryLight,
-    scaffoldBackgroundColor: neutral900,
+    primaryColor: primaryColor, // Medium blue #5F85DB
+    scaffoldBackgroundColor: neutral800, // Very dark gray #26282B
     colorScheme: const ColorScheme.dark(
-      primary: primaryLight,
-      secondary: secondaryLight,
-      surface: neutral800,
-      background: neutral900,
+      primary: primaryColor, // Medium blue #5F85DB
+      secondary: secondaryColor, // Light pastel blue #90B8F8
+      surface: neutral700, // Dark charcoal gray #353941
+      background: neutral800, // Very dark gray #26282B
       error: errorColor,
       onPrimary: Colors.white,
       onSecondary: Colors.white,
-      onSurface: neutral50,
-      onBackground: neutral50,
+      onSurface: primaryLight, // Light pastel blue for text
+      onBackground: primaryLight, // Light pastel blue for text
       onError: Colors.white,
     ),
     appBarTheme: const AppBarTheme(
-      backgroundColor: neutral800,
-      foregroundColor: neutral50,
+      backgroundColor: neutral700, // Dark charcoal gray #353941
+      foregroundColor: primaryLight, // Light pastel blue #90B8F8
       elevation: 0,
       centerTitle: true,
       titleTextStyle: TextStyle(
-        color: neutral50,
+        color: primaryLight,
         fontSize: 20,
         fontWeight: FontWeight.w600,
         letterSpacing: -0.5,
       ),
     ),
     cardTheme: CardThemeData(
-      color: neutral800,
+      color: neutral700, // Dark charcoal gray #353941
       elevation: 0,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
-        side: BorderSide(color: neutral700, width: 1),
+        side: BorderSide(color: primaryColor, width: 1), // Medium blue border
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
-      fillColor: neutral800,
+      fillColor: neutral700, // Dark charcoal gray #353941
       border: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: neutral700, width: 1),
+        borderSide: BorderSide(color: primaryColor, width: 1), // Medium blue border
       ),
       enabledBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: neutral700, width: 1),
+        borderSide: BorderSide(color: primaryColor, width: 1),
       ),
       focusedBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
-        borderSide: BorderSide(color: primaryLight, width: 2),
+        borderSide: BorderSide(color: primaryColor, width: 2), // Medium blue focus
       ),
       errorBorder: OutlineInputBorder(
         borderRadius: BorderRadius.circular(12),
@@ -407,19 +410,19 @@ class AppDesignSystem {
   // =============================================================================
   
   static const LinearGradient primaryGradient = LinearGradient(
-    colors: [primaryColor, secondaryColor],
+    colors: [primaryColor, primaryLight], // Medium blue to Light pastel blue
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
   
   static const LinearGradient accentGradient = LinearGradient(
-    colors: [accentColor, primaryColor],
+    colors: [primaryLight, primaryColor], // Light pastel blue to Medium blue
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );
   
   static const LinearGradient successGradient = LinearGradient(
-    colors: [successColor, accentColor],
+    colors: [successColor, primaryColor], // Green to Medium Blue
     begin: Alignment.topLeft,
     end: Alignment.bottomRight,
   );

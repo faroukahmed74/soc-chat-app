@@ -47,8 +47,15 @@ class MessageSoundService {
   }
 
   /// Play notification sound for new message
+  /// WEB ONLY: Mobile devices use system notification sounds (FCM)
   /// This will play regardless of whether the chat is active or not
   Future<void> playMessageSound() async {
+    // Skip sound on mobile - use device notification sound only
+    if (!kIsWeb) {
+      Log.i('🔇 Message sound skipped on Mobile (using device notification sound)', 'MESSAGE_SOUND');
+      return;
+    }
+    
     if (!_enabled || _isPlaying) return;
 
     try {
@@ -65,27 +72,27 @@ class MessageSoundService {
         // Ignore stop errors
       }
 
-      // Play the noti_sound.wav file from assets
+      // Play the noti_sound.wav file from assets (WEB ONLY)
       try {
         final source = AssetSource('noti_sound.wav');
         await _audioPlayer.play(source);
-        Log.i('✅ Message sound played (noti_sound.wav)', 'MESSAGE_SOUND');
+        Log.i('✅ Message sound played (noti_sound.wav) on Web', 'MESSAGE_SOUND');
       } catch (e) {
-        Log.w('noti_sound.wav failed: $e, trying fallback...', 'MESSAGE_SOUND');
+        Log.w('noti_sound.wav failed on Web: $e, trying fallback...', 'MESSAGE_SOUND');
         try {
           // Fallback to notification_sound.mp3
           final source = AssetSource('notification_sound.mp3');
           await _audioPlayer.play(source);
-          Log.i('✅ Message sound played (notification_sound.mp3 fallback)', 'MESSAGE_SOUND');
+          Log.i('✅ Message sound played (notification_sound.mp3 fallback) on Web', 'MESSAGE_SOUND');
         } catch (e2) {
-          Log.w('Fallback sound failed: $e2', 'MESSAGE_SOUND');
+          Log.w('Fallback sound failed on Web: $e2', 'MESSAGE_SOUND');
           try {
             // Try notification_sounds folder
             final source = AssetSource('notification_sounds/chat_notification.mp3');
             await _audioPlayer.play(source);
-            Log.i('✅ Message sound played (chat_notification.mp3 fallback)', 'MESSAGE_SOUND');
+            Log.i('✅ Message sound played (chat_notification.mp3 fallback) on Web', 'MESSAGE_SOUND');
           } catch (e3) {
-            Log.w('All sound assets failed: $e3', 'MESSAGE_SOUND');
+            Log.w('All sound assets failed on Web: $e3', 'MESSAGE_SOUND');
             // If all fail, try programmatic tone
             await _playProgrammaticTone();
           }

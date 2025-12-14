@@ -3016,26 +3016,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         elevation: 0,
         centerTitle: false,
         actions: [
-          // Voice call button
-          IconButton(
-            tooltip: 'Voice Call',
-            icon: const Icon(Icons.phone),
-            onPressed: () {
-              print('🔵 CALL BUTTON PRESSED: Voice Call');
-              Log.i('🔵 CALL BUTTON PRESSED: Voice Call', 'CHAT_SCREEN_MONGODB');
-              _startCall(CallType.voice);
-            },
-          ),
-          // Video call button
-          IconButton(
-            tooltip: 'Video Call',
-            icon: const Icon(Icons.videocam),
-            onPressed: () {
-              print('🔵 CALL BUTTON PRESSED: Video Call');
-              Log.i('🔵 CALL BUTTON PRESSED: Video Call', 'CHAT_SCREEN_MONGODB');
-              _startCall(CallType.video);
-            },
-          ),
+          // Voice and video call buttons removed
           IconButton(
             tooltip: 'Media',
             icon: const Icon(Icons.perm_media_outlined),

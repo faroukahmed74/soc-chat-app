@@ -142,25 +142,7 @@ class ChatHeader extends StatelessWidget implements PreferredSizeWidget {
                       tooltip: 'Search',
                     ),
 
-                  if (onCall != null)
-                    IconButton(
-                      onPressed: onCall,
-                      icon: Icon(
-                        Icons.call,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      ),
-                      tooltip: 'Voice Call',
-                    ),
-
-                  if (onVideoCall != null)
-                    IconButton(
-                      onPressed: onVideoCall,
-                      icon: Icon(
-                        Icons.videocam,
-                        color: isDark ? Colors.grey[400] : Colors.grey[600],
-                      ),
-                      tooltip: 'Video Call',
-                    ),
+                  // Voice and video call buttons removed
 
                   if (onInfo != null)
                     IconButton(
