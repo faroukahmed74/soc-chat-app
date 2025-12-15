@@ -1,10 +1,10 @@
 {
-  "version": "1.0.26",
-  "build_number": "26",
+  "version": "1.0.27",
+  "build_number": "27",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.26 - Voice Messages Feature:\n- Added voice message recording and sending for individual and group chats\n- Cross-platform voice messaging support (Android, iOS, and Web)\n- Compact and responsive voice message player UI with horizontal layout\n- Real-time voice message playback with duration display\n- Fixed UI overflow issues in voice message display\n- Enhanced error handling and logging for voice message uploads\n- Improved media upload flow with better progress tracking\n- Various stability improvements and bug fixes",
+  "release_notes": "SOC Chat App v1.0.27 - Contact Permissions & Stability Update:\n- Fixed contact picker permissions for Android 13+ (API 33+) and below\n- Added contact picker queries to AndroidManifest for Android 11+ package visibility\n- Improved ContactPickerService with comprehensive permission handling for all Android versions\n- Enhanced iOS contact permission support with iOS 18+ limited access compatibility\n- Better error messages and user feedback for contact permission issues\n- Fixed 'Contact selection cancelled or permission denied' error\n- Improved contact picker integration in chat screen\n- Added detailed logging for debugging contact permission issues\n- Enhanced user guidance for permanently denied permissions\n- Various stability improvements and bug fixes",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": true,
-  "last_updated": "2025-01-17T12:00:00Z"
+  "last_updated": "2025-12-15T17:30:00Z"
 }
