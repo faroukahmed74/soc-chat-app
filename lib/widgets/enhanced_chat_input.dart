@@ -19,6 +19,7 @@ class EnhancedChatInput extends StatefulWidget {
   final TextEditingController controller;
   final Future<void> Function(String) onSendMessage;
   final Future<void> Function(String, String, {String? content}) onSendMedia;
+  final Future<void> Function(Map<String, dynamic> contactData)? onSendContact; // New callback for contacts
   final String chatId;
   final bool isEnabled;
   
@@ -34,6 +35,7 @@ class EnhancedChatInput extends StatefulWidget {
     required this.controller,
     required this.onSendMessage,
     required this.onSendMedia,
+    this.onSendContact,
     required this.chatId,
     this.isEnabled = true,
     this.selectedMediaBytes,
@@ -311,6 +313,13 @@ class _EnhancedChatInputState extends State<EnhancedChatInput> {
                 });
                 _focusNode.requestFocus();
               },
+              onContactSent: widget.onSendContact != null ? (contactData) {
+                widget.onSendContact!(contactData);
+                setState(() {
+                  _showMediaSender = false;
+                });
+                _focusNode.requestFocus();
+              } : null,
               onClose: () {
                 setState(() {
                   _showMediaSender = false;

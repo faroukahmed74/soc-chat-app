@@ -30,6 +30,7 @@ import '../utils/group_chat_naming_utility.dart';
 import '../widgets/enhanced_chat_input.dart';
 import '../widgets/enhanced_media_preview.dart';
 import '../widgets/full_screen_media_preview.dart';
+import '../widgets/contact_message_widget.dart';
 import '../services/realtime_service.dart';
 import '../services/active_chat_service.dart';
 import '../services/message_sound_service.dart';
@@ -42,6 +43,8 @@ import 'call_screen.dart';
 import '../services/call_types.dart';
 import '../services/webrtc_call_service.dart';
 import '../services/local_auth_service.dart';
+import '../services/contact_picker_service.dart';
+import '../services/scheduled_message_service.dart';
 import '../main.dart'; // For ActiveCallTracker
 
 class ChatScreenMongoDB extends StatefulWidget {
@@ -75,9 +78,11 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   String? _currentUserName;
   StreamSubscription? _messagesSubscription;
   Timer? _statusUpdateTimer;
+  Timer? _scheduledMessageCheckTimer;
   late ThemeService _themeService;
   final RealtimeService _realtime = RealtimeService.instance;
   final ActiveChatService _activeChat = ActiveChatService.instance;
+  final ScheduledMessageService _scheduledService = ScheduledMessageService();
   
   // Reply and reaction state
   Map<String, dynamic>? _replyingToMessage;
@@ -193,6 +198,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     });
     _initializeChat();
     _activeChat.setActiveChat(widget.chatId);
+    _initializeScheduledMessageChecking();
     
     // Determine other user ID for one-to-one chats
     if (!widget.isGroupChat && widget.userIds != null && widget.userIds!.length == 2) {
@@ -200,10 +206,54 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     }
   }
 
+  /// Initialize scheduled message checking
+  void _initializeScheduledMessageChecking() {
+    // Check immediately
+    _checkAndSendScheduledMessages();
+    
+    // Then check every 30 seconds
+    _scheduledMessageCheckTimer = Timer.periodic(
+      const Duration(seconds: 30),
+      (timer) => _checkAndSendScheduledMessages(),
+    );
+  }
+
+  /// Check for scheduled messages and send them if due
+  Future<void> _checkAndSendScheduledMessages() async {
+    try {
+      final readyMessages = await _scheduledService.getMessagesReadyToSend();
+      final messagesForThisChat = readyMessages.where(
+        (msg) => msg['chatId'] == widget.chatId,
+      ).toList();
+
+      for (final scheduledMessage in messagesForThisChat) {
+        final messageId = scheduledMessage['id'] as String;
+        final content = scheduledMessage['content'] as String;
+        final messageType = scheduledMessage['messageType'] as String? ?? 'text';
+        final mediaUrl = scheduledMessage['mediaUrl'] as String?;
+
+        // Send the message
+        if (messageType == 'text' && mediaUrl == null) {
+          await _sendMessage(content);
+        } else {
+          await _sendMediaMessage(mediaUrl ?? '', messageType, content: content);
+        }
+
+        // Remove from scheduled messages
+        await _scheduledService.removeScheduledMessage(messageId);
+
+        Log.i('Scheduled message sent: $messageId', 'CHAT_SCREEN_MONGODB');
+      }
+    } catch (e) {
+      Log.e('Error checking scheduled messages', 'CHAT_SCREEN_MONGODB', e);
+    }
+  }
+
   @override
   void dispose() {
     _messagesSubscription?.cancel();
     _statusUpdateTimer?.cancel();
+    _scheduledMessageCheckTimer?.cancel();
     _messageController.dispose();
     _scrollController.dispose();
     _realtime.leaveChat(widget.chatId);
@@ -1176,6 +1226,197 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     );
   }
 
+  /// Show schedule message dialog
+  Future<void> _showScheduleMessageDialog() async {
+    final messageController = TextEditingController();
+    DateTime? selectedDate;
+    TimeOfDay? selectedTime;
+    DateTime? selectedDateTime;
+
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              title: const Text('Schedule Message'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    TextField(
+                      controller: messageController,
+                      decoration: const InputDecoration(
+                        labelText: 'Message',
+                        hintText: 'Enter your message',
+                        border: OutlineInputBorder(),
+                      ),
+                      maxLines: 4,
+                    ),
+                    const SizedBox(height: 16),
+                    ListTile(
+                      title: const Text('Date'),
+                      subtitle: Text(
+                        selectedDate != null
+                            ? '${selectedDate!.day}/${selectedDate!.month}/${selectedDate!.year}'
+                            : 'Select date',
+                      ),
+                      trailing: const Icon(Icons.calendar_today),
+                      onTap: () async {
+                        final date = await showDatePicker(
+                          context: context,
+                          initialDate: DateTime.now(),
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime.now().add(const Duration(days: 365)),
+                        );
+                        if (date != null) {
+                          setDialogState(() {
+                            selectedDate = date;
+                            if (selectedTime != null) {
+                              selectedDateTime = DateTime(
+                                date.year,
+                                date.month,
+                                date.day,
+                                selectedTime!.hour,
+                                selectedTime!.minute,
+                              );
+                            }
+                          });
+                        }
+                      },
+                    ),
+                    ListTile(
+                      title: const Text('Time'),
+                      subtitle: Text(
+                        selectedTime != null
+                            ? '${selectedTime!.hour.toString().padLeft(2, '0')}:${selectedTime!.minute.toString().padLeft(2, '0')}'
+                            : 'Select time',
+                      ),
+                      trailing: const Icon(Icons.access_time),
+                      onTap: () async {
+                        final time = await showTimePicker(
+                          context: context,
+                          initialTime: TimeOfDay.now(),
+                        );
+                        if (time != null) {
+                          setDialogState(() {
+                            selectedTime = time;
+                            if (selectedDate != null) {
+                              selectedDateTime = DateTime(
+                                selectedDate!.year,
+                                selectedDate!.month,
+                                selectedDate!.day,
+                                time.hour,
+                                time.minute,
+                              );
+                            } else {
+                              final now = DateTime.now();
+                              selectedDateTime = DateTime(
+                                now.year,
+                                now.month,
+                                now.day,
+                                time.hour,
+                                time.minute,
+                              );
+                              selectedDate = DateTime(now.year, now.month, now.day);
+                            }
+                          });
+                        }
+                      },
+                    ),
+                    if (selectedDateTime != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        'Scheduled for: ${_formatScheduledDateTime(selectedDateTime!)}',
+                        style: TextStyle(
+                          color: Theme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('Cancel'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    if (messageController.text.trim().isEmpty) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please enter a message')),
+                      );
+                      return;
+                    }
+                    if (selectedDateTime == null) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Please select date and time')),
+                      );
+                      return;
+                    }
+                    if (selectedDateTime!.isBefore(DateTime.now())) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('Scheduled time must be in the future')),
+                      );
+                      return;
+                    }
+
+                    try {
+                      final scheduledService = ScheduledMessageService();
+                      await scheduledService.scheduleMessage(
+                        chatId: widget.chatId,
+                        content: messageController.text.trim(),
+                        scheduledTime: selectedDateTime!,
+                        messageType: 'text',
+                      );
+                      if (mounted) {
+                        Navigator.pop(dialogContext);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('Message scheduled for ${_formatScheduledDateTime(selectedDateTime!)}'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Error scheduling message: $e')),
+                        );
+                      }
+                    }
+                  },
+                  child: const Text('Schedule'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  String _formatScheduledDateTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final scheduledDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
+
+    String dateStr;
+    if (scheduledDate == today) {
+      dateStr = 'Today';
+    } else if (scheduledDate == today.add(const Duration(days: 1))) {
+      dateStr = 'Tomorrow';
+    } else {
+      dateStr = '${dateTime.day}/${dateTime.month}/${dateTime.year}';
+    }
+
+    final timeStr = '${dateTime.hour.toString().padLeft(2, '0')}:${dateTime.minute.toString().padLeft(2, '0')}';
+    return '$dateStr at $timeStr';
+  }
+
   Future<void> _deleteChatForMe() async {
     if (_isProcessingMessageAction) return;
     final confirm = await showDialog<bool>(
@@ -1523,6 +1764,81 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
           _isSending = false;
         });
         print('[CHAT_SCREEN_MONGODB] _isSending set to false');
+      }
+    }
+  }
+
+  /// Send a contact message
+  Future<void> _sendContactMessage(Map<String, dynamic> contactData) async {
+    print('[CHAT_SCREEN_MONGODB] _sendContactMessage called');
+    
+    if (_isSending) {
+      print('[CHAT_SCREEN_MONGODB] Already sending, returning...');
+      return;
+    }
+
+    setState(() {
+      _isSending = true;
+    });
+
+    try {
+      // Import contact picker service to format contact
+      final contactPicker = ContactPickerService();
+      
+      // Format contact as vCard
+      final vCard = contactPicker.formatContactAsVCard(contactData);
+      
+      // Get primary phone and email for display
+      final primaryPhone = contactPicker.getPrimaryPhone(contactData);
+      final primaryEmail = contactPicker.getPrimaryEmail(contactData);
+      final displayName = contactData['displayName'] ?? 'Unknown Contact';
+      
+      // Create contact content (JSON format for server)
+      final contactContent = {
+        'displayName': displayName,
+        'phone': primaryPhone,
+        'email': primaryEmail,
+        'vCard': vCard,
+        'contactData': contactData,
+      };
+      
+      // Encode contact data as JSON string
+      final contactJson = jsonEncode(contactContent);
+      
+      // Send contact message via media endpoint with messageType='contact'
+      // The contact JSON will be stored in mediaUrl field
+      final contactResult = await _chatService.sendMediaMessage(
+        widget.chatId,
+        contactJson, // Store JSON in mediaUrl for contact type
+        'contact',
+        content: displayName, // Display name as content
+      );
+      
+      print('[CHAT_SCREEN_MONGODB] Contact message sent: ${contactResult != null ? "success" : "null"}');
+      
+      if (contactResult != null) {
+        _scrollToBottom(force: true);
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Failed to send contact')),
+          );
+        }
+      }
+    } catch (e, stackTrace) {
+      Log.e('Error sending contact', 'CHAT_SCREEN_MONGODB', e);
+      print('[CHAT_SCREEN_MONGODB] Error sending contact: $e');
+      print('[CHAT_SCREEN_MONGODB] Stack trace: $stackTrace');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error sending contact: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSending = false;
+        });
       }
     }
   }
@@ -2416,6 +2732,11 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                         enableRetry: true,
                       ),
                     )
+                  else if (messageType == 'contact')
+                    ContactMessageWidget(
+                      message: message,
+                      isCurrentUser: isCurrentUser,
+                    )
                   else
                     Text(
                       'Unsupported message type: $messageType',
@@ -3038,12 +3359,24 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
             ),
           PopupMenuButton<String>(
             onSelected: (value) {
-              if (value == 'delete_chat') {
+              if (value == 'schedule_message') {
+                _showScheduleMessageDialog();
+              } else if (value == 'delete_chat') {
                 _deleteChatForMe();
               }
             },
-            itemBuilder: (context) => const [
-              PopupMenuItem(
+            itemBuilder: (context) => [
+              const PopupMenuItem(
+                value: 'schedule_message',
+                child: Row(
+                  children: [
+                    Icon(Icons.schedule, size: 18),
+                    SizedBox(width: 8),
+                    Text('Schedule message'),
+                  ],
+                ),
+              ),
+              const PopupMenuItem(
                 value: 'delete_chat',
                 child: Row(
                   children: [
@@ -3156,6 +3489,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
             controller: _messageController,
             onSendMessage: _sendMessage,
             onSendMedia: _sendMediaMessage,
+            onSendContact: _sendContactMessage, // New callback for contacts
             onSendVoice: _sendVoiceMessage,
             chatId: widget.chatId,
             isEnabled: !_isSending,

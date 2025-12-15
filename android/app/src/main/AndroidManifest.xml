@@ -45,6 +45,11 @@
     <!-- Audio focus permission for notification sounds -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
 
+    <!-- Contact permissions - Android 13+ (API 33+) uses granular READ_CONTACTS -->
+    <!-- For Android 12 and below, READ_CONTACTS is sufficient -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <!-- Android 13+ granular contact permissions (handled by flutter_contacts) -->
+
     <application
         android:name="${applicationName}"
         android:label="SOC Chat App"
@@ -139,5 +144,20 @@
             <action android:name="android.intent.action.VIEW" />
             <data android:mimeType="application/vnd.android.package-archive" />
         </intent>
+        <!-- Allow querying for contact picker (Android 11+ package visibility) -->
+        <intent>
+            <action android:name="android.intent.action.PICK" />
+            <data android:mimeType="vnd.android.cursor.dir/contact" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.PICK" />
+            <data android:mimeType="vnd.android.cursor.dir/phone_v2" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.PICK" />
+            <data android:mimeType="vnd.android.cursor.dir/email_v2" />
+        </intent>
+        <!-- Allow querying for contacts provider -->
+        <package android:name="com.android.contacts" />
     </queries>
 </manifest>

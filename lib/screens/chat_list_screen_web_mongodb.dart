@@ -534,13 +534,13 @@ class _ChatListScreenWebMongoDBState extends State<ChatListScreenWebMongoDB> {
           Log.i('📊 Stream update: Merged ${mergedChatsList.length} chats, sorted. Top chat: ${sortedChats.isNotEmpty ? sortedChats[0]['name'] : "none"}', 'CHAT_LIST_WEB_MONGODB');
           
           if (mounted) {
-            setState(() {
-              _chats = sortedChats;
+          setState(() {
+            _chats = sortedChats;
               _filteredChats = _searchQuery.isEmpty ? sortedChats : sortedChats.where((chat) {
                 final name = (chat['name'] ?? '').toString().toLowerCase();
                 return name.contains(_searchQuery.toLowerCase());
               }).toList();
-            });
+          });
           }
         }
       },

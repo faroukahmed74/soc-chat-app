@@ -1,18 +1,23 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:io';
 import '../services/improved_media_service.dart';
 import '../services/logger_service.dart';
+import '../services/contact_picker_service.dart';
+import '../utils/responsive_utils.dart';
 
 /// Enhanced media sender widget with progress tracking and media preview
 class EnhancedMediaSender extends StatefulWidget {
   final String chatId;
   final Function(String mediaUrl, String type, String text) onMediaSent;
+  final Function(Map<String, dynamic> contactData)? onContactSent; // New callback for contacts
   final VoidCallback? onClose;
 
   const EnhancedMediaSender({
     super.key,
     required this.chatId,
     required this.onMediaSent,
+    this.onContactSent,
     this.onClose,
   });
 
@@ -199,7 +204,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
                 ),
               ];
             } else {
-              // For mobile: show all media options
+              // For mobile: show all media options including contact
               buttons = [
                 _buildMediaButton(
                   icon: Icons.photo_library,
@@ -229,28 +234,58 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
                   onTap: () => _pickDocument(),
                   size: buttonSize,
                 ),
+                _buildMediaButton(
+                  icon: Icons.contact_phone,
+                  label: 'Contact',
+                  color: Colors.purple,
+                  onTap: () => _pickContact(),
+                  size: buttonSize,
+                ),
               ];
             }
             
             if (buttonsPerRow == 2) {
-              // Mobile: 2x2 grid
+              // Mobile: 2x2 grid (or 2x3 if 5 buttons)
+              final buttonRows = <Widget>[];
+              for (int i = 0; i < buttons.length; i += 2) {
+                buttonRows.add(
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: buttons.skip(i).take(2).toList(),
+                  ),
+                );
+                if (i + 2 < buttons.length) {
+                  buttonRows.add(
+                    SizedBox(
+                      height: ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 12.0,
+                        tablet: 14.0,
+                        desktop: 16.0,
+                      ),
+                    ),
+                  );
+                }
+              }
               return Column(
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: buttons.take(2).toList(),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    children: buttons.skip(2).toList(),
-                  ),
-                ],
+                children: buttonRows,
               );
             } else {
-              // Web/Tablet: single row
-              return Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              // Web/Tablet: single row (or wrap if needed)
+              return Wrap(
+                alignment: WrapAlignment.spaceEvenly,
+                spacing: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 8.0,
+                  tablet: 12.0,
+                  desktop: 16.0,
+                ),
+                runSpacing: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 8.0,
+                  tablet: 12.0,
+                  desktop: 16.0,
+                ),
                 children: buttons,
               );
             }
@@ -721,5 +756,103 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  Future<void> _pickContact() async {
+    try {
+      if (kIsWeb) {
+        _showError('Contact picker is not supported on web');
+        return;
+      }
+
+      if (!mounted) return;
+
+      // Show loading indicator
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (context) => const Center(
+          child: CircularProgressIndicator(),
+        ),
+      );
+
+      final contactPicker = ContactPickerService();
+      Map<String, dynamic>? contactData;
+      
+      try {
+        contactData = await contactPicker.pickContact();
+      } catch (e) {
+        // Handle permission-related exceptions with specific messages
+        if (mounted) {
+          Navigator.pop(context); // Close loading dialog
+          
+          final errorMessage = e.toString();
+          String userMessage;
+          
+          if (errorMessage.contains('permanently denied') || errorMessage.contains('Settings')) {
+            // Permission permanently denied - guide user to settings
+            userMessage = errorMessage.replaceAll('Exception: ', '');
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(userMessage),
+                  duration: const Duration(seconds: 5),
+                  action: SnackBarAction(
+                    label: 'OK',
+                    onPressed: () {},
+                  ),
+                ),
+              );
+            }
+          } else if (errorMessage.contains('permission') || errorMessage.contains('denied')) {
+            // General permission error
+            userMessage = 'Contact permission is required to send contacts. Please grant contact access.';
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(userMessage),
+                  duration: const Duration(seconds: 4),
+                ),
+              );
+            }
+          } else {
+            // Other errors
+            Log.e('Error picking contact', 'ENHANCED_MEDIA_SENDER', e);
+            _showError('Failed to pick contact. Please try again.');
+          }
+        }
+        return;
+      }
+
+      if (!mounted) return;
+      Navigator.pop(context); // Close loading dialog
+
+      if (contactData != null) {
+        // Close media sender and send contact
+        widget.onClose?.call();
+        if (widget.onContactSent != null) {
+          widget.onContactSent!(contactData);
+        } else {
+          // Fallback: send as JSON string if callback not provided
+          final contactJson = contactData.toString();
+          widget.onMediaSent('', 'contact', contactJson);
+        }
+      } else {
+        // User cancelled contact selection (not an error, just inform silently)
+        // Don't show error message for cancellation
+        Log.i('Contact selection cancelled by user', 'ENHANCED_MEDIA_SENDER');
+      }
+    } catch (e, stackTrace) {
+      Log.e('Unexpected error picking contact', 'ENHANCED_MEDIA_SENDER', e, stackTrace);
+      if (mounted) {
+        // Try to close loading dialog if still open
+        try {
+          Navigator.pop(context);
+        } catch (_) {
+          // Dialog might already be closed
+        }
+        _showError('Failed to pick contact. Please try again.');
+      }
+    }
   }
 }

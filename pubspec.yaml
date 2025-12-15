@@ -44,6 +44,7 @@ dependencies:
   # Media and file picking - Cross-platform support
   image_picker: ^1.1.1
   file_picker: ^10.2.0
+  flutter_contacts: ^1.1.7  # Contact picker for Android 13+ and iOS
   
   # Audio recording and playback - Voice messages
   audioplayers: ^5.2.1

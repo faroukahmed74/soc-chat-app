@@ -482,11 +482,11 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
             final chatId = (chat['_id'] ?? chat['id'] ?? '').toString();
             if (chatId.isEmpty) continue;
             
-            final streamChat = mergedChats[chatId];
-            final realtimeTime = _getLastMessageTime(chat);
+              final streamChat = mergedChats[chatId];
+                final realtimeTime = _getLastMessageTime(chat);
             
             if (streamChat != null) {
-              final streamTime = _getLastMessageTime(streamChat);
+                final streamTime = _getLastMessageTime(streamChat);
               
               // CRITICAL: If real-time timestamp is recent (within 5 minutes), ALWAYS use it
               // This ensures that real-time updates aren't overwritten by stale stream data
@@ -498,15 +498,15 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                   mergedChats[chatId] = Map<String, dynamic>.from(chat);
                 } else if (streamTime != null && realtimeTime.isAfter(streamTime)) {
                   // Real-time is older but still newer than stream, use it
+                    mergedChats[chatId] = Map<String, dynamic>.from(chat);
+                  }
+              } else if (streamTime == null && realtimeTime != null) {
+                  // Real-time has time but stream doesn't, use real-time
                   mergedChats[chatId] = Map<String, dynamic>.from(chat);
                 }
-              } else if (streamTime == null && realtimeTime != null) {
-                // Real-time has time but stream doesn't, use real-time
+              } else {
+                // Chat exists in real-time but not in stream, add it
                 mergedChats[chatId] = Map<String, dynamic>.from(chat);
-              }
-            } else {
-              // Chat exists in real-time but not in stream, add it
-              mergedChats[chatId] = Map<String, dynamic>.from(chat);
             }
           }
           

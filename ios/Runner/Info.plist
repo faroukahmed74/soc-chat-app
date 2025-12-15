@@ -54,7 +54,7 @@
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to take photos, record videos, and make video calls in chat conversations.</string>
 	<key>NSContactsUsageDescription</key>
-	<string>This app needs access to your contacts to help you find and connect with friends.</string>
+	<string>This app needs access to your contacts to send contact information in chat conversations.</string>
 	<key>NSFaceIDUsageDescription</key>
 	<string>This app uses Face ID to securely authenticate your identity.</string>
 	<key>NSFileProviderDomainUsageDescription</key>
