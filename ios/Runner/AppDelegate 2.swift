@@ -42,11 +42,7 @@ class AppDelegate: FlutterAppDelegate, MessagingDelegate {
             return
           }
           
-          if #available(iOS 11.0, *) {
-            self.saveToPhotosLibrary(filePath: path, isVideo: isVideo, albumName: albumName, result: result)
-          } else {
-            result(FlutterError(code: "UNSUPPORTED", message: "Photos library saving requires iOS 11.0 or later", details: nil))
-          }
+          self.saveToPhotosLibrary(filePath: path, isVideo: isVideo, albumName: albumName, result: result)
         } else {
           result(FlutterMethodNotImplemented)
         }
@@ -57,7 +53,6 @@ class AppDelegate: FlutterAppDelegate, MessagingDelegate {
   }
   
   // Save image or video to Photos library
-  @available(iOS 11.0, *)
   private func saveToPhotosLibrary(filePath: String, isVideo: Bool, albumName: String, result: @escaping FlutterResult) {
     let fileURL = URL(fileURLWithPath: filePath)
     
@@ -69,20 +64,11 @@ class AppDelegate: FlutterAppDelegate, MessagingDelegate {
     
     // Request photo library permission
     PHPhotoLibrary.requestAuthorization { status in
-      if #available(iOS 14.0, *) {
-        guard status == .authorized || status == .limited else {
-          DispatchQueue.main.async {
-            result(FlutterError(code: "PERMISSION_DENIED", message: "Photo library permission denied", details: nil))
-          }
-          return
+      guard status == .authorized || status == .limited else {
+        DispatchQueue.main.async {
+          result(FlutterError(code: "PERMISSION_DENIED", message: "Photo library permission denied", details: nil))
         }
-      } else {
-        guard status == .authorized else {
-          DispatchQueue.main.async {
-            result(FlutterError(code: "PERMISSION_DENIED", message: "Photo library permission denied", details: nil))
-          }
-          return
-        }
+        return
       }
       
       // Perform save operation on main thread
@@ -114,7 +100,6 @@ class AppDelegate: FlutterAppDelegate, MessagingDelegate {
   }
   
   // Add saved media to custom album
-  @available(iOS 11.0, *)
   private func addToAlbum(albumName: String, isVideo: Bool, result: @escaping FlutterResult) {
     // Fetch the most recently added asset
     let fetchOptions = PHFetchOptions()
@@ -167,7 +152,6 @@ class AppDelegate: FlutterAppDelegate, MessagingDelegate {
   }
   
   // Add asset to album
-  @available(iOS 11.0, *)
   private func addAssetToAlbum(asset: PHAsset, album: PHAssetCollection?, result: @escaping FlutterResult) {
     guard let album = album else {
       result(true)
@@ -191,10 +175,8 @@ class AppDelegate: FlutterAppDelegate, MessagingDelegate {
       print("📬 Foreground notification received: \(notification.request.content.userInfo)")
       
       // Show notification banner, sound, and badge even when app is in foreground
-      if #available(iOS 15.0, *) {
+      if #available(iOS 14.0, *) {
         completionHandler([.banner, .sound, .badge, .list])
-      } else if #available(iOS 14.0, *) {
-        completionHandler([.banner, .sound, .badge])
       } else {
         completionHandler([.alert, .sound, .badge])
       }
