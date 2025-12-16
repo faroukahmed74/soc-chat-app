@@ -3,5 +3,10 @@
     <cache-path name="image_cropper" path="image_cropper/" />
     <external-cache-path name="external_cache" path="." />
     <external-path name="external_files" path="." />
+    <!-- Support for APK downloads and installation -->
+    <external-path name="downloads" path="Download/" />
+    <external-path name="external_storage" path="." />
+    <!-- Support for APK updates in external files directory (Android 10+) -->
+    <external-files-path name="updates" path="updates/" />
 </paths>
 

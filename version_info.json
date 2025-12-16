@@ -1,10 +1,10 @@
 {
   "version": "1.0.27",
-  "build_number": "27",
+  "build_number": "28",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.27 - Contact Permissions & Stability Update:\n- Fixed contact picker permissions for Android 13+ (API 33+) and below\n- Added contact picker queries to AndroidManifest for Android 11+ package visibility\n- Improved ContactPickerService with comprehensive permission handling for all Android versions\n- Enhanced iOS contact permission support with iOS 18+ limited access compatibility\n- Better error messages and user feedback for contact permission issues\n- Fixed 'Contact selection cancelled or permission denied' error\n- Improved contact picker integration in chat screen\n- Added detailed logging for debugging contact permission issues\n- Enhanced user guidance for permanently denied permissions\n- Various stability improvements and bug fixes",
+  "release_notes": "SOC Chat App v1.0.27 (Build 28) - Enhanced Update System & Improvements:\n- Enhanced automatic update check on app startup with full UpdateDialog support\n- Added update check icon in chat list screen (beside theme icon)\n- Improved update system with in-app download and automatic installation\n- Download progress tracking with real-time percentage and status messages\n- Automatic installation dialog opens after download completes\n- Retry mechanism for failed downloads with exponential backoff\n- Force update support - can enforce required updates\n- Works seamlessly on Android 13+ and all previous versions\n- Method channel implementation for reliable APK installation\n- FileProvider support for secure file sharing on Android 7+\n- Responsive update dialogs for all screen sizes (mobile, tablet, desktop)\n- Consistent update experience across all update scenarios\n- Better error handling and user feedback\n- Contact permission fixes for all Android versions\n- Various stability improvements and bug fixes",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": true,
-  "last_updated": "2025-12-15T17:30:00Z"
+  "last_updated": "2025-12-15T18:00:00Z"
 }

@@ -26,15 +26,18 @@ import '../services/logger_service.dart';
 import '../services/message_sound_service.dart';
 import '../services/active_chat_service.dart';
 import '../utils/group_chat_naming_utility.dart';
+import '../utils/responsive_utils.dart';
 // Unified chat screen for all platforms (web, Android, iOS)
 import 'chat_screen_mongodb.dart';
 import '../services/version_check_service.dart';
+import '../services/fixed_version_check_service.dart';
 import '../services/realtime_service.dart';
 // import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/version_config.dart';
 import '../theme/app_design_system.dart';
+import '../widgets/update_dialog.dart';
 
 class ChatListScreenMongoDB extends StatefulWidget {
   const ChatListScreenMongoDB({Key? key}) : super(key: key);
@@ -1609,18 +1612,36 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     if (_isCheckingUpdate) return;
     setState(() => _isCheckingUpdate = true);
     try {
-      final info = await VersionCheckService.checkForUpdates();
+      // Use FixedVersionCheckService for enhanced update checking
+      final info = await FixedVersionCheckService.checkForUpdates();
       if (info == null) {
         if (mounted) {
           showDialog(
             context: context,
             builder: (ctx) => AlertDialog(
-              title: const Text('Update Check'),
-              content: const Text('Unable to check for updates right now.'),
+              title: Text(
+                'Update Check',
+                style: ResponsiveUtils.getResponsiveHeadingStyle(ctx),
+              ),
+              content: Container(
+                width: ResponsiveUtils.getResponsiveValue(
+                  ctx,
+                  mobile: MediaQuery.of(ctx).size.width * 0.9,
+                  tablet: 400.0,
+                  desktop: 500.0,
+                ),
+                child: Text(
+                  'Unable to check for updates right now.',
+                  style: ResponsiveUtils.getResponsiveBodyStyle(ctx),
+                ),
+              ),
               actions: [
                 TextButton(
                   onPressed: () => Navigator.pop(ctx),
-                  child: const Text('OK'),
+                  child: Text(
+                    'OK',
+                    style: ResponsiveUtils.getResponsiveBodyStyle(ctx),
+                  ),
                 ),
               ],
             ),
@@ -1630,73 +1651,80 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
       }
 
       if (info['hasUpdate'] == true) {
-        final latest = (info['latestVersion'] ?? '').toString();
-        final notes = (info['releaseNotes'] ?? 'Bug fixes and improvements')
-            .toString();
-        final url = (info['downloadUrl'] ?? '').toString();
+        // Get app name
+        final appName = await FixedVersionCheckService.getAppName();
+        
+        // Prepare update info for UpdateDialog
+        final updateInfo = {
+          'appName': appName,
+          'currentVersion': info['currentVersion'] ?? '1.0.0',
+          'currentBuildNumber': info['currentBuildNumber'] ?? '1',
+          'latestVersion': info['latestVersion'] ?? '1.0.0',
+          'latestBuildNumber': info['latestBuildNumber'] ?? '1',
+          'downloadUrl': info['downloadUrl'] ?? '',
+          'releaseNotes': info['releaseNotes'] ?? 'Bug fixes and improvements',
+          'forceUpdate': info['forceUpdate'] ?? false,
+        };
+        
         if (!mounted) return;
+        
+        // Show enhanced UpdateDialog with download progress support
         showDialog(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text('New version available ($latest)'),
-            content: SingleChildScrollView(child: Text(notes)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Later'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  if (url.isNotEmpty) {
-                    try {
-                      final uri = Uri.parse(url);
-                      // Try external application first (browser)
-                      if (await canLaunchUrl(uri)) {
-                        // On Android 13+, use platformDefault for better compatibility
-                        final launchMode = Platform.isAndroid
-                            ? LaunchMode.platformDefault
-                            : LaunchMode.externalApplication;
-                        final launched = await launchUrl(uri, mode: launchMode);
-                        if (!launched && mounted) {
-                          // Fallback: try external browser
-                          await launchUrl(
-                            uri,
-                            mode: LaunchMode.externalApplication,
-                          );
-                        }
-                      } else if (mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(
-                            content: Text('Cannot open download URL'),
-                          ),
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(content: Text('Error opening download: $e')),
-                        );
-                      }
-                    }
-                  }
-                },
-                child: const Text('Download'),
-              ),
-            ],
+          builder: (ctx) => UpdateDialog(
+            updateInfo: updateInfo,
+            onDismiss: () {
+              // Optional: Handle dismiss callback if needed
+            },
           ),
         );
       } else {
+        // No update available
         if (!mounted) return;
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('You are up to date'),
-            content: const Text('No new updates are available.'),
+            title: Text(
+              'You are up to date',
+              style: ResponsiveUtils.getResponsiveHeadingStyle(ctx),
+            ),
+            content: Container(
+              width: ResponsiveUtils.getResponsiveValue(
+                ctx,
+                mobile: MediaQuery.of(ctx).size.width * 0.9,
+                tablet: 400.0,
+                desktop: 500.0,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.check_circle_outline,
+                    color: Colors.green,
+                    size: ResponsiveUtils.getResponsiveIconSize(ctx) * 2,
+                  ),
+                  SizedBox(height: ResponsiveUtils.getResponsiveSpacing(ctx)),
+                  Text(
+                    'No new updates are available.\nYou are using the latest version.',
+                    style: ResponsiveUtils.getResponsiveBodyStyle(ctx),
+                    textAlign: TextAlign.center,
+                  ),
+                  SizedBox(height: ResponsiveUtils.getResponsiveSpacing(ctx) * 0.5),
+                  Text(
+                    'Current version: ${info['currentVersion'] ?? '1.0.0'} (${info['currentBuildNumber'] ?? '1'})',
+                    style: ResponsiveUtils.getResponsiveBodyStyle(ctx),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('OK'),
+                child: Text(
+                  'OK',
+                  style: ResponsiveUtils.getResponsiveBodyStyle(ctx),
+                ),
               ),
             ],
           ),
@@ -1707,12 +1735,29 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
         showDialog(
           context: context,
           builder: (ctx) => AlertDialog(
-            title: const Text('Update Check Failed'),
-            content: Text('Error: $e'),
+            title: Text(
+              'Update Check Failed',
+              style: ResponsiveUtils.getResponsiveHeadingStyle(ctx),
+            ),
+            content: Container(
+              width: ResponsiveUtils.getResponsiveValue(
+                ctx,
+                mobile: MediaQuery.of(ctx).size.width * 0.9,
+                tablet: 400.0,
+                desktop: 500.0,
+              ),
+              child: Text(
+                'Error: $e',
+                style: ResponsiveUtils.getResponsiveBodyStyle(ctx),
+              ),
+            ),
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('OK'),
+                child: Text(
+                  'OK',
+                  style: ResponsiveUtils.getResponsiveBodyStyle(ctx),
+                ),
               ),
             ],
           ),
@@ -1737,66 +1782,41 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
       if (nowMs - lastMs < intervalMs) return;
       await prefs.setInt('last_update_check_ms', nowMs);
 
-      final info = await VersionCheckService.checkForUpdates();
+      // Use FixedVersionCheckService for enhanced update checking
+      final info = await FixedVersionCheckService.checkForUpdates();
       if (info == null) return;
       if (info['hasUpdate'] == true) {
-        final latest = (info['latestVersion'] ?? '').toString();
-        final notes = (info['releaseNotes'] ?? 'Bug fixes and improvements')
-            .toString();
-        final url = (info['downloadUrl'] ?? '').toString();
+        // Get app name
+        final appName = await FixedVersionCheckService.getAppName();
+        
+        // Prepare update info for UpdateDialog
+        final updateInfo = {
+          'appName': appName,
+          'currentVersion': info['currentVersion'] ?? '1.0.0',
+          'currentBuildNumber': info['currentBuildNumber'] ?? '1',
+          'latestVersion': info['latestVersion'] ?? '1.0.0',
+          'latestBuildNumber': info['latestBuildNumber'] ?? '1',
+          'downloadUrl': info['downloadUrl'] ?? '',
+          'releaseNotes': info['releaseNotes'] ?? 'Bug fixes and improvements',
+          'forceUpdate': info['forceUpdate'] ?? false,
+        };
+        
         if (!mounted) return;
+        
+        // Show enhanced UpdateDialog with download progress support
         showDialog(
           context: context,
-          builder: (ctx) => AlertDialog(
-            title: Text('New version available ($latest)'),
-            content: SingleChildScrollView(child: Text(notes)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(ctx),
-                child: const Text('Later'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  Navigator.pop(ctx);
-                  if (url.isNotEmpty) {
-                    try {
-                      final uri = Uri.parse(url);
-                      // Try external application first (browser)
-                      if (await canLaunchUrl(uri)) {
-                        // On Android 13+, use platformDefault for better compatibility
-                        final launchMode = Platform.isAndroid
-                            ? LaunchMode.platformDefault
-                            : LaunchMode.externalApplication;
-                        final launched = await launchUrl(uri, mode: launchMode);
-                        if (!launched && mounted) {
-                          // Fallback: try external browser
-                          await launchUrl(
-                            uri,
-                            mode: LaunchMode.externalApplication,
-                          );
-                        }
-                      } else if (mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          const SnackBar(
-                            content: Text('Cannot open download URL'),
-                          ),
-                        );
-                      }
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(ctx).showSnackBar(
-                          SnackBar(content: Text('Error opening download: $e')),
-                        );
-                      }
-                    }
-                  }
-                },
-                child: const Text('Download'),
-              ),
-            ],
+          builder: (ctx) => UpdateDialog(
+            updateInfo: updateInfo,
+            onDismiss: () {
+              // Optional: Handle dismiss callback if needed
+            },
           ),
         );
       }
-    } catch (_) {}
+    } catch (e) {
+      // Silently fail for automatic checks - don't show error to user
+      Log.w('Automatic update check failed: $e', 'CHAT_LIST_MONGODB');
+    }
   }
 }

@@ -49,6 +49,10 @@
     <!-- For Android 12 and below, READ_CONTACTS is sufficient -->
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <!-- Android 13+ granular contact permissions (handled by flutter_contacts) -->
+    
+    <!-- APK Installation permission - Required for Android 8.0+ (API 26+) -->
+    <!-- This allows the app to request installation of APK files -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name="${applicationName}"
