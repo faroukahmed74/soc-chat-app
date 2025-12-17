@@ -46,7 +46,7 @@ class ChatListScreenMongoDB extends StatefulWidget {
   State<ChatListScreenMongoDB> createState() => _ChatListScreenMongoDBState();
 }
 
-class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
+class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with SingleTickerProviderStateMixin {
   final MongoDBChatService _chatService = MongoDBChatService();
   final PhysicalAuthService _authService = PhysicalAuthService();
   final TextEditingController _searchController = TextEditingController();
@@ -64,6 +64,10 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
   final Set<String> _userNameFetching = {};
   bool _isCheckingUpdate = false;
   final RealtimeService _realtime = RealtimeService.instance;
+  
+  // Tab controller for All Chats / Groups tabs
+  late TabController _tabController;
+  int _selectedTabIndex = 0; // 0 = All Chats, 1 = Groups
 
   // Track last message timestamps to detect new messages for sound
   final Map<String, DateTime> _lastMessageTimes = {};
@@ -241,16 +245,51 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     _themeService.addListener(() {
       if (mounted) setState(() {});
     });
+    // Initialize tab controller with 2 tabs (All Chats, Groups)
+    _tabController = TabController(length: 2, vsync: this, initialIndex: 0);
+    _tabController.addListener(_onTabChanged);
     _initializeChatList();
     _loadUserRole();
     _searchController.addListener(_onSearchChanged);
     _maybeAutoCheckUpdate();
+  }
+  
+  void _onTabChanged() {
+    if (_tabController.indexIsChanging) return;
+    setState(() {
+      _selectedTabIndex = _tabController.index;
+      _filteredChats = _applySearchFilter(_getChatsForCurrentTab());
+    });
+  }
+  
+  /// Get chats for the currently selected tab
+  List<Map<String, dynamic>> _getChatsForCurrentTab() {
+    if (_selectedTabIndex == 0) {
+      // All Chats tab - return all chats
+      return _chats;
+    } else {
+      // Groups tab - return only group chats
+      return _filterGroupChats(_chats);
+    }
+  }
+  
+  /// Filter to get only group chats
+  List<Map<String, dynamic>> _filterGroupChats(List<Map<String, dynamic>> chats) {
+    return chats.where((chat) {
+      // More robust group detection - check multiple possible fields
+      final bool isGroup = chat['type'] == 'group' || 
+                          (chat['isGroup'] == true) || 
+                          (chat['isGroupChat'] == true) ||
+                          (chat['members'] != null && (chat['members'] as List).length > 2);
+      return isGroup;
+    }).toList();
   }
 
   @override
   void dispose() {
     _chatsSubscription?.cancel();
     _searchController.dispose();
+    _tabController.dispose();
     super.dispose();
   }
 
@@ -366,7 +405,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
           if (mounted) {
             setState(() {
               _chats = sortedChats;
-              _filteredChats = _applySearchFilter(sortedChats);
+              _filteredChats = _applySearchFilter(_getChatsForCurrentTab());
             });
             // Force a rebuild to ensure timestamp display updates
             Log.i('🔄 UI updated for chat $chatId. New timestamp: ${messageTime.toIso8601String()}', 'CHAT_LIST_MONGODB');
@@ -421,7 +460,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
         final sortedChats = _sortChatsByNewestMessage(chats);
         setState(() {
           _chats = sortedChats;
-          _filteredChats = _applySearchFilter(sortedChats);
+          _filteredChats = _applySearchFilter(_getChatsForCurrentTab());
         });
         Log.i('✅ Loaded and sorted ${sortedChats.length} chats. Top chat: ${sortedChats.isNotEmpty ? sortedChats[0]['name'] : "none"}', 'CHAT_LIST_MONGODB');
       }
@@ -523,7 +562,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
 
           setState(() {
             _chats = sortedChats;
-            _filteredChats = _applySearchFilter(sortedChats);
+            _filteredChats = _applySearchFilter(_getChatsForCurrentTab());
           });
         }
       },
@@ -736,7 +775,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
     final query = _searchController.text.toLowerCase();
     setState(() {
       _searchQuery = query;
-      _filteredChats = _applySearchFilter(_chats);
+      _filteredChats = _applySearchFilter(_getChatsForCurrentTab());
     });
   }
 
@@ -1531,12 +1570,39 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
       ),
       body: Column(
         children: [
+          // Tab Bar for All Chats / Groups
+          Container(
+            color: Theme.of(context).colorScheme.surface,
+            child: TabBar(
+              controller: _tabController,
+              labelColor: Theme.of(context).colorScheme.primary,
+              unselectedLabelColor: Theme.of(context).colorScheme.onSurfaceVariant,
+              indicatorColor: Theme.of(context).colorScheme.primary,
+              indicatorWeight: 3,
+              labelStyle: AppDesignSystem.titleSmall.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+              unselectedLabelStyle: AppDesignSystem.titleSmall,
+              tabs: [
+                Tab(
+                  icon: Icon(Icons.chat, size: isWideScreen ? 24 : 20),
+                  text: 'All Chats',
+                ),
+                Tab(
+                  icon: Icon(Icons.group, size: isWideScreen ? 24 : 20),
+                  text: 'Groups',
+                ),
+              ],
+            ),
+          ),
           Padding(
             padding: EdgeInsets.all(isWideScreen ? 24.0 : 16.0),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: 'Search chats...',
+                hintText: _selectedTabIndex == 0 
+                    ? 'Search chats...' 
+                    : 'Search groups...',
                 prefixIcon: const Icon(Icons.search),
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(AppDesignSystem.radiusMD),
@@ -1553,15 +1619,21 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(
-                          Icons.chat_bubble_outline,
+                          _selectedTabIndex == 0 
+                              ? Icons.chat_bubble_outline 
+                              : Icons.group_outlined,
                           size: 64,
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                         const SizedBox(height: 16),
                         Text(
                           _searchQuery.isNotEmpty
-                              ? 'No chats found matching "$_searchQuery"'
-                              : 'No chats yet. Start a conversation!',
+                              ? (_selectedTabIndex == 0
+                                  ? 'No chats found matching "$_searchQuery"'
+                                  : 'No groups found matching "$_searchQuery"')
+                              : (_selectedTabIndex == 0
+                                  ? 'No chats yet. Start a conversation!'
+                                  : 'No groups yet. Create a group to get started!'),
                           style: AppDesignSystem.bodyLarge.copyWith(
                             color: Theme.of(
                               context,
@@ -1570,13 +1642,22 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> {
                           textAlign: TextAlign.center,
                         ),
                         const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.pushNamed(context, '/search');
-                          },
-                          icon: const Icon(Icons.person_add),
-                          label: const Text('Search Users'),
-                        ),
+                        if (_selectedTabIndex == 0)
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pushNamed(context, '/search');
+                            },
+                            icon: const Icon(Icons.person_add),
+                            label: const Text('Search Users'),
+                          )
+                        else
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.pushNamed(context, '/create_group');
+                            },
+                            icon: const Icon(Icons.group_add),
+                            label: const Text('Create Group'),
+                          ),
                       ],
                     ),
                   )
