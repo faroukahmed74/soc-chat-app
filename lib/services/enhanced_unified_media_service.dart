@@ -628,11 +628,12 @@ class EnhancedUnifiedMediaService {
         
         final dio = Dio(BaseOptions(baseUrl: baseUrl));
         final formData = FormData.fromMap({
-          'media': MultipartFile.fromBytes(
+          'chatId': chatId,
+          'type': mediaResult.mimeType,
+          'file': MultipartFile.fromBytes(
             mediaResult.bytes,
             filename: mediaResult.fileName,
           ),
-          'type': mediaResult.mimeType,
         });
 
         final response = await dio.post(
@@ -650,7 +651,7 @@ class EnhancedUnifiedMediaService {
         Log.i('Upload response: ${response.statusCode}', 'ENHANCED_MEDIA_SERVICE');
         Log.i('Upload response data: ${response.data}', 'ENHANCED_MEDIA_SERVICE');
 
-        if (response.statusCode == 200 && response.data['mediaUrl'] != null) {
+        if ((response.statusCode == 200 || response.statusCode == 201) && response.data['mediaUrl'] != null) {
           return response.data['mediaUrl'];
         } else {
           throw Exception('Upload failed: ${response.data}');

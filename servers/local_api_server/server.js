@@ -77,6 +77,23 @@ app.use(compression({
     if (req.headers['x-no-compression']) {
       return false;
     }
+    
+    // Don't compress binary media files (images, videos, audio) - they're already compressed
+    const path = req.path || '';
+    const mediaExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.mp4', '.webm', '.mp3', '.wav', '.ogg', '.pdf'];
+    if (mediaExtensions.some(ext => path.toLowerCase().endsWith(ext))) {
+      return false;
+    }
+    
+    // Check content type header
+    const contentType = res.getHeader('content-type') || '';
+    if (contentType.startsWith('image/') || 
+        contentType.startsWith('video/') || 
+        contentType.startsWith('audio/') ||
+        contentType === 'application/pdf') {
+      return false;
+    }
+    
     // Use compression filter function
     return compression.filter(req, res);
   }
@@ -258,11 +275,93 @@ try {
   console.warn('Failed to ensure uploads directory exists:', e.message);
 }
 
-// Serve uploaded media statically
-app.use('/uploads', express.static(UPLOADS_DIR));
+// Optimized static file serving with Range request support and caching
+function serveMediaWithRange(dir) {
+  return (req, res, next) => {
+    const filePath = path.join(dir, req.path);
+    
+    // Check if file exists
+    fs.stat(filePath, (err, stats) => {
+      if (err || !stats.isFile()) {
+        return next();
+      }
+
+      // Set caching headers for media files
+      const maxAge = 31536000; // 1 year
+      res.setHeader('Cache-Control', `public, max-age=${maxAge}, immutable`);
+      res.setHeader('ETag', `"${stats.mtime.getTime()}-${stats.size}"`);
+      res.setHeader('Last-Modified', stats.mtime.toUTCString());
+      
+      // Handle conditional requests (304 Not Modified)
+      const ifNoneMatch = req.headers['if-none-match'];
+      const ifModifiedSince = req.headers['if-modified-since'];
+      
+      if (ifNoneMatch && ifNoneMatch === res.getHeader('ETag')) {
+        return res.status(304).end();
+      }
+      
+      if (ifModifiedSince && new Date(ifModifiedSince) >= stats.mtime) {
+        return res.status(304).end();
+      }
+
+      // Set content type
+      const ext = path.extname(filePath).toLowerCase();
+      const mimeTypes = {
+        '.jpg': 'image/jpeg',
+        '.jpeg': 'image/jpeg',
+        '.png': 'image/png',
+        '.gif': 'image/gif',
+        '.webp': 'image/webp',
+        '.mp4': 'video/mp4',
+        '.webm': 'video/webm',
+        '.mp3': 'audio/mpeg',
+        '.wav': 'audio/wav',
+        '.pdf': 'application/pdf',
+      };
+      res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+      res.setHeader('Accept-Ranges', 'bytes');
+      res.setHeader('Content-Length', stats.size);
+
+      // Handle Range requests for partial content (crucial for video/audio streaming)
+      const range = req.headers.range;
+      if (range) {
+        const parts = range.replace(/bytes=/, '').split('-');
+        let start = parseInt(parts[0], 10);
+        let end = parts[1] ? parseInt(parts[1], 10) : stats.size - 1;
+        
+        // Validate range bounds
+        if (isNaN(start)) start = 0;
+        if (isNaN(end)) end = stats.size - 1;
+        if (start < 0) start = 0;
+        if (end >= stats.size) end = stats.size - 1;
+        if (start > end) {
+          // Invalid range, send entire file
+          const stream = fs.createReadStream(filePath);
+          return stream.pipe(res);
+        }
+        
+        const chunksize = (end - start) + 1;
+        
+        res.status(206); // Partial Content
+        res.setHeader('Content-Range', `bytes ${start}-${end}/${stats.size}`);
+        res.setHeader('Content-Length', chunksize);
+
+        const stream = fs.createReadStream(filePath, { start, end });
+        stream.pipe(res);
+      } else {
+        // No range request - stream entire file
+        const stream = fs.createReadStream(filePath);
+        stream.pipe(res);
+      }
+    });
+  };
+}
+
+// Serve uploaded media with Range request support and caching
+app.use('/uploads', serveMediaWithRange(UPLOADS_DIR));
 
 // Backward-compatibility alias: serve legacy /chat_media paths from uploads/chat_media
-app.use('/chat_media', express.static(path.join(UPLOADS_DIR, 'chat_media')));
+app.use('/chat_media', serveMediaWithRange(path.join(UPLOADS_DIR, 'chat_media')));
 
 // Test endpoint to verify static file serving
 app.get('/test-uploads', (req, res) => {
@@ -1470,63 +1569,62 @@ app.post('/api/media/upload', authenticateToken, async (req, res) => {
     const type = (req.body?.type || 'media').toString();
     const caption = (req.body?.caption || '').toString();
 
-    // If it's a video, check if transcoding is needed and transcode if necessary
+    // Use original file immediately - transcoding will happen in background if needed
     let finalFilePath = req.file.path;
     let finalFileName = req.file.filename;
     
+    // Start video transcoding in background (non-blocking)
     if (type === 'video' && req.file.mimetype?.startsWith('video/')) {
-      console.log('Video upload detected:', {
+      console.log('Video upload detected - will transcode in background:', {
         path: req.file.path,
         filename: req.file.filename,
         mimetype: req.file.mimetype
       });
       
-      try {
-        const transcode = require('./transcode_video');
-        
-        // Check if ffmpeg is available
-        const ffmpegAvailable = await transcode.checkFFmpegAvailable();
-        if (!ffmpegAvailable) {
-          console.warn('⚠️  FFmpeg not available - video transcoding disabled');
-          console.warn('⚠️  Video may not play in web browsers. Install ffmpeg to enable transcoding.');
-        } else {
-          console.log('✓ FFmpeg is available');
+      // Transcode asynchronously without blocking the response
+      setImmediate(async () => {
+        try {
+          const transcode = require('./transcode_video');
           
-          // Check if video needs transcoding
-          console.log('Checking if video needs transcoding...');
+          // Check if ffmpeg is available
+          const ffmpegAvailable = await transcode.checkFFmpegAvailable();
+          if (!ffmpegAvailable) {
+            console.warn('⚠️  FFmpeg not available - video transcoding disabled');
+            return;
+          }
+          
+          console.log('✓ FFmpeg is available, checking if transcoding needed...');
           const needsTranscode = await transcode.needsTranscoding(req.file.path);
-          console.log('Needs transcoding:', needsTranscode);
           
           if (needsTranscode) {
-            console.log('🔄 Transcoding video to web-compatible format...');
+            console.log('🔄 Starting background transcoding...');
             
             // Generate transcoded filename
             const originalPath = path.parse(req.file.path);
             const transcodedPath = path.join(originalPath.dir, `transcoded_${originalPath.name}.mp4`);
             
-            // Transcode the video
+            // Transcode the video (this happens in background)
             const success = await transcode.transcodeVideoToH264(req.file.path, transcodedPath);
             
             if (success) {
-              // Use transcoded file
-              finalFilePath = transcodedPath;
-              finalFileName = `transcoded_${req.file.filename}`;
-              
               // Delete original file to save space
-              fs.unlinkSync(req.file.path);
-              
-              console.log('✅ Video transcoded successfully');
+              try {
+                fs.unlinkSync(req.file.path);
+                console.log('✅ Video transcoded successfully, original deleted');
+              } catch (unlinkErr) {
+                console.warn('⚠️  Could not delete original file:', unlinkErr.message);
+              }
             } else {
-              console.warn('❌ Video transcoding failed, using original file');
+              console.warn('❌ Video transcoding failed, keeping original file');
             }
           } else {
             console.log('✓ Video already in compatible format');
           }
+        } catch (transcodeErr) {
+          console.error('❌ Error during background video transcoding:', transcodeErr);
+          // Original file remains available
         }
-      } catch (transcodeErr) {
-        console.error('❌ Error during video transcoding:', transcodeErr);
-        // Continue with original file if transcoding fails
-      }
+      });
     }
 
     // Build public URL to the uploaded file (original or transcoded)
