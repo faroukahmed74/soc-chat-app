@@ -1243,6 +1243,10 @@ app.use('/auth', authRoutes);
 app.use('/chats', chatRoutes);
 app.use('/messages', messageRoutes);
 app.use('/notifications', notificationRoutes);
+// Performance monitoring middleware
+const performanceMonitor = require('./middleware/performanceMonitor');
+app.use(performanceMonitor.performanceMonitorMiddleware);
+
 app.use('/admin', adminRoutes);
 // Also mount API-prefixed routes for client compatibility
 app.use('/api/auth', authRoutes);
@@ -1406,6 +1410,24 @@ app.post('/api/auth/register', async (req, res) => {
     };
     
     const result = await db.collection('users').insertOne(user);
+    
+    // Emit admin activity event for user registration
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to('admin_room').emit('admin_activity', {
+          type: 'system',
+          action: 'user_registered',
+          description: `New user registered: ${finalDisplayName}`,
+          userId: result.insertedId.toString(),
+          userName: finalDisplayName,
+          timestamp: new Date().toISOString(),
+          details: { email }
+        });
+      }
+    } catch (e) {
+      console.warn('Error emitting admin activity for user registration:', e);
+    }
     
     // Generate token
     const token = jwt.sign(
@@ -2693,6 +2715,26 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     };
     
     const result = await db.collection('messages').insertOne(message);
+    
+    // Emit admin activity event for message sent
+    try {
+      const io = req.app.get('io');
+      if (io) {
+        io.to('admin_room').emit('admin_activity', {
+          type: 'system',
+          action: 'message_sent',
+          description: `${senderName} sent a message`,
+          userId: userId,
+          userName: senderName,
+          chatId: chatId,
+          messageId: result.insertedId.toString(),
+          timestamp: new Date().toISOString(),
+          details: { messageType: message.messageType || 'text' }
+        });
+      }
+    } catch (e) {
+      console.warn('Error emitting admin activity for message:', e);
+    }
     
     const now = new Date();
     // Update chat's updatedAt and lastMessageTime
@@ -4332,6 +4374,176 @@ app.put('/api/users/ringtone', authenticateToken, async (req, res) => {
 });
 
 // =========================================
+// SCHEDULED BROADCASTS CRON JOB
+// =========================================
+const cron = require('node-cron');
+
+// Check for scheduled broadcasts every minute
+cron.schedule('* * * * *', async () => {
+  try {
+    if (!db) return;
+    
+    const now = new Date();
+    const scheduledBroadcasts = await db.collection('scheduled_broadcasts')
+      .find({
+        status: 'scheduled',
+        scheduledAt: { $lte: now }
+      })
+      .toArray();
+    
+    if (scheduledBroadcasts.length === 0) return;
+    
+    console.log(`📢 Processing ${scheduledBroadcasts.length} scheduled broadcast(s)...`);
+    
+    for (const broadcast of scheduledBroadcasts) {
+      try {
+        // Get users based on segment filter
+        let users;
+        if (broadcast.userSegment) {
+          const segment = broadcast.userSegment;
+          const query = {};
+          if (segment.role) query.role = segment.role;
+          if (segment.status) query.status = segment.status;
+          users = await db.collection('users').find(query).toArray();
+        } else {
+          users = await db.collection('users').find({}).toArray();
+        }
+        
+        // Send broadcast (reuse existing broadcast logic)
+        const adminUser = await db.collection('users').findOne({ _id: new ObjectId(broadcast.createdBy) });
+        const senderName = adminUser?.displayName || adminUser?.email || 'Admin';
+        
+        // Create broadcast messages for storage
+        const broadcastMessages = users.map(user => ({
+          type: 'broadcast',
+          content: broadcast.message,
+          senderId: broadcast.createdBy,
+          recipientId: user._id,
+          createdAt: new Date(),
+          read: false
+        }));
+        
+        if (broadcastMessages.length > 0) {
+          await db.collection('messages').insertMany(broadcastMessages);
+        }
+        
+        // Emit via Socket.IO
+        if (io) {
+          const notificationPayload = {
+            title: '📢 Broadcast Message',
+            body: broadcast.message.length > 50 ? broadcast.message.substring(0, 50) + '...' : broadcast.message,
+            data: {
+              type: 'broadcast',
+              senderId: broadcast.createdBy,
+              senderName: senderName,
+              message: broadcast.message,
+              timestamp: new Date(),
+            },
+            timestamp: new Date(),
+          };
+          
+          const broadcastPayload = {
+            title: '📢 Broadcast',
+            body: broadcast.message,
+            chatId: null,
+            senderId: broadcast.createdBy,
+            senderName: senderName,
+            messageType: broadcast.type || 'text',
+            timestamp: new Date(),
+          };
+          
+          io.emit('broadcast_notification', broadcastPayload);
+          io.emit('notification', notificationPayload);
+        }
+        
+        // Send FCM notifications
+        const sendFCMNotification = app.locals.sendFCMNotification;
+        if (sendFCMNotification) {
+          const title = '📢 Broadcast Message';
+          const body = broadcast.message.length > 100 ? broadcast.message.substring(0, 100) + '...' : broadcast.message;
+          
+          for (const user of users) {
+            const userId = user._id.toString();
+            if (userId === broadcast.createdBy) continue;
+            
+            sendFCMNotification(
+              userId,
+              title,
+              body,
+              {
+                type: 'broadcast',
+                senderId: broadcast.createdBy,
+                senderName: senderName,
+                message: broadcast.message,
+                timestamp: new Date().toISOString(),
+              }
+            ).catch(err => {
+              console.error(`Error sending FCM to user ${userId}:`, err.message);
+            });
+          }
+        }
+        
+        // Calculate next scheduled time if recurring
+        let nextScheduledAt = null;
+        if (broadcast.recurrence === 'daily') {
+          nextScheduledAt = new Date(broadcast.scheduledAt);
+          nextScheduledAt.setDate(nextScheduledAt.getDate() + 1);
+        } else if (broadcast.recurrence === 'weekly') {
+          nextScheduledAt = new Date(broadcast.scheduledAt);
+          nextScheduledAt.setDate(nextScheduledAt.getDate() + 7);
+        } else if (broadcast.recurrence === 'monthly') {
+          nextScheduledAt = new Date(broadcast.scheduledAt);
+          nextScheduledAt.setMonth(nextScheduledAt.getMonth() + 1);
+        }
+        
+        // Update broadcast status
+        if (nextScheduledAt) {
+          // Recurring - schedule next occurrence
+          await db.collection('scheduled_broadcasts').updateOne(
+            { _id: broadcast._id },
+            {
+              $set: {
+                scheduledAt: nextScheduledAt,
+                sentAt: new Date(),
+                lastSentAt: new Date(),
+              }
+            }
+          );
+        } else {
+          // One-time - mark as sent
+          await db.collection('scheduled_broadcasts').updateOne(
+            { _id: broadcast._id },
+            {
+              $set: {
+                status: 'sent',
+                sentAt: new Date(),
+              }
+            }
+          );
+        }
+        
+        console.log(`✅ Scheduled broadcast sent: ${broadcast._id}`);
+      } catch (error) {
+        console.error(`❌ Error processing scheduled broadcast ${broadcast._id}:`, error);
+        await db.collection('scheduled_broadcasts').updateOne(
+          { _id: broadcast._id },
+          {
+            $set: {
+              status: 'error',
+              error: error.message,
+            }
+          }
+        );
+      }
+    }
+  } catch (error) {
+    console.error('Error in scheduled broadcasts cron job:', error);
+  }
+});
+
+console.log('⏰ Scheduled broadcasts cron job started (runs every minute)');
+
+// =========================================
 // Socket.IO
 // =========================================
 io.on('connection', async (socket) => {
@@ -4374,6 +4586,12 @@ io.on('connection', async (socket) => {
           socket.join(mongoId);
           socket.join(`user:${mongoId}`);
           console.log(`✅ User also joined MongoDB _id room: "${mongoId}"`);
+        }
+        
+        // If user is admin, join admin room for activity feed
+        if (user.role === 'admin') {
+          socket.join('admin_room');
+          console.log(`✅ Admin ${socket.userId} joined admin room for activity feed`);
         }
       }
     } catch (error) {
@@ -5196,6 +5414,13 @@ async function requireCloudflareAccess(req, res, next) {
 
 async function startServer() {
   await connectToMongo();
+  
+  // Start performance monitoring metric storage
+  if (db) {
+    performanceMonitor.startMetricStorage(db, 60000); // Store metrics every minute
+    console.log('Performance monitoring initialized');
+  }
+  
   server.listen(PORT, HOST, () => {
     console.log(`Server running on http://${HOST}:${PORT}`);
     console.log(`Allowed origins: ${allOrigins.join(', ')}`);

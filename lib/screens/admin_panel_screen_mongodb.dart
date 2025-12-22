@@ -19,6 +19,19 @@ import '../theme/app_design_system.dart';
 import '../config/database_config.dart';
 import '../utils/responsive_utils.dart';
 import '../utils/cairo_time_utils.dart';
+import 'unified_search_screen.dart';
+import 'security_compliance_screen.dart';
+import 'performance_monitoring_screen.dart';
+import 'notification_management_screen.dart';
+import 'chat_moderation_screen.dart';
+import 'feature_flags_screen.dart';
+import 'api_management_screen.dart';
+import 'integration_management_screen.dart';
+import 'backup_restore_screen.dart';
+import 'custom_reports_screen.dart';
+import 'user_segmentation_screen.dart';
+import 'announcement_system_screen.dart';
+import 'system_configuration_screen.dart';
 
 class AdminPanelScreenMongoDB extends StatefulWidget {
   const AdminPanelScreenMongoDB({Key? key}) : super(key: key);
@@ -4187,6 +4200,152 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
         foregroundColor: Theme.of(context).colorScheme.onPrimary,
         elevation: 0,
         centerTitle: false,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const UnifiedSearchScreen(),
+                ),
+              );
+            },
+            tooltip: 'Advanced Search',
+          ),
+          IconButton(
+            icon: const Icon(Icons.security),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SecurityComplianceScreen(),
+                ),
+              );
+            },
+            tooltip: 'Security & Compliance',
+          ),
+          IconButton(
+            icon: const Icon(Icons.speed),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PerformanceMonitoringScreen(),
+                ),
+              );
+            },
+            tooltip: 'Performance Monitoring',
+          ),
+          IconButton(
+            icon: const Icon(Icons.notifications_active),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NotificationManagementScreen(),
+                ),
+              );
+            },
+            tooltip: 'Notification Management',
+          ),
+          IconButton(
+            icon: const Icon(Icons.flag),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const FeatureFlagsScreen(),
+                ),
+              );
+            },
+            tooltip: 'Feature Flags & A/B Testing',
+          ),
+          IconButton(
+            icon: const Icon(Icons.vpn_key),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const ApiManagementScreen(),
+                ),
+              );
+            },
+            tooltip: 'API Management',
+          ),
+          IconButton(
+            icon: const Icon(Icons.link),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const IntegrationManagementScreen(),
+                ),
+              );
+            },
+            tooltip: 'Integration Management',
+          ),
+          IconButton(
+            icon: const Icon(Icons.backup),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const BackupRestoreScreen(),
+                ),
+              );
+            },
+            tooltip: 'Backup & Restore',
+          ),
+          IconButton(
+            icon: const Icon(Icons.description),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const CustomReportsScreen(),
+                ),
+              );
+            },
+            tooltip: 'Custom Reports',
+          ),
+          IconButton(
+            icon: const Icon(Icons.group),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const UserSegmentationScreen(),
+                ),
+              );
+            },
+            tooltip: 'User Segmentation',
+          ),
+          IconButton(
+            icon: const Icon(Icons.campaign),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const AnnouncementSystemScreen(),
+                ),
+              );
+            },
+            tooltip: 'Announcement System',
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SystemConfigurationScreen(),
+                ),
+              );
+            },
+            tooltip: 'System Configuration',
+          ),
+        ],
         bottom: TabBar(
           isScrollable: isMobile, // Allow scrolling on mobile
           controller: _tabController,
@@ -4499,14 +4658,34 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                             ),
                           ),
                         ),
-                        trailing: Icon(
-                          Icons.arrow_forward_ios,
-                          size: ResponsiveUtils.getResponsiveValue(
-                            context,
-                            mobile: 14.0,
-                            tablet: 16.0,
-                            desktop: 18.0,
-                          ),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            IconButton(
+                              icon: const Icon(Icons.admin_panel_settings),
+                              onPressed: () {
+                                final chatId = chat['_id']?.toString() ?? chat['id']?.toString() ?? '';
+                                if (chatId.isNotEmpty) {
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (context) => ChatModerationScreen(chatId: chatId),
+                                    ),
+                                  );
+                                }
+                              },
+                              tooltip: 'Moderate Chat',
+                            ),
+                            Icon(
+                              Icons.arrow_forward_ios,
+                              size: ResponsiveUtils.getResponsiveValue(
+                                context,
+                                mobile: 14.0,
+                                tablet: 16.0,
+                                desktop: 18.0,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     );

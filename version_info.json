@@ -1,10 +1,10 @@
 {
-  "version": "1.0.28",
-  "build_number": "28",
+  "version": "1.0.29",
+  "build_number": "29",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.28 (Build 28) - Chat List Screen Enhancements:\n- Added tabbed interface with 'All Chats' and 'Groups' tabs for better organization\n- Enhanced chat list filtering - separate search for individual chats and groups\n- Improved real-time message updates with immediate UI refresh and sorting\n- Enhanced update check system with manual check icon in AppBar (Android)\n- Automatic update check on app startup with rate limiting\n- Better chat sorting by newest message timestamp (handles both sent and received)\n- Improved unread count tracking and display\n- Enhanced empty state messages for both tabs with contextual actions\n- Better group chat detection and filtering\n- Responsive tab bar design for all screen sizes\n- Improved search functionality with tab-specific hints\n- Enhanced real-time synchronization for chat list updates\n- Better timestamp parsing and display across different date formats\n- Various UI/UX improvements and bug fixes",
+  "release_notes": "SOC Chat App v1.0.29 (Build 29) - Enhanced Backup & Restore System:\n- Real MongoDB backup implementation - exports actual database collections to JSON files\n- Enhanced backup fetching - automatically discovers and displays all existing backups\n- Comprehensive backup display - shows all backups grouped by status (Running, Completed, Failed)\n- Detailed backup information - displays collections backed up, document counts, and file sizes\n- Real-time backup status updates - auto-refresh every 3 seconds for live progress tracking\n- Full backup control - restore, delete, and cancel operations for all backup types\n- Backup path tracking - stores and displays backup file locations\n- Improved backup restoration - full collection restoration with progress tracking\n- Enhanced backup scheduling - automated backup creation with flexible scheduling options\n- Backup verification - integrity checks and verification status display\n- Multi-collection backup support - backs up users, chats, messages, and all system collections\n- Backup history management - complete backup lifecycle tracking and management\n- Responsive backup UI - optimized for mobile, tablet, and desktop screens\n- Error handling improvements - better error messages and recovery for backup operations\n- Performance optimizations - efficient backup creation and restoration processes",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": true,
-  "last_updated": "2025-12-15T18:00:00Z"
+  "last_updated": "2025-01-20T12:00:00Z"
 }

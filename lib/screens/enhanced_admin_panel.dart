@@ -14,6 +14,16 @@ import '../services/theme_service.dart';
 import '../services/mongodb_admin_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
+import 'advanced_analytics_screen.dart';
+import 'moderation_center_screen.dart';
+import 'realtime_activity_feed_screen.dart';
+import 'user_detail_profile_screen.dart';
+import 'scheduled_broadcasts_screen.dart';
+import 'unified_search_screen.dart';
+import 'security_compliance_screen.dart';
+import 'performance_monitoring_screen.dart';
+import 'notification_management_screen.dart';
+import 'chat_moderation_screen.dart';
 
 class EnhancedAdminPanel extends StatefulWidget {
   const EnhancedAdminPanel({Key? key}) : super(key: key);
@@ -34,9 +44,14 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
   List<Map<String, dynamic>> _chats = [];
   List<Map<String, dynamic>> _messages = [];
   List<Map<String, dynamic>> _reports = [];
+  List<Map<String, dynamic>> _recentActivity = [];
   Map<String, dynamic>? _systemStats;
   Map<String, dynamic>? _systemHealth;
   Map<String, dynamic>? _analytics;
+  
+  // Bulk selection state
+  Set<String> _selectedUserIds = {};
+  bool _isBulkMode = false;
   
   // Controllers
   final TextEditingController _userSearchController = TextEditingController();
@@ -49,6 +64,7 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
   bool _isLoadingReports = false;
   bool _isLoadingStats = false;
   bool _isLoadingAnalytics = false;
+  bool _isLoadingActivity = false;
   bool _roleLoaded = false;
   bool _isAdmin = false;
   bool _isBroadcasting = false;
@@ -138,6 +154,7 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       _loadSystemStats(),
       _loadSystemHealth(),
       _loadAnalytics(),
+      _loadRecentActivity(),
     ]);
   }
 
@@ -163,7 +180,15 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       }
     } catch (e) {
       Log.e('Error loading users', 'ENHANCED_ADMIN_PANEL', e);
-      _showErrorSnackBar('Error loading users: $e');
+      if (mounted) {
+        _showDetailedErrorDialog(
+          'Failed to Load Users',
+          'Unable to load the list of users. Please check your connection and try again.',
+          errorCode: 'LOAD_USERS_ERROR',
+          details: e.toString(),
+          onRetry: _loadUsers,
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoadingUsers = false);
     }
@@ -178,7 +203,12 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       }
     } catch (e) {
       Log.e('Error loading system stats', 'ENHANCED_ADMIN_PANEL', e);
-      _showErrorSnackBar('Error loading system stats: $e');
+      if (mounted) {
+        _showErrorSnackBar(
+          'Error loading system stats: $e',
+          onRetry: _loadSystemStats,
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoadingStats = false);
     }
@@ -218,7 +248,12 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       }
     } catch (e) {
       Log.e('Error loading chats', 'ENHANCED_ADMIN_PANEL', e);
-      _showErrorSnackBar('Error loading chats: $e');
+      if (mounted) {
+        _showErrorSnackBar(
+          'Error loading chats: $e',
+          onRetry: _loadChats,
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoadingChats = false);
     }
@@ -237,7 +272,12 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       }
     } catch (e) {
       Log.e('Error loading messages', 'ENHANCED_ADMIN_PANEL', e);
-      _showErrorSnackBar('Error loading messages: $e');
+      if (mounted) {
+        _showErrorSnackBar(
+          'Error loading messages: $e',
+          onRetry: _loadMessages,
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoadingMessages = false);
     }
@@ -252,28 +292,144 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       }
     } catch (e) {
       Log.e('Error loading reports', 'ENHANCED_ADMIN_PANEL', e);
-      _showErrorSnackBar('Error loading reports: $e');
+      if (mounted) {
+        _showErrorSnackBar(
+          'Error loading reports: $e',
+          onRetry: _loadReports,
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoadingReports = false);
     }
   }
 
-  void _showErrorSnackBar(String message) {
+  Future<void> _loadRecentActivity() async {
+    setState(() => _isLoadingActivity = true);
+    try {
+      final activities = await _adminService.getRecentActivity(limit: 10);
+      if (mounted) {
+        setState(() => _recentActivity = activities);
+      }
+    } catch (e) {
+      Log.e('Error loading recent activity', 'ENHANCED_ADMIN_PANEL', e);
+      // Don't show error snackbar for activity, just log it
+    } finally {
+      if (mounted) setState(() => _isLoadingActivity = false);
+    }
+  }
+
+  void _showErrorSnackBar(String message, {String? errorCode, VoidCallback? onRetry}) {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(message),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                message,
+                style: const TextStyle(fontWeight: FontWeight.bold),
+              ),
+              if (errorCode != null)
+                Text(
+                  'Error Code: $errorCode',
+                  style: const TextStyle(fontSize: 12),
+                ),
+            ],
+          ),
           backgroundColor: Colors.red,
+          duration: const Duration(seconds: 5),
           action: SnackBarAction(
-            label: 'Dismiss',
+            label: onRetry != null ? 'Retry' : 'Dismiss',
             textColor: Colors.white,
             onPressed: () {
+              if (onRetry != null) {
+                onRetry();
+              }
               ScaffoldMessenger.of(context).hideCurrentSnackBar();
             },
           ),
         ),
       );
     }
+  }
+
+  void _showDetailedErrorDialog(String title, String message, {String? errorCode, String? details, VoidCallback? onRetry}) {
+    if (!mounted) return;
+    
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Row(
+          children: [
+            const Icon(Icons.error_outline, color: Colors.red),
+            const SizedBox(width: 8),
+            Expanded(child: Text(title)),
+          ],
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                message,
+                style: const TextStyle(fontSize: 16),
+              ),
+              if (errorCode != null) ...[
+                const SizedBox(height: 12),
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.grey[200],
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'Error Code: $errorCode',
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                  ),
+                ),
+              ],
+              if (details != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  'Details:',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: _themeService.isDarkMode ? Colors.grey[300] : Colors.grey[700],
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  details,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Close'),
+          ),
+          if (onRetry != null)
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                onRetry();
+              },
+              child: const Text('Retry'),
+            ),
+        ],
+      ),
+    );
   }
 
   void _showSuccessSnackBar(String message) {
@@ -307,7 +463,15 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       _showSuccessSnackBar('Message broadcasted successfully');
     } catch (e) {
       Log.e('Error broadcasting message', 'ENHANCED_ADMIN_PANEL', e);
-      _showErrorSnackBar('Error broadcasting message: $e');
+      if (mounted) {
+        _showDetailedErrorDialog(
+          'Broadcast Failed',
+          'Unable to send the broadcast message. Please try again.',
+          errorCode: 'BROADCAST_ERROR',
+          details: e.toString(),
+          onRetry: _broadcastMessage,
+        );
+      }
     } finally {
       if (mounted) setState(() => _isBroadcasting = false);
     }
@@ -315,23 +479,45 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
 
   Future<void> _lockUser(String userId, String reason) async {
     try {
+      setState(() => _isLoadingUsers = true);
       await _adminService.lockUser(userId, reason);
       _showSuccessSnackBar('User locked successfully');
-      _loadUsers(); // Refresh users list
+      await _loadUsers(); // Refresh users list
     } catch (e) {
       Log.e('Error locking user', 'ENHANCED_ADMIN_PANEL', e);
-      _showErrorSnackBar('Error locking user: $e');
+      if (mounted) {
+        _showDetailedErrorDialog(
+          'Failed to Lock User',
+          'Unable to lock the user account. Please try again.',
+          errorCode: 'LOCK_USER_ERROR',
+          details: e.toString(),
+          onRetry: () => _lockUser(userId, reason),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingUsers = false);
     }
   }
 
   Future<void> _unlockUser(String userId) async {
     try {
+      setState(() => _isLoadingUsers = true);
       await _adminService.unlockUser(userId);
       _showSuccessSnackBar('User unlocked successfully');
-      _loadUsers(); // Refresh users list
+      await _loadUsers(); // Refresh users list
     } catch (e) {
       Log.e('Error unlocking user', 'ENHANCED_ADMIN_PANEL', e);
-      _showErrorSnackBar('Error unlocking user: $e');
+      if (mounted) {
+        _showDetailedErrorDialog(
+          'Failed to Unlock User',
+          'Unable to unlock the user account. Please try again.',
+          errorCode: 'UNLOCK_USER_ERROR',
+          details: e.toString(),
+          onRetry: () => _unlockUser(userId),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingUsers = false);
     }
   }
 
@@ -343,12 +529,22 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
     
     if (confirmed == true) {
       try {
+        setState(() => _isLoadingUsers = true);
         await _adminService.deleteUserEnhanced(userId);
         _showSuccessSnackBar('User deleted successfully');
-        _loadUsers(); // Refresh users list
+        await _loadUsers(); // Refresh users list
       } catch (e) {
         Log.e('Error deleting user', 'ENHANCED_ADMIN_PANEL', e);
-        _showErrorSnackBar('Error deleting user: $e');
+        if (mounted) {
+          _showDetailedErrorDialog(
+            'Failed to Delete User',
+            'Unable to delete the user account. This may be due to permissions or the user may not exist.',
+            errorCode: 'DELETE_USER_ERROR',
+            details: e.toString(),
+          );
+        }
+      } finally {
+        if (mounted) setState(() => _isLoadingUsers = false);
       }
     }
   }
@@ -459,6 +655,54 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
         elevation: 0,
         actions: [
           IconButton(
+            icon: const Icon(Icons.search),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const UnifiedSearchScreen(),
+                ),
+              );
+            },
+            tooltip: 'Advanced Search',
+          ),
+          IconButton(
+            icon: const Icon(Icons.security),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const SecurityComplianceScreen(),
+                ),
+              );
+            },
+            tooltip: 'Security & Compliance',
+          ),
+          IconButton(
+            icon: const Icon(Icons.speed),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const PerformanceMonitoringScreen(),
+                ),
+              );
+            },
+            tooltip: 'Performance Monitoring',
+          ),
+          IconButton(
+            icon: const Icon(Icons.notifications_active),
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const NotificationManagementScreen(),
+                ),
+              );
+            },
+            tooltip: 'Notification Management',
+          ),
+          IconButton(
             icon: Icon(_autoRefreshEnabled ? Icons.refresh : Icons.refresh_outlined),
             onPressed: () {
               setState(() => _autoRefreshEnabled = !_autoRefreshEnabled);
@@ -481,6 +725,7 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
             Tab(icon: Icon(Icons.message), text: 'Messages'),
             Tab(icon: Icon(Icons.report), text: 'Reports'),
             Tab(icon: Icon(Icons.analytics), text: 'Analytics'),
+            Tab(icon: Icon(Icons.shield), text: 'Moderation'),
           ],
         ),
       ),
@@ -497,6 +742,7 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
               _buildMessagesTab(),
               _buildReportsTab(),
               _buildAnalyticsTab(),
+              _buildModerationTab(),
             ],
           ),
         ),
@@ -686,9 +932,16 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
   }
 
   Widget _buildActionButton(String label, IconData icon, Color color, VoidCallback onPressed) {
+    final isLoading = _isLoadingStats && (label == 'Export Data' || label == 'Backup Database' || label == 'Cleanup System');
     return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 16),
+      onPressed: isLoading ? null : onPressed,
+      icon: isLoading 
+          ? const SizedBox(
+              width: 16,
+              height: 16,
+              child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+            )
+          : Icon(icon, size: 16),
       label: Text(label),
       style: ElevatedButton.styleFrom(
         backgroundColor: color,
@@ -697,7 +950,42 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(8),
         ),
+        disabledBackgroundColor: color.withValues(alpha: 0.6),
       ),
+    );
+  }
+
+  Widget _buildSkeletonLoader() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: 5,
+      itemBuilder: (context, index) {
+        return Card(
+          margin: const EdgeInsets.only(bottom: 8),
+          child: ListTile(
+            leading: CircleAvatar(
+              backgroundColor: Colors.grey[300],
+            ),
+            title: Container(
+              height: 16,
+              width: double.infinity,
+              decoration: BoxDecoration(
+                color: Colors.grey[300],
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+            subtitle: Container(
+              height: 12,
+              width: 150,
+              margin: const EdgeInsets.only(top: 8),
+              decoration: BoxDecoration(
+                color: Colors.grey[200],
+                borderRadius: BorderRadius.circular(4),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 
@@ -769,34 +1057,177 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Recent Activity',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: _themeService.isDarkMode ? Colors.white : Colors.black87,
-              ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Recent Activity',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+                  ),
+                ),
+                Row(
+                  children: [
+                    TextButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => const RealtimeActivityFeedScreen(),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.open_in_new, size: 16),
+                      label: const Text('Full Feed'),
+                      style: TextButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.refresh, size: 20),
+                      onPressed: _loadRecentActivity,
+                      tooltip: 'Refresh Activity',
+                    ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 16),
-            // This would be populated with actual recent activity data
-            const ListTile(
-              leading: Icon(Icons.person_add, color: Colors.green),
-              title: Text('New user registered'),
-              subtitle: Text('2 minutes ago'),
-            ),
-            const ListTile(
-              leading: Icon(Icons.chat, color: Colors.blue),
-              title: Text('New chat created'),
-              subtitle: Text('5 minutes ago'),
-            ),
-            const ListTile(
-              leading: Icon(Icons.report, color: Colors.orange),
-              title: Text('Report submitted'),
-              subtitle: Text('10 minutes ago'),
-            ),
+            if (_isLoadingActivity)
+              const Center(
+                child: Padding(
+                  padding: EdgeInsets.all(16.0),
+                  child: CircularProgressIndicator(),
+                ),
+              )
+            else if (_recentActivity.isEmpty)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Text(
+                    'No recent activity',
+                    style: TextStyle(
+                      color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                    ),
+                  ),
+                ),
+              )
+            else
+              ..._recentActivity.take(10).map((activity) {
+                return _buildActivityItem(activity);
+              }).toList(),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildActivityItem(Map<String, dynamic> activity) {
+    final action = activity['action'] as String? ?? 'Unknown';
+    final description = activity['description'] as String? ?? 'Unknown activity';
+    final timestamp = activity['timestamp'] ?? activity['createdAt'];
+    final type = activity['type'] as String? ?? 'system';
+    
+    // Determine icon and color based on activity type and action
+    IconData icon;
+    Color iconColor;
+    
+    if (type == 'user') {
+      if (action.contains('login')) {
+        icon = Icons.login;
+        iconColor = Colors.green;
+      } else if (action.contains('register')) {
+        icon = Icons.person_add;
+        iconColor = Colors.blue;
+      } else if (action.contains('message')) {
+        icon = Icons.message;
+        iconColor = Colors.blue;
+      } else if (action.contains('chat')) {
+        icon = Icons.chat;
+        iconColor = Colors.purple;
+      } else {
+        icon = Icons.person;
+        iconColor = Colors.grey;
+      }
+    } else if (type == 'admin') {
+      if (action.contains('lock')) {
+        icon = Icons.lock;
+        iconColor = Colors.red;
+      } else if (action.contains('unlock')) {
+        icon = Icons.lock_open;
+        iconColor = Colors.green;
+      } else if (action.contains('delete')) {
+        icon = Icons.delete;
+        iconColor = Colors.red;
+      } else if (action.contains('broadcast')) {
+        icon = Icons.broadcast_on_personal;
+        iconColor = Colors.orange;
+      } else {
+        icon = Icons.admin_panel_settings;
+        iconColor = Colors.blue;
+      }
+    } else {
+      // System events
+      if (action == 'user_registered') {
+        icon = Icons.person_add;
+        iconColor = Colors.green;
+      } else if (action == 'chat_created') {
+        icon = Icons.chat;
+        iconColor = Colors.blue;
+      } else if (action == 'report_submitted') {
+        icon = Icons.report;
+        iconColor = Colors.orange;
+      } else {
+        icon = Icons.notifications;
+        iconColor = Colors.grey;
+      }
+    }
+    
+    // Format timestamp
+    String timeAgo = 'Unknown time';
+    if (timestamp != null) {
+      try {
+        final activityTime = DateTime.parse(timestamp.toString());
+        final now = DateTime.now();
+        final difference = now.difference(activityTime);
+        
+        if (difference.inMinutes < 1) {
+          timeAgo = 'Just now';
+        } else if (difference.inMinutes < 60) {
+          timeAgo = '${difference.inMinutes} minute${difference.inMinutes == 1 ? '' : 's'} ago';
+        } else if (difference.inHours < 24) {
+          timeAgo = '${difference.inHours} hour${difference.inHours == 1 ? '' : 's'} ago';
+        } else if (difference.inDays < 7) {
+          timeAgo = '${difference.inDays} day${difference.inDays == 1 ? '' : 's'} ago';
+        } else {
+          timeAgo = DateFormat('MMM dd, yyyy HH:mm').format(activityTime);
+        }
+      } catch (e) {
+        // If parsing fails, use the timestamp as is
+        timeAgo = timestamp.toString();
+      }
+    }
+    
+    return ListTile(
+      leading: Icon(icon, color: iconColor),
+      title: Text(
+        description,
+        style: TextStyle(
+          fontSize: 14,
+          color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+        ),
+      ),
+      subtitle: Text(
+        timeAgo,
+        style: TextStyle(
+          fontSize: 12,
+          color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+        ),
+      ),
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
     );
   }
 
@@ -827,14 +1258,72 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
                 icon: const Icon(Icons.refresh),
                 tooltip: 'Refresh',
               ),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _isBulkMode = !_isBulkMode;
+                    if (!_isBulkMode) {
+                      _selectedUserIds.clear();
+                    }
+                  });
+                },
+                icon: Icon(_isBulkMode ? Icons.check_box : Icons.check_box_outline_blank),
+                tooltip: _isBulkMode ? 'Exit Bulk Mode' : 'Enter Bulk Mode',
+              ),
             ],
           ),
         ),
         
+        // Bulk action bar
+        if (_isBulkMode && _selectedUserIds.isNotEmpty)
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            color: Colors.blue.withValues(alpha: 0.1),
+            child: Row(
+              children: [
+                Text(
+                  '${_selectedUserIds.length} selected',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+                const Spacer(),
+                TextButton.icon(
+                  onPressed: () => _performBulkAction('unlock'),
+                  icon: const Icon(Icons.lock_open, size: 16),
+                  label: const Text('Unlock'),
+                ),
+                TextButton.icon(
+                  onPressed: () => _performBulkAction('lock'),
+                  icon: const Icon(Icons.lock, size: 16),
+                  label: const Text('Lock'),
+                ),
+                TextButton.icon(
+                  onPressed: () => _showBulkRoleDialog(),
+                  icon: const Icon(Icons.person, size: 16),
+                  label: const Text('Change Role'),
+                ),
+                TextButton.icon(
+                  onPressed: () => _performBulkAction('delete'),
+                  icon: const Icon(Icons.delete, size: 16),
+                  label: const Text('Delete'),
+                  style: TextButton.styleFrom(foregroundColor: Colors.red),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close),
+                  onPressed: () {
+                    setState(() {
+                      _selectedUserIds.clear();
+                    });
+                  },
+                  tooltip: 'Clear Selection',
+                ),
+              ],
+            ),
+          ),
+        
         // Users list
         Expanded(
           child: _isLoadingUsers
-              ? const Center(child: CircularProgressIndicator())
+              ? _buildSkeletonLoader()
               : _users.isEmpty
                   ? Center(
                       child: Column(
@@ -871,6 +1360,8 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
 
   Widget _buildUserCard(Map<String, dynamic> user) {
     final isLocked = user['isLocked'] == true;
+    final userId = user['_id']?.toString() ?? user['id']?.toString() ?? '';
+    final isSelected = _selectedUserIds.contains(userId);
     final lastSeen = user['lastSeen'] != null 
         ? DateTime.parse(user['lastSeen'])
         : null;
@@ -880,15 +1371,31 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
+        side: isSelected 
+            ? BorderSide(color: Colors.blue, width: 2)
+            : BorderSide.none,
       ),
       child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor: isLocked ? Colors.red : Colors.blue,
-          child: Text(
-            (user['displayName'] ?? user['email'] ?? 'U').substring(0, 1).toUpperCase(),
-            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
-          ),
-        ),
+        leading: _isBulkMode
+            ? Checkbox(
+                value: isSelected,
+                onChanged: (value) {
+                  setState(() {
+                    if (value == true) {
+                      _selectedUserIds.add(userId);
+                    } else {
+                      _selectedUserIds.remove(userId);
+                    }
+                  });
+                },
+              )
+            : CircleAvatar(
+                backgroundColor: isLocked ? Colors.red : Colors.blue,
+                child: Text(
+                  (user['displayName'] ?? user['email'] ?? 'U').substring(0, 1).toUpperCase(),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                ),
+              ),
         title: Text(
           user['displayName'] ?? user['email'] ?? 'Unknown User',
           style: TextStyle(
@@ -910,37 +1417,291 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
               ),
           ],
         ),
-        trailing: PopupMenuButton<String>(
-          onSelected: (value) => _handleUserAction(value, user['_id']),
-          itemBuilder: (context) => [
-            PopupMenuItem(
-              value: isLocked ? 'unlock' : 'lock',
-              child: Row(
-                children: [
-                  Icon(isLocked ? Icons.lock_open : Icons.lock),
-                  const SizedBox(width: 8),
-                  Text(isLocked ? 'Unlock' : 'Lock'),
+        onTap: _isBulkMode
+            ? () {
+                setState(() {
+                  if (isSelected) {
+                    _selectedUserIds.remove(userId);
+                  } else {
+                    _selectedUserIds.add(userId);
+                  }
+                });
+              }
+            : () => _showUserDetails(userId),
+        trailing: _isBulkMode
+            ? null
+            : PopupMenuButton<String>(
+                onSelected: (value) => _handleUserAction(value, userId),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: 'view',
+                    child: Row(
+                      children: [
+                        const Icon(Icons.info_outline),
+                        const SizedBox(width: 8),
+                        const Text('View Details'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: isLocked ? 'unlock' : 'lock',
+                    child: Row(
+                      children: [
+                        Icon(isLocked ? Icons.lock_open : Icons.lock),
+                        const SizedBox(width: 8),
+                        Text(isLocked ? 'Unlock' : 'Lock'),
+                      ],
+                    ),
+                  ),
+                  PopupMenuItem(
+                    value: 'delete',
+                    child: Row(
+                      children: [
+                        Icon(Icons.delete, color: Colors.red),
+                        const SizedBox(width: 8),
+                        Text('Delete', style: TextStyle(color: Colors.red)),
+                      ],
+                    ),
+                  ),
                 ],
               ),
+      ),
+    );
+  }
+
+  Future<void> _performBulkAction(String action) async {
+    if (_selectedUserIds.isEmpty) {
+      _showErrorSnackBar('Please select at least one user');
+      return;
+    }
+
+    String? reason;
+    if (action == 'lock') {
+      final reasonController = TextEditingController();
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          title: Text('Lock ${_selectedUserIds.length} User(s)'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('Please provide a reason for locking these users:'),
+              const SizedBox(height: 16),
+              TextField(
+                controller: reasonController,
+                decoration: const InputDecoration(
+                  hintText: 'Reason for locking...',
+                  border: OutlineInputBorder(),
+                ),
+                maxLines: 3,
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('Cancel'),
             ),
-            PopupMenuItem(
-              value: 'delete',
-              child: Row(
-                children: [
-                  Icon(Icons.delete, color: Colors.red),
-                  const SizedBox(width: 8),
-                  Text('Delete', style: TextStyle(color: Colors.red)),
-                ],
+            ElevatedButton(
+              onPressed: () {
+                reason = reasonController.text.trim();
+                Navigator.of(context).pop(true);
+              },
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('Lock Users'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed != true) return;
+    }
+
+    if (action == 'delete') {
+      final confirmed = await _showConfirmDialog(
+        'Delete Users',
+        'Are you sure you want to delete ${_selectedUserIds.length} user(s)? This action cannot be undone.',
+      );
+      if (confirmed != true) return;
+    }
+
+    // Show loading overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text('Processing ${_selectedUserIds.length} user(s)...'),
+            const SizedBox(height: 8),
+            Text(
+              'This may take a few moments',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
               ),
             ),
           ],
         ),
       ),
     );
+
+    try {
+      setState(() => _isLoadingUsers = true);
+      
+      final result = await _adminService.bulkUserOperation(
+        userIds: _selectedUserIds.toList(),
+        action: action,
+        reason: reason,
+      );
+
+      // Close loading overlay
+      if (mounted) Navigator.of(context).pop();
+
+      _showSuccessSnackBar(result['message'] ?? 'Operation completed successfully');
+      
+      // Clear selection and refresh users
+      setState(() {
+        _selectedUserIds.clear();
+        _isBulkMode = false;
+      });
+      
+      await _loadUsers();
+    } catch (e) {
+      // Close loading overlay
+      if (mounted) Navigator.of(context).pop();
+      
+      Log.e('Error performing bulk action', 'ENHANCED_ADMIN_PANEL', e);
+      if (mounted) {
+        _showDetailedErrorDialog(
+          'Bulk Operation Failed',
+          'Unable to complete the bulk operation. Some users may have been processed.',
+          errorCode: 'BULK_OPERATION_ERROR',
+          details: e.toString(),
+          onRetry: () => _performBulkAction(action),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingUsers = false);
+    }
+  }
+
+  Future<void> _showBulkRoleDialog() async {
+    if (_selectedUserIds.isEmpty) {
+      _showErrorSnackBar('Please select at least one user');
+      return;
+    }
+
+    String? selectedRole;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text('Change Role for ${_selectedUserIds.length} User(s)'),
+        content: StatefulBuilder(
+          builder: (context, setDialogState) {
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  title: const Text('User'),
+                  value: 'user',
+                  groupValue: selectedRole,
+                  onChanged: (value) {
+                    setDialogState(() => selectedRole = value);
+                  },
+                ),
+                RadioListTile<String>(
+                  title: const Text('Admin'),
+                  value: 'admin',
+                  groupValue: selectedRole,
+                  onChanged: (value) {
+                    setDialogState(() => selectedRole = value);
+                  },
+                ),
+              ],
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: selectedRole == null
+                ? null
+                : () => Navigator.of(context).pop(true),
+            child: const Text('Change Role'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed != true || selectedRole == null) return;
+
+    // Show loading overlay
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const CircularProgressIndicator(),
+            const SizedBox(height: 16),
+            Text('Changing role for ${_selectedUserIds.length} user(s)...'),
+          ],
+        ),
+      ),
+    );
+
+    try {
+      setState(() => _isLoadingUsers = true);
+      
+      final result = await _adminService.bulkUserOperation(
+        userIds: _selectedUserIds.toList(),
+        action: 'role-change',
+        role: selectedRole,
+      );
+
+      // Close loading overlay
+      if (mounted) Navigator.of(context).pop();
+
+      _showSuccessSnackBar(result['message'] ?? 'Role changed successfully');
+      
+      // Clear selection and refresh users
+      setState(() {
+        _selectedUserIds.clear();
+        _isBulkMode = false;
+      });
+      
+      await _loadUsers();
+    } catch (e) {
+      // Close loading overlay
+      if (mounted) Navigator.of(context).pop();
+      
+      Log.e('Error changing user roles', 'ENHANCED_ADMIN_PANEL', e);
+      if (mounted) {
+        _showDetailedErrorDialog(
+          'Failed to Change Roles',
+          'Unable to change user roles. Please try again.',
+          errorCode: 'ROLE_CHANGE_ERROR',
+          details: e.toString(),
+          onRetry: () => _showBulkRoleDialog(),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoadingUsers = false);
+    }
   }
 
   void _handleUserAction(String action, String userId) {
     switch (action) {
+      case 'view':
+        _showUserDetails(userId);
+        break;
       case 'lock':
         _showLockDialog(userId);
         break;
@@ -952,6 +1713,273 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
         break;
     }
   }
+
+  Future<void> _showUserDetails(String userId) async {
+    try {
+      // Navigate to detailed user profile screen
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => UserDetailProfileScreen(userId: userId),
+        ),
+      );
+    } catch (e) {
+      Log.e('Error navigating to user details', 'ENHANCED_ADMIN_PANEL', e);
+      _showErrorSnackBar('Error opening user details: $e');
+    }
+  }
+
+  Widget _buildUserDetailsDialog(Map<String, dynamic> user) {
+    final stats = user['stats'] as Map<String, dynamic>? ?? {};
+    final devices = user['devices'] as List<dynamic>? ?? [];
+    final recentActivity = user['recentActivity'] as List<dynamic>? ?? [];
+    
+    return Dialog(
+      child: Container(
+        width: MediaQuery.of(context).size.width * 0.9,
+        constraints: BoxConstraints(
+          maxHeight: MediaQuery.of(context).size.height * 0.8,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.blue,
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(12),
+                  topRight: Radius.circular(12),
+                ),
+              ),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    backgroundColor: Colors.white,
+                    child: Text(
+                      (user['displayName'] ?? user['email'] ?? 'U').substring(0, 1).toUpperCase(),
+                      style: const TextStyle(color: Colors.blue, fontWeight: FontWeight.bold),
+                    ),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          user['displayName'] ?? user['email'] ?? 'Unknown User',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        Text(
+                          user['email'] ?? '',
+                          style: const TextStyle(color: Colors.white70, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            // Content
+            Flexible(
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // User Info
+                    _buildSectionTitle('User Information'),
+                    _buildInfoRow('Role', user['role'] ?? 'user'),
+                    _buildInfoRow('Status', user['status'] ?? 'active'),
+                    if (user['isLocked'] == true)
+                      _buildInfoRow('Locked', 'Yes - ${user['lockedReason'] ?? 'No reason'}'),
+                    _buildInfoRow('Account Created', user['createdAt'] != null 
+                        ? DateFormat('MMM dd, yyyy HH:mm').format(DateTime.parse(user['createdAt']))
+                        : 'Unknown'),
+                    if (user['lastLoginAt'] != null)
+                      _buildInfoRow('Last Login', DateFormat('MMM dd, yyyy HH:mm').format(DateTime.parse(user['lastLoginAt']))),
+                    
+                    const SizedBox(height: 16),
+                    // Statistics
+                    _buildSectionTitle('Statistics'),
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 16,
+                      children: [
+                        _buildStatCard('Account Age', '${stats['accountAgeDays'] ?? 0} days', Icons.calendar_today),
+                        _buildStatCard('Messages', '${stats['messageCount'] ?? 0}', Icons.message),
+                        _buildStatCard('Messages Today', '${stats['messagesToday'] ?? 0}', Icons.today),
+                        _buildStatCard('Chats', '${stats['chatCount'] ?? 0}', Icons.chat),
+                        _buildStatCard('Devices', '${stats['deviceCount'] ?? 0}', Icons.devices),
+                      ],
+                    ),
+                    
+                    const SizedBox(height: 16),
+                    // Devices
+                    if (devices.isNotEmpty) ...[
+                      _buildSectionTitle('Devices (${devices.length})'),
+                      ...devices.take(5).map((device) => _buildDeviceItem(device)),
+                      if (devices.length > 5)
+                        Text(
+                          '... and ${devices.length - 5} more',
+                          style: TextStyle(
+                            color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+                            fontSize: 12,
+                          ),
+                        ),
+                      const SizedBox(height: 16),
+                    ],
+                    
+                    // Quick Actions
+                    _buildSectionTitle('Quick Actions'),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        if (user['isLocked'] == true)
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _unlockUser(user['id']);
+                            },
+                            icon: const Icon(Icons.lock_open, size: 16),
+                            label: const Text('Unlock'),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
+                          )
+                        else
+                          ElevatedButton.icon(
+                            onPressed: () {
+                              Navigator.of(context).pop();
+                              _showLockDialog(user['id']);
+                            },
+                            icon: const Icon(Icons.lock, size: 16),
+                            label: const Text('Lock'),
+                            style: ElevatedButton.styleFrom(backgroundColor: Colors.orange),
+                          ),
+                        ElevatedButton.icon(
+                          onPressed: () {
+                            Navigator.of(context).pop();
+                            _deleteUser(user['id']);
+                          },
+                          icon: const Icon(Icons.delete, size: 16),
+                          label: const Text('Delete'),
+                          style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionTitle(String title) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8, top: 8),
+      child: Text(
+        title,
+        style: TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+          color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(String label, String value) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 120,
+            child: Text(
+              '$label:',
+              style: TextStyle(
+                fontWeight: FontWeight.w600,
+                color: _themeService.isDarkMode ? Colors.grey[300] : Colors.grey[700],
+              ),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatCard(String label, String value, IconData icon) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 24, color: Colors.blue),
+          const SizedBox(height: 4),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: _themeService.isDarkMode ? Colors.white : Colors.black87,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              color: _themeService.isDarkMode ? Colors.grey[400] : Colors.grey[600],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDeviceItem(Map<String, dynamic> device) {
+    return ListTile(
+      dense: true,
+      leading: Icon(
+        device['platform'] == 'android' ? Icons.android : 
+        device['platform'] == 'ios' ? Icons.phone_iphone :
+        Icons.devices,
+        size: 20,
+      ),
+      title: Text(
+        '${device['deviceModel'] ?? 'Unknown'} (${device['platform'] ?? 'unknown'})',
+        style: TextStyle(fontSize: 14),
+      ),
+      subtitle: Text(
+        'IP: ${device['ipAddress'] ?? 'Unknown'} • FCM: ${device['fcmEnabled'] == true ? 'Enabled' : 'Disabled'}',
+        style: TextStyle(fontSize: 12),
+      ),
+    );
+  }
+
 
   void _showLockDialog(String userId) {
     final reasonController = TextEditingController();
@@ -1011,7 +2039,7 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
         ),
         Expanded(
           child: _isLoadingChats
-              ? const Center(child: CircularProgressIndicator())
+              ? _buildSkeletonLoader()
               : _chats.isEmpty
                   ? Center(
                       child: Column(
@@ -1063,12 +2091,30 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
         ),
         title: Text(chat['name'] ?? 'Unknown Chat'),
         subtitle: Text('Type: ${chat['type'] ?? 'Unknown'}'),
-        trailing: Text(
-          '${chat['memberCount'] ?? 0} members',
-          style: TextStyle(
-            fontSize: 12,
-            color: Colors.grey[600],
-          ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              '${chat['memberCount'] ?? 0} members',
+              style: TextStyle(
+                fontSize: 12,
+                color: Colors.grey[600],
+              ),
+            ),
+            const SizedBox(width: 8),
+            IconButton(
+              icon: const Icon(Icons.admin_panel_settings),
+              onPressed: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) => ChatModerationScreen(chatId: chat['_id'] ?? chat['id']),
+                  ),
+                );
+              },
+              tooltip: 'Moderate Chat',
+            ),
+          ],
         ),
         onTap: () {
           setState(() => _selectedChatIdForMessages = chat['_id']);
@@ -1097,7 +2143,7 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
         ),
         Expanded(
           child: _isLoadingMessages
-              ? const Center(child: CircularProgressIndicator())
+              ? _buildSkeletonLoader()
               : _messages.isEmpty
                   ? Center(
                       child: Column(
@@ -1182,7 +2228,7 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
         ),
         Expanded(
           child: _isLoadingReports
-              ? const Center(child: CircularProgressIndicator())
+              ? _buildSkeletonLoader()
               : _reports.isEmpty
                   ? Center(
                       child: Column(
@@ -1283,6 +2329,10 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
     _loadReports();
   }
 
+  Widget _buildModerationTab() {
+    return const ModerationCenterScreen();
+  }
+
   Widget _buildAnalyticsTab() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(16),
@@ -1301,6 +2351,19 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
                   ),
                 ),
               ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const AdvancedAnalyticsScreen(),
+                    ),
+                  );
+                },
+                icon: const Icon(Icons.trending_up),
+                label: const Text('Advanced Analytics'),
+                style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+              ),
+              const SizedBox(width: 8),
               ElevatedButton.icon(
                 onPressed: _loadAnalytics,
                 icon: const Icon(Icons.refresh),
@@ -1598,10 +2661,63 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
     );
   }
 
-  // Implement export data functionality
+  // Implement export data functionality with format selection
   Future<void> _exportData() async {
+    // Show format selection dialog
+    final format = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Export Data'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Select export format:'),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.code),
+              title: const Text('JSON'),
+              subtitle: const Text('Structured data format'),
+              onTap: () => Navigator.of(context).pop('json'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.table_chart),
+              title: const Text('CSV'),
+              subtitle: const Text('Comma-separated values'),
+              onTap: () => Navigator.of(context).pop('csv'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Cancel'),
+          ),
+        ],
+      ),
+    );
+
+    if (format == null) return;
+
     try {
       setState(() => _isLoadingStats = true);
+      
+      // Show progress indicator
+      if (mounted) {
+        showDialog(
+          context: context,
+          barrierDismissible: false,
+          builder: (context) => AlertDialog(
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const CircularProgressIndicator(),
+                const SizedBox(height: 16),
+                Text('Exporting data as ${format.toUpperCase()}...'),
+              ],
+            ),
+          ),
+        );
+      }
       
       // Get all data
       final users = await _adminService.getAllUsers();
@@ -1609,28 +2725,95 @@ class _EnhancedAdminPanelState extends State<EnhancedAdminPanel> with TickerProv
       final messages = await _adminService.getAllMessages();
       final reports = await _adminService.getReports();
       
-      // Create export data
-      final exportData = {
-        'exportDate': DateTime.now().toIso8601String(),
-        'users': users,
-        'chats': chats,
-        'messages': messages,
-        'reports': reports,
-      };
+      String exportContent;
+      String fileName;
+      String mimeType;
       
-      // Convert to JSON
-      final jsonData = json.encode(exportData);
+      if (format == 'csv') {
+        // Generate CSV
+        final csvLines = <String>[];
+        
+        // Users CSV
+        csvLines.add('=== USERS ===');
+        csvLines.add('ID,Email,Display Name,Role,Status,Created At');
+        for (final user in users) {
+          csvLines.add([
+            user['_id']?.toString() ?? user['id']?.toString() ?? '',
+            user['email'] ?? '',
+            user['displayName'] ?? '',
+            user['role'] ?? '',
+            user['status'] ?? '',
+            user['createdAt']?.toString() ?? '',
+          ].map((v) => '"${v.toString().replaceAll('"', '""')}"').join(','));
+        }
+        
+        csvLines.add('\n=== CHATS ===');
+        csvLines.add('ID,Name,Type,Member Count,Created At');
+        for (final chat in chats) {
+          csvLines.add([
+            chat['_id']?.toString() ?? chat['id']?.toString() ?? '',
+            chat['name'] ?? '',
+            chat['type'] ?? '',
+            chat['memberCount']?.toString() ?? '0',
+            chat['createdAt']?.toString() ?? '',
+          ].map((v) => '"${v.toString().replaceAll('"', '""')}"').join(','));
+        }
+        
+        csvLines.add('\n=== MESSAGES ===');
+        csvLines.add('ID,Chat ID,Sender,Type,Content,Created At');
+        for (final message in messages.take(1000)) { // Limit to 1000 for CSV
+          csvLines.add([
+            message['_id']?.toString() ?? message['id']?.toString() ?? '',
+            message['chatId']?.toString() ?? '',
+            message['senderName'] ?? '',
+            message['type'] ?? '',
+            (message['text'] ?? message['content'] ?? '').toString().replaceAll('\n', ' ').substring(0, (message['text'] ?? message['content'] ?? '').toString().length > 100 ? 100 : (message['text'] ?? message['content'] ?? '').toString().length),
+            message['createdAt']?.toString() ?? '',
+          ].map((v) => '"${v.toString().replaceAll('"', '""')}"').join(','));
+        }
+        
+        exportContent = csvLines.join('\n');
+        fileName = 'export_${DateTime.now().toIso8601String().split('T')[0]}.csv';
+        mimeType = 'text/csv';
+      } else {
+        // JSON format
+        final exportData = {
+          'exportDate': DateTime.now().toIso8601String(),
+          'users': users,
+          'chats': chats,
+          'messages': messages,
+          'reports': reports,
+        };
+        exportContent = json.encode(exportData);
+        fileName = 'export_${DateTime.now().toIso8601String().split('T')[0]}.json';
+        mimeType = 'application/json';
+      }
+      
+      // Close progress dialog
+      if (mounted) Navigator.of(context).pop();
       
       // Show success message with data size
-      final dataSizeMB = (jsonData.length / (1024 * 1024)).toStringAsFixed(2);
-      _showSuccessSnackBar('Data exported successfully (${dataSizeMB} MB)');
+      final dataSizeMB = (exportContent.length / (1024 * 1024)).toStringAsFixed(2);
+      _showSuccessSnackBar('Data exported successfully (${dataSizeMB} MB)\nFormat: ${format.toUpperCase()}');
       
       // Log the export
-      Log.i('Data exported: ${users.length} users, ${chats.length} chats, ${messages.length} messages', 'ENHANCED_ADMIN_PANEL');
+      Log.i('Data exported: ${users.length} users, ${chats.length} chats, ${messages.length} messages, format: $format', 'ENHANCED_ADMIN_PANEL');
+      
+      // Note: In a real app, you would download the file here
+      // For now, we just show a success message
       
     } catch (e) {
+      // Close progress dialog if still open
+      if (mounted) Navigator.of(context).pop();
+      
       Log.e('Error exporting data', 'ENHANCED_ADMIN_PANEL', e);
-      _showErrorSnackBar('Error exporting data: $e');
+      _showDetailedErrorDialog(
+        'Export Failed',
+        'An error occurred while exporting data.',
+        errorCode: e.toString().contains('status') ? 'EXPORT_ERROR' : 'UNKNOWN_ERROR',
+        details: e.toString(),
+        onRetry: _exportData,
+      );
     } finally {
       if (mounted) setState(() => _isLoadingStats = false);
     }
