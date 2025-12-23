@@ -1,3 +1,4 @@
 #include "Pods/Target Support Files/Pods-Runner/Pods-Runner.profile.xcconfig"
 #include "Generated.xcconfig"
+FRAMEWORK_SEARCH_PATHS = $(inherited) $(PROJECT_DIR)/Flutter $(FLUTTER_ROOT)/bin/cache/artifacts/engine/ios-profile $(FLUTTER_ROOT)/bin/cache/artifacts/engine/ios
 
