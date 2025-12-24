@@ -4,6 +4,18 @@ const { createProxyMiddleware } = require('http-proxy-middleware');
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 8082;
 
+// Ensure correct MIME types for static assets served to clients
+app.use((req, res, next) => {
+  try {
+    if (req.url.endsWith('.wasm')) {
+      res.setHeader('Content-Type', 'application/wasm');
+    } else if (req.url.endsWith('.js')) {
+      res.setHeader('Content-Type', 'application/javascript');
+    }
+  } catch (_) {}
+  next();
+});
+
 // Proxy API requests to local API server to keep same-origin for the web app
 // Use 127.0.0.1 for localhost, but for remote access we need to use the actual host IP
 const API_TARGET = process.env.API_TARGET || 'http://127.0.0.1:3003';
@@ -97,7 +109,32 @@ app.use(
 );
 
 // Serve static files from the Flutter web build (project root build/web)
-app.use(express.static(path.join(__dirname, '..', 'build', 'web')));
+app.use((req, res, next) => {
+  // Disable caching to avoid stale assets across LAN clients
+  try {
+    res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+    res.setHeader('Pragma', 'no-cache');
+    res.setHeader('Expires', '0');
+    res.setHeader('Surrogate-Control', 'no-store');
+  } catch (_) {}
+  next();
+});
+app.use(express.static(path.join(__dirname, '..', 'build', 'web'), { etag: false, maxAge: 0 }));
+
+// Map hashed CanvasKit paths to local static files to avoid CDN structure dependency
+app.get(/^\/canvaskit\/.+\/canvaskit\.wasm$/, (req, res) => {
+  try {
+    res.setHeader('Content-Type', 'application/wasm');
+  } catch (_) {}
+  res.sendFile(path.join(__dirname, '..', 'build', 'web', 'canvaskit', 'canvaskit.wasm'));
+});
+
+app.get(/^\/canvaskit\/.+\/canvaskit\.js$/, (req, res) => {
+  try {
+    res.setHeader('Content-Type', 'application/javascript');
+  } catch (_) {}
+  res.sendFile(path.join(__dirname, '..', 'build', 'web', 'canvaskit', 'canvaskit.js'));
+});
 
 // Quick readiness endpoint to verify offline assets are present
 app.get('/offline-status', (req, res) => {

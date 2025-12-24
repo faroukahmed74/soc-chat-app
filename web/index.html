@@ -71,7 +71,7 @@
   <script>
     // Set CanvasKit base URL early to prevent CDN loading
     window.flutterConfiguration = {
-      canvasKitBaseUrl: './canvaskit/',
+      canvasKitBaseUrl: '/canvaskit/',
       useHostedFonts: false,
       assetBase: window.location.origin + '/'
     };
@@ -80,18 +80,17 @@
     if (!window._flutter) {
       window._flutter = {};
     }
-    window._flutter.canvasKitBaseUrl = './canvaskit/';
+    window._flutter.canvasKitBaseUrl = '/canvaskit/';
     
     // Intercept fetch requests to prevent CanvasKit CDN loading
     (function() {
       const originalFetch = window.fetch;
       window.fetch = function(...args) {
-        const url = args[0];
-        if (typeof url === 'string' && url.includes('gstatic.com/flutter-canvaskit')) {
-          // Replace gstatic.com URL with local path
-          const localPath = url.replace(/https?:\/\/[^\/]+/, '');
-          const newUrl = './canvaskit' + localPath.split('canvaskit')[1] || localPath.replace(/.*\/canvaskit/, './canvaskit');
-          console.log('Intercepted CanvasKit CDN request, using local:', newUrl);
+        const u = typeof args[0] === 'string' ? args[0] : (args[0] && args[0].url) || '';
+        if (typeof u === 'string' && u.includes('gstatic.com/flutter-canvaskit')) {
+          const newUrl = u.endsWith('.wasm') ? '/canvaskit/canvaskit.wasm'
+                        : u.endsWith('.js') ? '/canvaskit/canvaskit.js'
+                        : '/canvaskit/canvaskit.js';
           args[0] = newUrl;
         }
         return originalFetch.apply(this, args);
@@ -121,6 +120,9 @@
     })();
   </script>
   <script src="responsive_config.js"></script>
+  <script>
+    window.__AUTO_FLUTTER_LOAD__ = false;
+  </script>
   
   <script>
     const serviceWorkerVersion = null;
@@ -356,20 +358,29 @@
           originalConsoleError.apply(console, args);
         };
         
-        _flutter.loader.load({
-          serviceWorkerSettings: serviceWorkerVersion ? { serviceWorkerVersion: serviceWorkerVersion } : null,
-          config: window.flutterConfiguration,
-          onEntrypointLoaded: function(engineInitializer) {
-            console.log('Flutter entrypoint loaded, initializing engine...');
-            engineInitializer.initializeEngine().then(function(appRunner) {
-              console.log('Flutter engine initialized, running app...');
-              document.getElementById('loading').style.display = 'none';
-              appRunner.runApp();
-            }).catch(function(error) {
-              console.error('Flutter engine initialization error:', error);
-              document.getElementById('loading').style.display = 'none';
-            });
-          }
+        const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+        const swSettings = isSecure && serviceWorkerVersion ? { serviceWorkerVersion: serviceWorkerVersion } : null;
+        function loadWithRenderer(renderer) {
+          const cfg = Object.assign({}, window.flutterConfiguration, renderer ? { renderer } : {});
+          return _flutter.loader.load({
+            serviceWorkerSettings: swSettings,
+            config: cfg,
+            onEntrypointLoaded: function(engineInitializer) {
+              console.log('Flutter entrypoint loaded, initializing engine...');
+              engineInitializer.initializeEngine().then(function(appRunner) {
+                console.log('Flutter engine initialized, running app...');
+                document.getElementById('loading').style.display = 'none';
+                appRunner.runApp();
+              }).catch(function(error) {
+                console.error('Flutter engine initialization error:', error);
+                document.getElementById('loading').style.display = 'none';
+              });
+            }
+          });
+        }
+        loadWithRenderer('canvaskit').catch(function(err) {
+          console.log('CanvasKit failed, falling back to HTML renderer:', err && (err.message || err));
+          loadWithRenderer('html');
         });
       } catch (e) {
         console.error('Flutter start error:', e);
