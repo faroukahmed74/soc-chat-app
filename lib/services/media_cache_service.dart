@@ -24,9 +24,11 @@ class MediaCacheService {
   /// Initialize the media cache service
   static Future<void> initialize() async {
     try {
-      // Check if we're on a platform that supports file system operations
+      // Web: Use browser cache + IndexedDB (handled by browser)
       if (kIsWeb) {
-        Log.i('MediaCacheService: Web platform detected, skipping initialization', 'MEDIA_CACHE');
+        Log.i('MediaCacheService: Web platform detected, using browser cache', 'MEDIA_CACHE');
+        // Web browsers handle caching automatically via HTTP cache headers
+        // We can enhance this later with IndexedDB for offline support
         return;
       }
       

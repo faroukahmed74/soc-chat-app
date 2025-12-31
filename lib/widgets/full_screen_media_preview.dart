@@ -14,6 +14,7 @@ import 'dart:html' if (dart.library.io) '../widgets/html_stub.dart' as html;
 import '../services/logger_service.dart';
 import '../services/media_download_service.dart';
 import '../utils/responsive_utils.dart';
+import 'cached_network_image_widget.dart';
 
 /// Enhanced full-screen media preview widget
 class FullScreenMediaPreview extends StatefulWidget {
@@ -80,10 +81,60 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
           await _initializeAudio();
           break;
         case 'image':
-        case 'document':
           setState(() {
             _isLoading = false;
           });
+          break;
+        case 'document':
+          // For documents, check if it's a PDF - PDFs need time to load
+          final fileName = widget.fileName ?? '';
+          final mediaUrl = widget.mediaUrl;
+          final mediaUrlLower = mediaUrl.toLowerCase();
+          
+          // Extract filename from URL if fileName is missing or doesn't have extension
+          String? urlFileName;
+          try {
+            final uri = Uri.parse(mediaUrl);
+            final pathSegments = uri.pathSegments;
+            if (pathSegments.isNotEmpty) {
+              urlFileName = pathSegments.last;
+            }
+          } catch (_) {
+            // If URL parsing fails, try simple string extraction
+            final lastSlash = mediaUrl.lastIndexOf('/');
+            if (lastSlash != -1 && lastSlash < mediaUrl.length - 1) {
+              final afterSlash = mediaUrl.substring(lastSlash + 1);
+              final queryIndex = afterSlash.indexOf('?');
+              urlFileName = queryIndex != -1 ? afterSlash.substring(0, queryIndex) : afterSlash;
+            }
+          }
+          
+          // Check multiple sources for PDF detection - be more lenient
+          final isPdf = fileName.toLowerCase().endsWith('.pdf') || 
+                       (urlFileName != null && urlFileName.toLowerCase().endsWith('.pdf')) ||
+                       mediaUrlLower.contains('.pdf') || 
+                       mediaUrlLower.contains('application/pdf') ||
+                       mediaUrlLower.contains('content-type:application/pdf') ||
+                       mediaUrlLower.contains('type=pdf') ||
+                       // If it's a document type and we can't determine otherwise, assume PDF for full screen
+                       (fileName.isEmpty && urlFileName == null && !mediaUrlLower.contains('image') && !mediaUrlLower.contains('video'));
+          if (isPdf) {
+            // PDF will show loading state until onDocumentLoaded is called
+            // Keep _isLoading true initially - it will be set to false in onDocumentLoaded
+            // Set a timeout to prevent infinite loading (10 seconds)
+            Future.delayed(const Duration(seconds: 10), () {
+              if (mounted && _isLoading) {
+                Log.w('PDF loading timeout, forcing display', 'FULL_SCREEN_MEDIA_PREVIEW');
+                setState(() {
+                  _isLoading = false;
+                });
+              }
+            });
+          } else {
+            setState(() {
+              _isLoading = false;
+            });
+          }
           break;
         default:
           setState(() {
@@ -465,11 +516,12 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
   }
 
   Future<void> _downloadMediaMobile(String url) async {
-    await MediaDownloadService.saveToDevice(
+    final successMessage = await MediaDownloadService.saveToDevice(
       url: url,
       mediaType: widget.mediaType,
       fileName: widget.fileName,
     );
+    // Success message is handled by the calling method
   }
 
   String _getFileNameFromUrl(String url) {
@@ -643,8 +695,13 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
   }
 
   Widget _buildMediaContent() {
-    if (_isLoading) return const SizedBox.shrink();
-    if (_hasError) return const SizedBox.shrink();
+    // For PDFs, always show content (loading/error handled in _buildPdfViewer)
+    if (widget.mediaType == 'document') {
+      // Don't return early for documents - let _buildPdfViewer handle loading/error states
+    } else {
+      if (_isLoading) return const SizedBox.shrink();
+      if (_hasError) return const SizedBox.shrink();
+    }
 
     switch (widget.mediaType) {
       case 'image':
@@ -656,28 +713,15 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
                 child: InteractiveViewer(
                   minScale: 0.5,
                   maxScale: 4.0,
-                  child: Image.network(
-                    _resolveWebSameOriginUrl(widget.mediaUrl),
+                  child: CachedNetworkImageWidget(
+                    imageUrl: _resolveWebSameOriginUrl(widget.mediaUrl),
                     width: constraints.maxWidth,
                     height: constraints.maxHeight,
                     fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) {
-                      return const Center(
-                        child: Icon(Icons.broken_image, color: Colors.white, size: 64),
-                      );
-                    },
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Center(
-                        child: CircularProgressIndicator(
-                          value: loadingProgress.expectedTotalBytes != null
-                              ? loadingProgress.cumulativeBytesLoaded /
-                                  loadingProgress.expectedTotalBytes!
-                              : null,
-                          color: Colors.white,
-                        ),
-                      );
-                    },
+                    errorWidget: const Center(
+                      child: Icon(Icons.broken_image, color: Colors.white, size: 64),
+                    ),
+                    useCache: true,
                   ),
                 ),
               ),
@@ -779,7 +823,39 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
         );
 
       case 'document':
-        final isPdf = (widget.fileName ?? '').toLowerCase().endsWith('.pdf');
+        // Enhanced PDF detection - check filename, mediaUrl, and MIME type
+        final fileName = widget.fileName ?? '';
+        final mediaUrl = widget.mediaUrl;
+        final mediaUrlLower = mediaUrl.toLowerCase();
+        
+        // Extract filename from URL if fileName is missing or doesn't have extension
+        String? urlFileName;
+        try {
+          final uri = Uri.parse(mediaUrl);
+          final pathSegments = uri.pathSegments;
+          if (pathSegments.isNotEmpty) {
+            urlFileName = pathSegments.last;
+          }
+        } catch (_) {
+          // If URL parsing fails, try simple string extraction
+          final lastSlash = mediaUrl.lastIndexOf('/');
+          if (lastSlash != -1 && lastSlash < mediaUrl.length - 1) {
+            final afterSlash = mediaUrl.substring(lastSlash + 1);
+            final queryIndex = afterSlash.indexOf('?');
+            urlFileName = queryIndex != -1 ? afterSlash.substring(0, queryIndex) : afterSlash;
+          }
+        }
+        
+        // Check multiple sources for PDF detection - be more lenient
+        final isPdf = fileName.toLowerCase().endsWith('.pdf') || 
+                     (urlFileName != null && urlFileName.toLowerCase().endsWith('.pdf')) ||
+                     mediaUrlLower.contains('.pdf') || 
+                     mediaUrlLower.contains('application/pdf') ||
+                     mediaUrlLower.contains('content-type:application/pdf') ||
+                     mediaUrlLower.contains('type=pdf') ||
+                     // If it's a document type and we can't determine otherwise, assume PDF for full screen
+                     (fileName.isEmpty && urlFileName == null && !mediaUrlLower.contains('image') && !mediaUrlLower.contains('video'));
+        
         if (isPdf) {
           // Show PDF in full screen on all platforms
           return LayoutBuilder(
@@ -1044,10 +1120,55 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
       // On mobile: Show PDF viewer with overlay actions
       return Stack(
         children: [
-          // PDF viewer
+          // PDF viewer - always show, even if loading
           Positioned.fill(
             child: _buildMobilePdfViewer(),
           ),
+          
+          // Loading overlay
+          if (_isLoading)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.7),
+                child: const Center(
+                  child: CircularProgressIndicator(
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                ),
+              ),
+            ),
+          
+          // Error overlay
+          if (_hasError)
+            Positioned.fill(
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.9),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, color: Colors.white, size: 64),
+                      const SizedBox(height: 16),
+                      Text(
+                        _errorMessage.isNotEmpty ? _errorMessage : 'Failed to load PDF',
+                        style: const TextStyle(color: Colors.white),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton.icon(
+                        onPressed: _downloadMedia,
+                        icon: const Icon(Icons.download),
+                        label: const Text('Download PDF'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.white,
+                          foregroundColor: Colors.black87,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
           // Overlay actions: Preview label + Download icon
           Positioned(
             top: ResponsiveUtils.getResponsiveValue(
@@ -1110,18 +1231,44 @@ class _FullScreenMediaPreviewState extends State<FullScreenMediaPreview> {
       'ngrok-skip-browser-warning': 'true',
       if (!kIsWeb) 'User-Agent': 'Mozilla/5.0 (Linux; Android 10) Mobile',
     };
+    
+    Log.i('Loading PDF from URL: ${widget.mediaUrl}', 'FULL_SCREEN_MEDIA_PREVIEW');
+    Log.i('PDF filename: ${widget.fileName}', 'FULL_SCREEN_MEDIA_PREVIEW');
+    
     return SfPdfViewer.network(
       widget.mediaUrl,
+      key: ValueKey('pdf_viewer_${widget.mediaUrl.hashCode}'),
       headers: headers,
       onDocumentLoadFailed: (PdfDocumentLoadFailedDetails details) {
-        Log.e('PDF load failed', 'FULL_SCREEN_MEDIA_PREVIEW', details.error);
+        Log.e('PDF load failed for URL: ${widget.mediaUrl}', 'FULL_SCREEN_MEDIA_PREVIEW', details.error);
+        Log.e('PDF load error details: ${details.description}', 'FULL_SCREEN_MEDIA_PREVIEW');
         if (mounted) {
+          setState(() {
+            _hasError = true;
+            _errorMessage = 'Failed to load PDF: ${details.error}';
+            _isLoading = false;
+          });
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Failed to load PDF: ${details.error}'),
               backgroundColor: Colors.red,
+              duration: const Duration(seconds: 5),
             ),
           );
+        }
+      },
+      onDocumentLoaded: (PdfDocumentLoadedDetails details) {
+        Log.i('PDF loaded successfully: ${details.document.pages.count} pages', 'FULL_SCREEN_MEDIA_PREVIEW');
+        if (mounted) {
+          // Add a small delay to ensure the PDF viewer is ready
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted) {
+              setState(() {
+                _isLoading = false;
+                _hasError = false;
+              });
+            }
+          });
         }
       },
     );

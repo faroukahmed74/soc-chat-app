@@ -14,6 +14,8 @@ import 'package:video_player/video_player.dart';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:device_info_plus/device_info_plus.dart';
 import '../config/database_config.dart';
 import 'logger_service.dart';
 import 'android_permission_fix.dart';
@@ -148,6 +150,23 @@ class EnhancedUnifiedMediaService {
       Log.e('Error picking document', 'ENHANCED_MEDIA_SERVICE', e);
       _showErrorSnackBar(context, 'Failed to select document: $e');
       return null;
+    }
+  }
+
+  /// Pick multiple media files (images, videos, documents)
+  static Future<List<EnhancedMediaResult>> pickMultipleMedia(BuildContext context) async {
+    try {
+      Log.i('Starting multiple media selection', 'ENHANCED_MEDIA_SERVICE');
+
+      if (kIsWeb) {
+        return await _pickMultipleMediaWeb(context);
+      } else {
+        return await _pickMultipleMediaMobile(context);
+      }
+    } catch (e) {
+      Log.e('Error picking multiple media', 'ENHANCED_MEDIA_SERVICE', e);
+      _showErrorSnackBar(context, 'Failed to select media: $e');
+      return [];
     }
   }
 
@@ -479,14 +498,288 @@ class EnhancedUnifiedMediaService {
 
   static Future<EnhancedMediaResult?> _pickDocumentMobile(BuildContext context) async {
     try {
-      // For mobile, we'll use a simple file picker implementation
-      // This would typically use file_picker package
-      Log.i('Document picking on mobile not fully implemented', 'ENHANCED_MEDIA_SERVICE');
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: false,
+        withData: true,
+      );
+
+      if (result != null && result.files.isNotEmpty) {
+        final file = result.files.first;
+        if (file.bytes != null) {
+          final extension = file.extension?.toLowerCase() ?? '';
+          final mimeType = _getMimeTypeFromExtension(extension);
+          
+          return EnhancedMediaResult(
+            bytes: file.bytes!,
+            type: _detectMediaTypeFromExtension(extension),
+            fileName: file.name,
+            mimeType: mimeType,
+            originalSize: file.bytes!.length,
+            optimizedSize: file.bytes!.length,
+            metadata: {
+              'source': 'file_picker',
+              'platform': Platform.isIOS ? 'ios' : 'android',
+              'timestamp': DateTime.now().toIso8601String(),
+            },
+          );
+        }
+      }
       return null;
     } catch (e) {
       Log.e('Error picking document on mobile', 'ENHANCED_MEDIA_SERVICE', e);
       return null;
     }
+  }
+
+  static Future<List<EnhancedMediaResult>> _pickMultipleMediaWeb(BuildContext context) async {
+    try {
+      // For web, use file input with multiple attribute
+      // This would need to be implemented in WebMediaService
+      Log.i('Multiple file picker on web - using file_picker', 'ENHANCED_MEDIA_SERVICE');
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: true,
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return [];
+
+      final mediaResults = <EnhancedMediaResult>[];
+      for (final file in result.files) {
+        if (file.bytes != null) {
+          final extension = file.extension?.toLowerCase() ?? '';
+          final mimeType = _getMimeTypeFromExtension(extension);
+          
+          mediaResults.add(EnhancedMediaResult(
+            bytes: file.bytes!,
+            type: _detectMediaTypeFromExtension(extension),
+            fileName: file.name,
+            mimeType: mimeType,
+            originalSize: file.bytes!.length,
+            optimizedSize: file.bytes!.length,
+            metadata: {
+              'source': 'file_picker',
+              'platform': 'web',
+              'timestamp': DateTime.now().toIso8601String(),
+            },
+          ));
+        }
+      }
+      return mediaResults;
+    } catch (e) {
+      Log.e('Error picking multiple media on web', 'ENHANCED_MEDIA_SERVICE', e);
+      return [];
+    }
+  }
+
+  static Future<List<EnhancedMediaResult>> _pickMultipleMediaMobile(BuildContext context) async {
+    try {
+      // Check platform and version for compatibility
+      if (Platform.isAndroid) {
+        // Android: FilePicker supports multiple files on all versions (API 21+)
+        // No special version handling needed - file_picker handles it internally
+        Log.i('Picking multiple files on Android', 'ENHANCED_MEDIA_SERVICE');
+      } else if (Platform.isIOS) {
+        // iOS: FilePicker supports multiple files on iOS 11+
+        // Check iOS version for compatibility
+        final deviceInfo = DeviceInfoPlugin();
+        final iosInfo = await deviceInfo.iosInfo;
+        final version = iosInfo.systemVersion;
+        Log.i('Picking multiple files on iOS $version', 'ENHANCED_MEDIA_SERVICE');
+        
+        // iOS 11+ supports multiple file selection
+        // If older version, fallback to single selection
+        final majorVersion = int.tryParse(version.split('.').first) ?? 0;
+        if (majorVersion < 11) {
+          Log.w('iOS version $version does not support multiple file selection, using single selection', 'ENHANCED_MEDIA_SERVICE');
+          // Fallback to single selection for iOS < 11
+          final singleResult = await FilePicker.platform.pickFiles(
+            type: FileType.any,
+            allowMultiple: false,
+            withData: true,
+          );
+          
+          if (singleResult != null && singleResult.files.isNotEmpty) {
+            final file = singleResult.files.first;
+            if (file.bytes != null) {
+              final extension = file.extension?.toLowerCase() ?? '';
+              final mimeType = _getMimeTypeFromExtension(extension);
+              
+              return [EnhancedMediaResult(
+                bytes: file.bytes!,
+                type: _detectMediaTypeFromExtension(extension),
+                fileName: file.name,
+                mimeType: mimeType,
+                originalSize: file.bytes!.length,
+                optimizedSize: file.bytes!.length,
+                metadata: {
+                  'source': 'file_picker',
+                  'platform': 'ios',
+                  'timestamp': DateTime.now().toIso8601String(),
+                  'ios_version': version,
+                },
+              )];
+            }
+          }
+          return [];
+        }
+      }
+
+      // Request storage permissions if needed (for Android)
+      if (Platform.isAndroid) {
+        final hasPermission = await _requestStoragePermissionForMultipleFiles(context);
+        if (!hasPermission) {
+          Log.w('Storage permission denied, file picker may still work', 'ENHANCED_MEDIA_SERVICE');
+          // Continue anyway - file picker might work without explicit permission on newer Android
+        }
+      }
+
+      // Pick multiple files
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.any,
+        allowMultiple: true,
+        withData: true,
+        // For Android, ensure we can access all file types
+        allowedExtensions: null, // Allow all file types
+      );
+
+      if (result == null || result.files.isEmpty) {
+        Log.i('No files selected or user cancelled', 'ENHANCED_MEDIA_SERVICE');
+        return [];
+      }
+
+      Log.i('Selected ${result.files.length} files', 'ENHANCED_MEDIA_SERVICE');
+
+      final mediaResults = <EnhancedMediaResult>[];
+      int successCount = 0;
+      int failCount = 0;
+
+      for (final file in result.files) {
+        try {
+          if (file.bytes != null && file.bytes!.isNotEmpty) {
+            final extension = file.extension?.toLowerCase() ?? '';
+            final mimeType = _getMimeTypeFromExtension(extension);
+            
+            mediaResults.add(EnhancedMediaResult(
+              bytes: file.bytes!,
+              type: _detectMediaTypeFromExtension(extension),
+              fileName: file.name,
+              mimeType: mimeType,
+              originalSize: file.bytes!.length,
+              optimizedSize: file.bytes!.length,
+              metadata: {
+                'source': 'file_picker',
+                'platform': Platform.isIOS ? 'ios' : 'android',
+                'timestamp': DateTime.now().toIso8601String(),
+                'file_size': file.bytes!.length,
+              },
+            ));
+            successCount++;
+            Log.i('Processed file: ${file.name} (${file.bytes!.length} bytes)', 'ENHANCED_MEDIA_SERVICE');
+          } else {
+            Log.w('File ${file.name} has no bytes or is empty', 'ENHANCED_MEDIA_SERVICE');
+            failCount++;
+          }
+        } catch (e) {
+          Log.e('Error processing file ${file.name}', 'ENHANCED_MEDIA_SERVICE', e);
+          failCount++;
+        }
+      }
+
+      Log.i('File selection complete: $successCount successful, $failCount failed', 'ENHANCED_MEDIA_SERVICE');
+      
+      if (mediaResults.isEmpty && failCount > 0) {
+        _showErrorSnackBar(context, 'Failed to load selected files. Please try again.');
+      }
+
+      return mediaResults;
+    } catch (e) {
+      Log.e('Error picking multiple media on mobile', 'ENHANCED_MEDIA_SERVICE', e);
+      _showErrorSnackBar(context, 'Failed to select files: ${e.toString()}');
+      return [];
+    }
+  }
+
+  /// Request storage permission for multiple file selection (Android-specific)
+  static Future<bool> _requestStoragePermissionForMultipleFiles(BuildContext context) async {
+    if (kIsWeb || !Platform.isAndroid) return true;
+    
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      final androidInfo = await deviceInfo.androidInfo;
+      final sdkInt = androidInfo.version.sdkInt;
+      
+      Log.i('Requesting storage permission for multiple files - Android SDK: $sdkInt', 'ENHANCED_MEDIA_SERVICE');
+      
+      if (sdkInt >= 33) {
+        // Android 13+ (API 33+): Use granular permissions
+        // For file picker, we don't need explicit permission as it uses system picker
+        // But we can request storage permission for better compatibility
+        final storageStatus = await Permission.storage.status;
+        if (storageStatus.isGranted) {
+          return true;
+        }
+        // Try to request, but don't fail if denied - file picker should still work
+        final status = await Permission.storage.request();
+        return status.isGranted;
+      } else if (sdkInt >= 30) {
+        // Android 11-12 (API 30-32): Scoped storage
+        // File picker works without explicit permission
+        return true;
+      } else if (sdkInt >= 29) {
+        // Android 10 (API 29): Scoped storage introduced
+        // File picker works, but we can request read permission for compatibility
+        final readStatus = await Permission.storage.status;
+        if (readStatus.isGranted) {
+          return true;
+        }
+        final status = await Permission.storage.request();
+        return status.isGranted;
+      } else {
+        // Android 9 and below (API < 29): Need storage permission
+        final storageStatus = await Permission.storage.status;
+        if (storageStatus.isGranted) {
+          return true;
+        }
+        final status = await Permission.storage.request();
+        if (!status.isGranted) {
+          Log.w('Storage permission denied on Android < 10, file picker may still work', 'ENHANCED_MEDIA_SERVICE');
+        }
+        return status.isGranted;
+      }
+    } catch (e) {
+      Log.e('Error requesting storage permission', 'ENHANCED_MEDIA_SERVICE', e);
+      // Don't fail - file picker might work without explicit permission
+      return false;
+    }
+  }
+
+  static String _detectMediaTypeFromExtension(String extension) {
+    final imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'bmp'];
+    final videoExts = ['mp4', 'mov', 'avi', 'mkv', 'webm'];
+    final audioExts = ['mp3', 'wav', 'm4a', 'aac', 'ogg'];
+    
+    if (imageExts.contains(extension)) return 'image';
+    if (videoExts.contains(extension)) return 'video';
+    if (audioExts.contains(extension)) return 'audio';
+    return 'document';
+  }
+
+  static String _getMimeTypeFromExtension(String extension) {
+    final mimeTypes = {
+      'jpg': 'image/jpeg',
+      'jpeg': 'image/jpeg',
+      'png': 'image/png',
+      'gif': 'image/gif',
+      'webp': 'image/webp',
+      'mp4': 'video/mp4',
+      'mov': 'video/quicktime',
+      'mp3': 'audio/mpeg',
+      'wav': 'audio/wav',
+      'pdf': 'application/pdf',
+    };
+    return mimeTypes[extension] ?? 'application/octet-stream';
   }
 
   // =============================================================================

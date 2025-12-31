@@ -46,12 +46,20 @@ class _MobilePdfThumbnailState extends State<MobilePdfThumbnail> {
   bool _isLoading = true;
   bool _hasError = false;
   String? _errorMessage;
+  bool _pdfViewerLoaded = false;
+  late PdfViewerController _pdfController;
 
   @override
   void initState() {
     super.initState();
-    // For mobile, we no longer render PDF thumbnails. Show icon only.
-    _isLoading = false;
+    _pdfController = PdfViewerController();
+    _loadPdf();
+  }
+
+  @override
+  void dispose() {
+    _pdfController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadPdf() async {
@@ -64,10 +72,18 @@ class _MobilePdfThumbnailState extends State<MobilePdfThumbnail> {
       // 0) Check in-memory cache to avoid disk/network entirely
       final mem = _getFromMemoryCache(widget.url);
       if (mem != null) {
-        setState(() {
-          _pdfBytes = mem;
-          _isLoading = false;
-        });
+        if (mounted) {
+          setState(() {
+            _pdfBytes = mem;
+            _isLoading = false;
+          });
+          // Jump to first page after a short delay to ensure PDF viewer is ready
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted && _pdfController.pageNumber != 0) {
+              _pdfController.jumpToPage(0);
+            }
+          });
+        }
         return;
       }
 
@@ -77,11 +93,19 @@ class _MobilePdfThumbnailState extends State<MobilePdfThumbnail> {
         final file = File(cachedPath);
         if (await file.exists()) {
           final bytes = await file.readAsBytes();
-          setState(() {
-            _pdfBytes = bytes;
-            _isLoading = false;
-          });
-          _putIntoMemoryCache(widget.url, bytes);
+          if (mounted) {
+            setState(() {
+              _pdfBytes = bytes;
+              _isLoading = false;
+            });
+            _putIntoMemoryCache(widget.url, bytes);
+            // Jump to first page after a short delay
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (mounted && _pdfController.pageNumber != 0) {
+                _pdfController.jumpToPage(0);
+              }
+            });
+          }
           return;
         }
       }
@@ -95,11 +119,19 @@ class _MobilePdfThumbnailState extends State<MobilePdfThumbnail> {
       if (cachedFilePath != null) {
         final file = File(cachedFilePath);
         final bytes = await file.readAsBytes();
-        setState(() {
-          _pdfBytes = bytes;
-          _isLoading = false;
-        });
-        _putIntoMemoryCache(widget.url, bytes);
+        if (mounted) {
+          setState(() {
+            _pdfBytes = bytes;
+            _isLoading = false;
+          });
+          _putIntoMemoryCache(widget.url, bytes);
+          // Jump to first page after a short delay
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted && _pdfController.pageNumber != 0) {
+              _pdfController.jumpToPage(0);
+            }
+          });
+        }
         return;
       }
 
@@ -110,11 +142,19 @@ class _MobilePdfThumbnailState extends State<MobilePdfThumbnail> {
       };
       final response = await http.get(Uri.parse(widget.url), headers: headers);
       if (response.statusCode == 200) {
-        setState(() {
-          _pdfBytes = response.bodyBytes;
-          _isLoading = false;
-        });
-        _putIntoMemoryCache(widget.url, response.bodyBytes);
+        if (mounted) {
+          setState(() {
+            _pdfBytes = response.bodyBytes;
+            _isLoading = false;
+          });
+          _putIntoMemoryCache(widget.url, response.bodyBytes);
+          // Jump to first page after a short delay
+          Future.delayed(const Duration(milliseconds: 100), () {
+            if (mounted && _pdfController.pageNumber != 0) {
+              _pdfController.jumpToPage(0);
+            }
+          });
+        }
       } else {
         throw Exception('Failed to load PDF: HTTP ${response.statusCode}');
       }
@@ -171,32 +211,90 @@ class _MobilePdfThumbnailState extends State<MobilePdfThumbnail> {
   }
 
   Widget _buildContent() {
-    // Always show a static PDF icon on mobile instead of rendering a thumbnail
-    return Container(
-      color: Colors.grey[100],
-      child: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.picture_as_pdf,
-              color: Colors.red[700],
-              size: widget.height * 0.36,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'PDF',
-              style: TextStyle(
-                color: Colors.red[700],
-                fontSize: ResponsiveUtils.getResponsiveFontSize(
-                  context,
-                  baseSize: 12,
-                ),
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-          ],
+    // Show loading only if we don't have PDF bytes yet
+    if (_isLoading && _pdfBytes == null) {
+      return Container(
+        color: Colors.grey[100],
+        child: const Center(
+          child: CircularProgressIndicator(strokeWidth: 2),
         ),
+      );
+    }
+
+    if (_hasError || _pdfBytes == null) {
+      return Container(
+        color: Colors.grey[100],
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.picture_as_pdf,
+                color: Colors.red[700],
+                size: widget.height * 0.36,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                'PDF',
+                style: TextStyle(
+                  color: Colors.red[700],
+                  fontSize: ResponsiveUtils.getResponsiveFontSize(
+                    context,
+                    baseSize: 12,
+                  ),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    }
+
+    // For multiple PDFs, use a simpler approach to avoid conflicts
+    // Render the first page of the PDF as a thumbnail with unique key
+    return KeyedSubtree(
+      key: ValueKey('pdf_${widget.url.hashCode}'),
+      child: SfPdfViewer.memory(
+        _pdfBytes!,
+        key: ValueKey('pdf_viewer_${widget.url.hashCode}'),
+        enableDoubleTapZooming: false,
+        enableTextSelection: false,
+        canShowScrollHead: false,
+        canShowScrollStatus: false,
+        canShowPaginationDialog: false,
+        canShowPasswordDialog: false,
+        enableDocumentLinkAnnotation: false,
+        onDocumentLoadFailed: (details) {
+          Log.e('PDF load failed for ${widget.url}', 'MOBILE_PDF_THUMBNAIL', details.error);
+          if (mounted) {
+            setState(() {
+              _hasError = true;
+              _isLoading = false;
+              _errorMessage = details.error;
+            });
+          }
+        },
+        onDocumentLoaded: (details) {
+          Log.i('PDF loaded successfully: ${details.document.pages.count} pages for ${widget.url}', 'MOBILE_PDF_THUMBNAIL');
+          if (mounted) {
+            setState(() {
+              _pdfViewerLoaded = true;
+              _isLoading = false;
+            });
+            // Ensure we're on the first page
+            Future.delayed(const Duration(milliseconds: 200), () {
+              if (mounted) {
+                try {
+                  _pdfController.jumpToPage(0);
+                } catch (e) {
+                  Log.w('Error jumping to page 0: $e', 'MOBILE_PDF_THUMBNAIL');
+                }
+              }
+            });
+          }
+        },
+        controller: _pdfController,
       ),
     );
   }

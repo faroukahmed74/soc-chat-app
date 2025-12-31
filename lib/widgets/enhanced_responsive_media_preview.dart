@@ -16,6 +16,11 @@ import '../services/logger_service.dart';
 import '../utils/responsive_utils.dart';
 import '../services/enhanced_unified_media_service.dart';
 import '../services/media_download_service.dart';
+import '../services/media_download_manager.dart';
+import 'media_download_progress_indicator.dart';
+import 'whatsapp_download_indicator.dart';
+import 'cached_network_image_widget.dart';
+import 'dart:async';
 
 /// Enhanced responsive media preview widget
 class EnhancedResponsiveMediaPreview extends StatefulWidget {
@@ -61,6 +66,8 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
   Duration _audioDuration = Duration.zero;
   bool _isPlaying = false;
   late ThemeService _themeService;
+  StreamSubscription<DownloadInfo>? _downloadSubscription;
+  DownloadInfo? _downloadInfo;
 
   @override
   void initState() {
@@ -70,6 +77,30 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
       if (mounted) setState(() {});
     });
     _initializeMedia();
+    _setupDownloadListener();
+  }
+
+  void _setupDownloadListener() {
+    final resolvedUrl = _resolveWebSameOriginUrl(widget.mediaUrl);
+    // Check if download is already in progress
+    final existingInfo = MediaDownloadManager().getDownloadInfo(resolvedUrl);
+    if (existingInfo != null) {
+      setState(() {
+        _downloadInfo = existingInfo;
+      });
+    }
+    
+    final stream = MediaDownloadManager().getProgressStream(resolvedUrl);
+    if (stream != null) {
+      _downloadSubscription?.cancel();
+      _downloadSubscription = stream.listen((info) {
+        if (mounted) {
+          setState(() {
+            _downloadInfo = info;
+          });
+        }
+      });
+    }
   }
 
   @override
@@ -251,24 +282,61 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
         return;
       }
 
-      await MediaDownloadService.saveToDevice(
+      // Check if already downloading
+      if (MediaDownloadManager().isDownloading(resolvedUrl)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Download already in progress')),
+        );
+        return;
+      }
+
+      // Setup listener for this download
+      _setupDownloadListener();
+
+      // Start download using manager
+      MediaDownloadManager().download(
         url: resolvedUrl,
         mediaType: widget.mediaType,
         fileName: widget.fileName,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Saved to device'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+        onProgress: (info) {
+          if (mounted) {
+            setState(() {
+              _downloadInfo = info;
+            });
+          }
+        },
+      ).then((successMessage) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(successMessage),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      }).catchError((e) {
+        Log.e('Error downloading media', 'ENHANCED_RESPONSIVE_MEDIA_PREVIEW', e);
+        if (mounted) {
+          _showErrorSnackBar('Failed to download media: ${e.toString()}');
+          // Auto-hide indicator after 3 seconds on error
+          Future.delayed(const Duration(seconds: 3), () {
+            if (mounted) {
+              setState(() {
+                _downloadInfo = null;
+              });
+            }
+          });
+        }
+      });
     } catch (e) {
       Log.e('Error downloading media', 'ENHANCED_RESPONSIVE_MEDIA_PREVIEW', e);
       _showErrorSnackBar('Failed to download media: ${e.toString()}');
     }
+  }
+
+  void _showDownloadProgress(String url) {
+    // This method is no longer used - downloads now use inline indicators
+    // Keeping for backward compatibility
   }
 
   void _showErrorSnackBar(String message) {
@@ -287,8 +355,18 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
     final isDesktop = ResponsiveUtils.isDesktop(context);
 
     // Calculate responsive dimensions
-    final maxWidth = widget.maxWidth ?? (isMobile ? 200.0 : isTablet ? 300.0 : 400.0);
-    final maxHeight = widget.maxHeight ?? (isMobile ? 200.0 : isTablet ? 300.0 : 400.0);
+    final maxWidth = widget.maxWidth ?? ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 200.0,
+      tablet: 300.0,
+      desktop: 400.0,
+    );
+    final maxHeight = widget.maxHeight ?? ResponsiveUtils.getResponsiveValue(
+      context,
+      mobile: 200.0,
+      tablet: 300.0,
+      desktop: 400.0,
+    );
 
     return Container(
       constraints: BoxConstraints(
@@ -402,14 +480,13 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
   Widget _buildImageWidget() {
     return Stack(
       children: [
-        Image.network(
-          _resolveWebSameOriginUrl(widget.mediaUrl),
+        CachedNetworkImageWidget(
+          imageUrl: _resolveWebSameOriginUrl(widget.mediaUrl),
           fit: BoxFit.cover,
           width: double.infinity,
           height: double.infinity,
-          errorBuilder: (context, error, stackTrace) {
-            return _buildErrorWidget();
-          },
+          errorWidget: _buildErrorWidget(),
+          useCache: true,
         ),
         if (widget.showFullScreenButton)
           Positioned(
@@ -460,6 +537,24 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
             ),
           ),
         ),
+        // WhatsApp-style inline download progress indicator
+        if (_downloadInfo != null && 
+            (_downloadInfo!.state == DownloadState.downloading || 
+             _downloadInfo!.state == DownloadState.saving))
+          Positioned(
+            top: 8,
+            right: 8,
+            child: WhatsAppDownloadIndicator(
+              progress: _downloadInfo!.progress,
+              statusMessage: _downloadInfo!.statusMessage,
+              onCancel: () {
+                MediaDownloadManager().cancel(_resolveWebSameOriginUrl(widget.mediaUrl));
+                setState(() {
+                  _downloadInfo = null;
+                });
+              },
+            ),
+          ),
       ],
     );
   }
@@ -562,9 +657,11 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
       return _buildErrorWidget();
     }
 
-    return Container(
-      color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
-      child: Column(
+    return Stack(
+      children: [
+        Container(
+          color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[100],
+          child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(
@@ -624,6 +721,26 @@ class _EnhancedResponsiveMediaPreviewState extends State<EnhancedResponsiveMedia
           ],
         ],
       ),
+    ),
+        // WhatsApp-style inline download progress indicator
+        if (_downloadInfo != null && 
+            (_downloadInfo!.state == DownloadState.downloading || 
+             _downloadInfo!.state == DownloadState.saving))
+          Positioned(
+            top: 8,
+            right: 8,
+            child: WhatsAppDownloadIndicator(
+              progress: _downloadInfo!.progress,
+              statusMessage: _downloadInfo!.statusMessage,
+              onCancel: () {
+                MediaDownloadManager().cancel(_resolveWebSameOriginUrl(widget.mediaUrl));
+                setState(() {
+                  _downloadInfo = null;
+                });
+              },
+            ),
+          ),
+      ],
     );
   }
 
@@ -882,6 +999,8 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
   Duration _audioDuration = Duration.zero;
   bool _isPlaying = false;
   late ThemeService _themeService;
+  DownloadInfo? _downloadInfo;
+  StreamSubscription<DownloadInfo>? _downloadSubscription;
 
   @override
   void initState() {
@@ -1075,24 +1194,64 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
         return;
       }
 
-      await MediaDownloadService.saveToDevice(
-        url: resolvedUrl,
-        mediaType: widget.mediaType,
-        fileName: widget.fileName,
-      );
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Saved to device'),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
+      // Show download progress dialog
+      _showDownloadProgressForFullScreen(resolvedUrl);
     } catch (e) {
       Log.e('Error downloading media', 'ENHANCED_FULL_SCREEN_MEDIA_PREVIEW', e);
       _showErrorSnackBar('Failed to download media: ${e.toString()}');
     }
+  }
+
+  void _showDownloadProgressForFullScreen(String url) {
+    // Use the same inline download manager approach
+    final resolvedUrl = _resolveWebSameOriginUrl(url);
+    
+    // Setup listener for this download
+    _setupDownloadListener();
+
+    // Start download using manager
+    MediaDownloadManager().download(
+      url: resolvedUrl,
+      mediaType: widget.mediaType,
+      fileName: widget.fileName,
+      onProgress: (info) {
+        if (mounted) {
+          setState(() {
+            _downloadInfo = info;
+          });
+        }
+      },
+    ).then((successMessage) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(successMessage),
+            backgroundColor: Colors.green,
+          ),
+        );
+        // Auto-hide indicator after 2 seconds
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            setState(() {
+              _downloadInfo = null;
+            });
+          }
+        });
+      }
+    }).catchError((e) {
+      Log.e('Error downloading media', 'ENHANCED_FULL_SCREEN_MEDIA_PREVIEW', e);
+      if (mounted) {
+        _showErrorSnackBar('Failed to download media: ${e.toString()}');
+        // Auto-hide indicator after 3 seconds on error
+        Future.delayed(const Duration(seconds: 3), () {
+          if (mounted) {
+            setState(() {
+              _downloadInfo = null;
+            });
+          }
+        });
+      }
+    });
   }
 
   void _showErrorSnackBar(String message) {
@@ -1129,6 +1288,24 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
           children: [
             _buildMediaContent(),
             if (_showControls) _buildControlsOverlay(),
+            // WhatsApp-style inline download progress indicator
+            if (_downloadInfo != null && 
+                (_downloadInfo!.state == DownloadState.downloading || 
+                 _downloadInfo!.state == DownloadState.saving))
+              Positioned(
+                top: 60,
+                right: 16,
+                child: WhatsAppDownloadIndicator(
+                  progress: _downloadInfo!.progress,
+                  statusMessage: _downloadInfo!.statusMessage,
+                  onCancel: () {
+                    MediaDownloadManager().cancel(_resolveWebSameOriginUrl(widget.mediaUrl));
+                    setState(() {
+                      _downloadInfo = null;
+                    });
+                  },
+                ),
+              ),
           ],
         ),
       ),
@@ -1171,14 +1348,13 @@ class _EnhancedFullScreenMediaPreviewState extends State<EnhancedFullScreenMedia
           return InteractiveViewer(
             minScale: 0.5,
             maxScale: 4.0,
-            child: Image.network(
-            _resolveWebSameOriginUrl(widget.mediaUrl),
+            child: CachedNetworkImageWidget(
+            imageUrl: _resolveWebSameOriginUrl(widget.mediaUrl),
             fit: BoxFit.contain,
-            errorBuilder: (context, error, stackTrace) {
-              return const Center(
-                child: Icon(Icons.broken_image, color: Colors.white, size: 64),
-              );
-            },
+            errorWidget: const Center(
+              child: Icon(Icons.broken_image, color: Colors.white, size: 64),
+            ),
+            useCache: true,
           ),
         );
       case 'video':

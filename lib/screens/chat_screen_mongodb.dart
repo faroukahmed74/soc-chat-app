@@ -31,6 +31,7 @@ import '../widgets/enhanced_chat_input.dart';
 import '../widgets/enhanced_media_preview.dart';
 import '../widgets/full_screen_media_preview.dart';
 import '../widgets/contact_message_widget.dart';
+import '../services/media_cache_service.dart';
 import '../services/realtime_service.dart';
 import '../services/active_chat_service.dart';
 import '../services/message_sound_service.dart';
@@ -1718,15 +1719,9 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   Future<void> _sendMediaMessage(String mediaUrl, String messageType, {String? content}) async {
     print('[CHAT_SCREEN_MONGODB] _sendMediaMessage called with mediaUrl: $mediaUrl, type: $messageType');
     
-    if (_isSending) {
-      print('[CHAT_SCREEN_MONGODB] Already sending media, returning...');
-      return;
-    }
-
-    setState(() {
-      _isSending = true;
-    });
-
+    // Don't block multiple media sends - allow concurrent sends
+    // The _isSending flag is only for preventing duplicate single sends
+    
     try {
       print('[CHAT_SCREEN_MONGODB] Calling _chatService.sendMediaMessage...');
       final result = await _chatService.sendMediaMessage(
@@ -1757,13 +1752,6 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('Error sending media: $e')),
         );
-      }
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isSending = false;
-        });
-        print('[CHAT_SCREEN_MONGODB] _isSending set to false');
       }
     }
   }
@@ -2711,11 +2699,16 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                       child: EnhancedMediaPreview(
                         mediaUrl: mediaUrl ?? '',
                         mediaType: 'document',
-                        fileName: displayContent.isNotEmpty ? displayContent : 'Document',
+                        fileName: _getDocumentFileName(message, mediaUrl ?? '', displayContent),
                         fileSize: message['fileSize'] as String?,
                         isCurrentUser: isCurrentUser,
                         onTap: () {
-                          _showFullScreenMedia(mediaUrl ?? '', 'document', displayContent, fileSize: message['fileSize'] as String?);
+                          _showFullScreenMedia(
+                            mediaUrl ?? '', 
+                            'document', 
+                            _getDocumentFileName(message, mediaUrl ?? '', displayContent), 
+                            fileSize: message['fileSize'] as String?
+                          );
                         },
                         maxWidth: ResponsiveUtils.getResponsiveValue(
                           context,
@@ -3525,5 +3518,79 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         ),
       ),
     );
+  }
+
+  /// Get document filename with proper extension detection
+  String _getDocumentFileName(Map<String, dynamic> message, String mediaUrl, String displayContent) {
+    // First, try to get fileName from message
+    final fileName = message['fileName'] as String?;
+    if (fileName != null && fileName.isNotEmpty) {
+      return fileName;
+    }
+    
+    // Try to extract filename from URL
+    try {
+      final uri = Uri.parse(mediaUrl);
+      final pathSegments = uri.pathSegments;
+      if (pathSegments.isNotEmpty) {
+        final urlFileName = pathSegments.last;
+        if (urlFileName.isNotEmpty && urlFileName.contains('.')) {
+          return urlFileName;
+        }
+      }
+    } catch (_) {
+      // If URL parsing fails, try simple string extraction
+      final lastSlash = mediaUrl.lastIndexOf('/');
+      if (lastSlash != -1 && lastSlash < mediaUrl.length - 1) {
+        final afterSlash = mediaUrl.substring(lastSlash + 1);
+        final queryIndex = afterSlash.indexOf('?');
+        final urlFileName = queryIndex != -1 ? afterSlash.substring(0, queryIndex) : afterSlash;
+        if (urlFileName.isNotEmpty && urlFileName.contains('.')) {
+          return urlFileName;
+        }
+      }
+    }
+    
+    // If displayContent has extension, use it
+    if (displayContent.isNotEmpty && displayContent.contains('.')) {
+      return displayContent;
+    }
+    
+    // Default fallback
+    return 'Document';
+  }
+
+  /// Preload media for messages to improve performance
+  void _preloadMediaForMessages(List<Map<String, dynamic>> messages) {
+    // Run in background to avoid blocking UI
+    Future.microtask(() async {
+      try {
+        final mediaUrls = <String>[];
+        
+        for (final message in messages) {
+          final messageType = _extractType(message);
+          final mediaUrl = message['mediaUrl'] as String?;
+          
+          // Collect media URLs for preloading
+          if (mediaUrl != null && mediaUrl.isNotEmpty) {
+            if (messageType == 'image' || 
+                messageType == 'video' || 
+                messageType == 'document') {
+              mediaUrls.add(mediaUrl);
+            }
+          }
+        }
+        
+        // Preload media in background (non-blocking)
+        if (mediaUrls.isNotEmpty) {
+          Log.i('Preloading ${mediaUrls.length} media files for chat', 'CHAT_SCREEN_MONGODB');
+          MediaCacheService.preloadMedia(mediaUrls).catchError((e) {
+            Log.w('Error preloading media: $e', 'CHAT_SCREEN_MONGODB');
+          });
+        }
+      } catch (e) {
+        Log.e('Error in media preload', 'CHAT_SCREEN_MONGODB', e);
+      }
+    });
   }
 }

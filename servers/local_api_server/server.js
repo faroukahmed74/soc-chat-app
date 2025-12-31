@@ -307,18 +307,49 @@ function serveMediaWithRange(dir) {
       // Set content type
       const ext = path.extname(filePath).toLowerCase();
       const mimeTypes = {
+        // Images
         '.jpg': 'image/jpeg',
         '.jpeg': 'image/jpeg',
         '.png': 'image/png',
         '.gif': 'image/gif',
         '.webp': 'image/webp',
+        '.bmp': 'image/bmp',
+        '.svg': 'image/svg+xml',
+        // Videos
         '.mp4': 'video/mp4',
         '.webm': 'video/webm',
+        '.mov': 'video/quicktime',
+        '.avi': 'video/x-msvideo',
+        '.mkv': 'video/x-matroska',
+        // Audio
         '.mp3': 'audio/mpeg',
         '.wav': 'audio/wav',
+        '.m4a': 'audio/mp4',
+        '.ogg': 'audio/ogg',
+        '.aac': 'audio/aac',
+        // Documents
         '.pdf': 'application/pdf',
+        '.doc': 'application/msword',
+        '.docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+        '.xls': 'application/vnd.ms-excel',
+        '.xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        '.ppt': 'application/vnd.ms-powerpoint',
+        '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+        '.txt': 'text/plain',
+        '.rtf': 'application/rtf',
+        '.csv': 'text/csv',
+        // Archives
+        '.zip': 'application/zip',
+        '.rar': 'application/x-rar-compressed',
+        '.7z': 'application/x-7z-compressed',
+        '.tar': 'application/x-tar',
+        '.gz': 'application/gzip',
       };
       res.setHeader('Content-Type', mimeTypes[ext] || 'application/octet-stream');
+      
+      // Set Content-Disposition header for downloads (optional, helps with file naming)
+      const fileName = path.basename(filePath);
+      res.setHeader('Content-Disposition', `inline; filename="${fileName}"`);
       res.setHeader('Accept-Ranges', 'bytes');
       res.setHeader('Content-Length', stats.size);
 

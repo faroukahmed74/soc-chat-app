@@ -68,18 +68,29 @@ class AppDelegate: FlutterAppDelegate, MessagingDelegate {
     }
     
     // Request photo library permission
+    // Note: For iOS 14+, we can use add-only permission, but PHPhotoLibrary.requestAuthorization
+    // requests full access. The permission_handler package handles add-only separately.
     PHPhotoLibrary.requestAuthorization { status in
       if #available(iOS 14.0, *) {
+        // iOS 14+: Accept authorized, limited, or add-only access
+        // Limited access allows saving but with restrictions
         guard status == .authorized || status == .limited else {
           DispatchQueue.main.async {
-            result(FlutterError(code: "PERMISSION_DENIED", message: "Photo library permission denied", details: nil))
+            let errorMsg = status == .denied 
+              ? "Photo library permission denied. Please enable it in Settings > Privacy & Security > Photos."
+              : "Photo library permission not available. Status: \(status.rawValue)"
+            result(FlutterError(code: "PERMISSION_DENIED", message: errorMsg, details: nil))
           }
           return
         }
       } else {
+        // iOS 13 and below: Only authorized is allowed
         guard status == .authorized else {
           DispatchQueue.main.async {
-            result(FlutterError(code: "PERMISSION_DENIED", message: "Photo library permission denied", details: nil))
+            let errorMsg = status == .denied
+              ? "Photo library permission denied. Please enable it in Settings > Privacy > Photos."
+              : "Photo library permission not available. Status: \(status.rawValue)"
+            result(FlutterError(code: "PERMISSION_DENIED", message: errorMsg, details: nil))
           }
           return
         }

@@ -4677,13 +4677,13 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                               tooltip: 'Moderate Chat',
                             ),
                             Icon(
-                              Icons.arrow_forward_ios,
-                              size: ResponsiveUtils.getResponsiveValue(
-                                context,
-                                mobile: 14.0,
-                                tablet: 16.0,
-                                desktop: 18.0,
-                              ),
+                          Icons.arrow_forward_ios,
+                          size: ResponsiveUtils.getResponsiveValue(
+                            context,
+                            mobile: 14.0,
+                            tablet: 16.0,
+                            desktop: 18.0,
+                          ),
                             ),
                           ],
                         ),

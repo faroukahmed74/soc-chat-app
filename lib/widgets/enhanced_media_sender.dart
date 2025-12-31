@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'dart:io';
+import 'package:image_picker/image_picker.dart';
 import '../services/improved_media_service.dart';
+import '../services/enhanced_unified_media_service.dart';
+import '../services/multi_media_upload_service.dart';
 import '../services/logger_service.dart';
 import '../services/contact_picker_service.dart';
 import '../utils/responsive_utils.dart';
@@ -26,7 +29,7 @@ class EnhancedMediaSender extends StatefulWidget {
 }
 
 class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
-  MediaResult? _selectedMedia;
+  List<EnhancedMediaResult> _selectedMedia = [];
   bool _isUploading = false;
   double _uploadProgress = 0.0;
   String? _uploadError;
@@ -89,11 +92,12 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
             ),
             const SizedBox(height: 16),
             
-            // Media selection buttons
-            if (_selectedMedia == null) _buildMediaSelectionButtons(theme, isDark),
+            // Media selection buttons (only show if no media selected)
+            if (_selectedMedia.isEmpty)
+              _buildMediaSelectionButtons(theme, isDark),
 
-            // Selected media preview
-            if (_selectedMedia != null) _buildMediaPreview(theme, isDark),
+            // Selected media preview (show grid if multiple, single if one)
+            if (_selectedMedia.isNotEmpty) _buildMediaPreview(theme, isDark),
 
             // Caption input
             if (_selectedMedia != null) ...[
@@ -340,97 +344,205 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
   }
 
   Widget _buildMediaPreview(ThemeData theme, bool isDark) {
-    if (_selectedMedia == null) return const SizedBox.shrink();
+    if (_selectedMedia.isEmpty) return const SizedBox.shrink();
 
-    Log.i('Building media preview for: ${_selectedMedia!.fileName}', 'ENHANCED_MEDIA_SENDER');
+    Log.i('Building media preview for ${_selectedMedia.length} media files', 'ENHANCED_MEDIA_SENDER');
 
+    // If single media, show detailed preview
+    if (_selectedMedia.length == 1) {
+      final media = _selectedMedia.first;
+      return Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            // Media icon
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: theme.colorScheme.primary.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Icon(
+                _getMediaIcon(media.type),
+                color: theme.colorScheme.primary,
+                size: 24,
+              ),
+            ),
+            const SizedBox(width: 16),
+            // Media info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    media.fileName,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '${media.type.toUpperCase()} • ${_formatFileSize(media.optimizedSize)}',
+                    style: TextStyle(
+                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Remove button
+            IconButton(
+              onPressed: () {
+                setState(() {
+                  _selectedMedia.clear();
+                  _captionController.clear();
+                  _uploadError = null;
+                });
+              },
+              icon: Icon(
+                Icons.close,
+                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Multiple media: show grid preview
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(
           color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
           width: 1,
         ),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Media icon
-          Container(
-            width: 48,
-            height: 48,
-            decoration: BoxDecoration(
-              color: theme.colorScheme.primary.withValues(alpha: 0.1),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(
-              _getMediaIcon(_selectedMedia!.type),
-              color: theme.colorScheme.primary,
-              size: 24,
-            ),
+          // Header with count and clear button
+          Row(
+            children: [
+              Icon(
+                Icons.attach_file,
+                color: theme.colorScheme.primary,
+                size: 20,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${_selectedMedia.length} files selected',
+                style: TextStyle(
+                  color: isDark ? Colors.white : Colors.black87,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const Spacer(),
+              IconButton(
+                onPressed: () {
+                  setState(() {
+                    _selectedMedia.clear();
+                    _captionController.clear();
+                    _uploadError = null;
+                  });
+                },
+                icon: Icon(
+                  Icons.close,
+                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                  size: 20,
+                ),
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
           ),
-          const SizedBox(width: 16),
-          // Media info
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  _selectedMedia!.fileName,
-                  style: TextStyle(
-                    color: isDark ? Colors.white : Colors.black87,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                  ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${_selectedMedia!.type.toUpperCase()} • ${_formatFileSize(_selectedMedia!.optimizedSize)}',
-                  style: TextStyle(
-                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                    fontSize: 12,
-                  ),
-                ),
-                if (_selectedMedia!.optimizedSize < _selectedMedia!.originalSize) ...[
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.compress,
-                        size: 12,
-                        color: Colors.green,
+          const SizedBox(height: 12),
+          // Grid of media thumbnails
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: ResponsiveUtils.isMobile(context) ? 3 : 4,
+              crossAxisSpacing: 8,
+              mainAxisSpacing: 8,
+              childAspectRatio: 1,
+            ),
+            itemCount: _selectedMedia.length,
+            itemBuilder: (context, index) {
+              final media = _selectedMedia[index];
+              return Stack(
+                children: [
+                  // Thumbnail
+                  Container(
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: isDark ? Colors.grey.shade600 : Colors.grey.shade300,
+                        width: 1,
                       ),
-                      const SizedBox(width: 4),
-                      Text(
-                        'Optimized (${((1 - _selectedMedia!.optimizedSize / _selectedMedia!.originalSize) * 100).toStringAsFixed(0)}%)',
-                        style: const TextStyle(
-                          color: Colors.green,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
+                    ),
+                    child: media.type == 'image'
+                        ? Image.memory(
+                            media.bytes,
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => Icon(
+                              _getMediaIcon(media.type),
+                              color: theme.colorScheme.primary,
+                            ),
+                          )
+                        : Center(
+                            child: Icon(
+                              _getMediaIcon(media.type),
+                              color: theme.colorScheme.primary,
+                              size: 32,
+                            ),
+                          ),
+                  ),
+                  // Remove button
+                  Positioned(
+                    top: 4,
+                    right: 4,
+                    child: GestureDetector(
+                      onTap: () {
+                        setState(() {
+                          _selectedMedia.removeAt(index);
+                        });
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(4),
+                        decoration: const BoxDecoration(
+                          color: Colors.red,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(
+                          Icons.close,
+                          color: Colors.white,
+                          size: 14,
                         ),
                       ),
-                    ],
+                    ),
                   ),
                 ],
-              ],
-            ),
-          ),
-          // Remove button
-          IconButton(
-            onPressed: () {
-              setState(() {
-                _selectedMedia = null;
-                _captionController.clear();
-                _uploadError = null;
-              });
+              );
             },
-            icon: Icon(
-              Icons.close,
-              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-            ),
           ),
         ],
       ),
@@ -517,7 +629,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
           child: OutlinedButton(
             onPressed: _isUploading ? null : () {
               setState(() {
-                _selectedMedia = null;
+                _selectedMedia.clear();
                 _captionController.clear();
                 _uploadError = null;
               });
@@ -544,7 +656,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
         const SizedBox(width: 16),
         Expanded(
           child: ElevatedButton(
-            onPressed: (_isUploading || _selectedMedia == null) ? null : _uploadMedia,
+            onPressed: (_isUploading || _selectedMedia.isEmpty) ? null : _uploadMedia,
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.colorScheme.primary,
               foregroundColor: Colors.white,
@@ -592,21 +704,53 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
 
   Future<void> _pickImageFromGallery() async {
     try {
-      Log.i('Starting image pick from gallery', 'ENHANCED_MEDIA_SENDER');
-      final result = await ImprovedMediaService.pickImageFromGallery(context);
-      Log.i('Image pick result: ${result != null ? "Success" : "Null"}', 'ENHANCED_MEDIA_SENDER');
-      if (result != null) {
-        setState(() {
-          _selectedMedia = result;
-          _uploadError = null;
-        });
-        Log.i('Media selected successfully: ${result.type}', 'ENHANCED_MEDIA_SENDER');
+      Log.i('Starting multiple image pick from gallery', 'ENHANCED_MEDIA_SENDER');
+      if (kIsWeb) {
+        // Web: use file picker with multiple and filter for images
+        final allResults = await EnhancedUnifiedMediaService.pickMultipleMedia(context);
+        final results = allResults.where((r) => r.type == 'image').toList();
+        if (results.isNotEmpty) {
+          setState(() {
+            _selectedMedia.addAll(results);
+            _uploadError = null;
+          });
+          Log.i('Selected ${results.length} images from gallery', 'ENHANCED_MEDIA_SENDER');
+        }
       } else {
-        Log.w('No media selected from gallery', 'ENHANCED_MEDIA_SENDER');
+        // Mobile: use pickMultiImage
+        final images = await ImagePicker().pickMultiImage(
+          maxWidth: 1920,
+          maxHeight: 1080,
+          imageQuality: 85,
+        );
+        if (images.isNotEmpty) {
+          final results = <EnhancedMediaResult>[];
+          for (final image in images) {
+            final bytes = await image.readAsBytes();
+            results.add(EnhancedMediaResult(
+              bytes: bytes,
+              type: 'image',
+              fileName: image.name,
+              mimeType: 'image/jpeg',
+              originalSize: bytes.length,
+              optimizedSize: bytes.length,
+              metadata: {
+                'source': 'gallery',
+                'platform': Platform.isIOS ? 'ios' : 'android',
+                'timestamp': DateTime.now().toIso8601String(),
+              },
+            ));
+          }
+          setState(() {
+            _selectedMedia.addAll(results);
+            _uploadError = null;
+          });
+          Log.i('Selected ${results.length} images from gallery', 'ENHANCED_MEDIA_SENDER');
+        }
       }
     } catch (e) {
-      Log.e('Error picking image from gallery', 'ENHANCED_MEDIA_SENDER', e);
-      _showError('Failed to pick image: $e');
+      Log.e('Error picking images from gallery', 'ENHANCED_MEDIA_SENDER', e);
+      _showError('Failed to pick images: $e');
     }
   }
 
@@ -616,8 +760,22 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
       final result = await ImprovedMediaService.pickImageFromCamera(context);
       Log.i('Camera pick result: ${result != null ? "Success" : "Null"}', 'ENHANCED_MEDIA_SENDER');
       if (result != null) {
+        // Convert MediaResult to EnhancedMediaResult
+        final enhancedResult = EnhancedMediaResult(
+          bytes: result.bytes,
+          type: result.type,
+          fileName: result.fileName,
+          mimeType: result.mimeType,
+          originalSize: result.originalSize,
+          optimizedSize: result.optimizedSize,
+          metadata: {
+            'source': 'camera',
+            'platform': Platform.isIOS ? 'ios' : 'android',
+            'timestamp': DateTime.now().toIso8601String(),
+          },
+        );
         setState(() {
-          _selectedMedia = result;
+          _selectedMedia.add(enhancedResult);
           _uploadError = null;
         });
         Log.i('Media selected successfully: ${result.type}', 'ENHANCED_MEDIA_SENDER');
@@ -632,45 +790,53 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
 
   Future<void> _pickVideoFromGallery() async {
     try {
-      final result = await ImprovedMediaService.pickVideoFromGallery(context);
-      if (result != null) {
+      Log.i('Starting multiple video pick from gallery', 'ENHANCED_MEDIA_SENDER');
+      // Use pickMultipleMedia with video filter
+      final allResults = await EnhancedUnifiedMediaService.pickMultipleMedia(context);
+      final results = allResults.where((r) => r.type == 'video').toList();
+      if (results.isNotEmpty) {
         setState(() {
-          _selectedMedia = result;
+          _selectedMedia.addAll(results);
           _uploadError = null;
         });
+        Log.i('Selected ${results.length} videos from gallery', 'ENHANCED_MEDIA_SENDER');
       }
     } catch (e) {
-      Log.e('Error picking video from gallery', 'ENHANCED_MEDIA_SENDER', e);
-      _showError('Failed to pick video: $e');
+      Log.e('Error picking videos from gallery', 'ENHANCED_MEDIA_SENDER', e);
+      _showError('Failed to pick videos: $e');
     }
   }
 
   Future<void> _pickDocument() async {
     try {
-      final result = await ImprovedMediaService.pickDocument(context);
-      if (result != null) {
+      Log.i('Starting multiple document pick', 'ENHANCED_MEDIA_SENDER');
+      // Use pickMultipleMedia with document filter
+      final allResults = await EnhancedUnifiedMediaService.pickMultipleMedia(context);
+      final results = allResults.where((r) => r.type == 'document').toList();
+      if (results.isNotEmpty) {
         setState(() {
-          _selectedMedia = result;
+          _selectedMedia.addAll(results);
           _uploadError = null;
         });
+        Log.i('Selected ${results.length} documents', 'ENHANCED_MEDIA_SENDER');
       }
     } catch (e) {
-      Log.e('Error picking document', 'ENHANCED_MEDIA_SENDER', e);
-      _showError('Failed to pick document: $e');
+      Log.e('Error picking documents', 'ENHANCED_MEDIA_SENDER', e);
+      _showError('Failed to pick documents: $e');
     }
   }
 
   Future<void> _pickAnyFile() async {
     try {
-      Log.i('Starting pick any file (web)', 'ENHANCED_MEDIA_SENDER');
-      // On web, we'll use the EnhancedUnifiedMediaService to pick any file type
-      final result = await ImprovedMediaService.pickDocument(context); // This already picks any file type
-      if (result != null) {
+      Log.i('Starting pick multiple files (web)', 'ENHANCED_MEDIA_SENDER');
+      // On web, use pickMultipleMedia to allow multiple file selection
+      final results = await EnhancedUnifiedMediaService.pickMultipleMedia(context);
+      if (results.isNotEmpty) {
         setState(() {
-          _selectedMedia = result;
+          _selectedMedia.addAll(results);
           _uploadError = null;
         });
-        Log.i('File selected successfully: ${result.fileName}', 'ENHANCED_MEDIA_SENDER');
+        Log.i('Selected ${results.length} files successfully', 'ENHANCED_MEDIA_SENDER');
       }
     } catch (e) {
       Log.e('Error picking file', 'ENHANCED_MEDIA_SENDER', e);
@@ -679,7 +845,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
   }
 
   Future<void> _uploadMedia() async {
-    if (_selectedMedia == null) return;
+    if (_selectedMedia.isEmpty) return;
 
     try {
       setState(() {
@@ -688,32 +854,99 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
         _uploadError = null;
       });
 
-      final mediaUrl = await ImprovedMediaService.uploadMediaWithProgress(
-        _selectedMedia!,
-        widget.chatId,
-        (progress) {
-          setState(() {
-            _uploadProgress = progress;
-          });
-        },
-        caption: _captionController.text.trim(),
-      );
+      if (_selectedMedia.length == 1) {
+        // Single media: use existing upload method
+        final media = _selectedMedia.first;
+        final mediaResult = MediaResult(
+          bytes: media.bytes,
+          type: media.type,
+          fileName: media.fileName,
+          mimeType: media.mimeType,
+          originalSize: media.originalSize,
+          optimizedSize: media.optimizedSize,
+        );
 
-      if (mediaUrl != null) {
-        final caption = _captionController.text.trim();
-        final text = caption.isNotEmpty ? caption : _getDefaultMediaText(_selectedMedia!);
-        
-        widget.onMediaSent(mediaUrl, _selectedMedia!.type, text);
-        
-        // Reset state
-        setState(() {
-          _selectedMedia = null;
-          _captionController.clear();
-          _isUploading = false;
-          _uploadProgress = 0.0;
-        });
+        final mediaUrl = await ImprovedMediaService.uploadMediaWithProgress(
+          mediaResult,
+          widget.chatId,
+          (progress) {
+            setState(() {
+              _uploadProgress = progress;
+            });
+          },
+          caption: _captionController.text.trim(),
+        );
+
+        if (mediaUrl != null) {
+          final caption = _captionController.text.trim();
+          final text = caption.isNotEmpty ? caption : _getDefaultMediaText(mediaResult);
+          
+          widget.onMediaSent(mediaUrl, media.type, text);
+          
+          // Reset state
+          setState(() {
+            _selectedMedia.clear();
+            _captionController.clear();
+            _isUploading = false;
+            _uploadProgress = 0.0;
+          });
+          widget.onClose?.call();
+        } else {
+          throw Exception('Failed to get media URL');
+        }
       } else {
-        throw Exception('Failed to get media URL');
+        // Multiple media: use MultiMediaUploadService
+        final mediaUrls = <String>[];
+        final mediaTypes = <String>[];
+
+        final results = await MultiMediaUploadService().uploadMultiple(
+          mediaResults: _selectedMedia,
+          chatId: widget.chatId,
+          sharedCaption: _captionController.text.isNotEmpty
+              ? _captionController.text
+              : null,
+          onProgress: (uploadInfo) {
+            // Update overall progress
+            final totalProgress = uploadInfo.progress / _selectedMedia.length;
+            setState(() {
+              _uploadProgress = totalProgress.clamp(0.0, 1.0);
+            });
+          },
+        );
+
+        // Collect successful uploads
+        for (int i = 0; i < results.length && i < _selectedMedia.length; i++) {
+          final mediaUrl = results[i];
+          if (mediaUrl != null && mediaUrl.isNotEmpty) {
+            mediaUrls.add(mediaUrl);
+            mediaTypes.add(_selectedMedia[i].type);
+          }
+        }
+
+        if (mediaUrls.isNotEmpty) {
+          // Send all media as separate messages
+          Log.i('Sending ${mediaUrls.length} media files to chat', 'ENHANCED_MEDIA_SENDER');
+          for (int i = 0; i < mediaUrls.length; i++) {
+            // Use caption only for the first media
+            final caption = (i == 0 && _captionController.text.isNotEmpty) 
+                ? _captionController.text 
+                : '';
+            await widget.onMediaSent(mediaUrls[i], mediaTypes[i], caption);
+            // Small delay between sends
+            await Future.delayed(const Duration(milliseconds: 100));
+          }
+          setState(() {
+            _selectedMedia.clear();
+            _captionController.clear();
+            _isUploading = false;
+          });
+          widget.onClose?.call();
+        } else {
+          setState(() {
+            _isUploading = false;
+            _uploadError = 'Failed to upload media';
+          });
+        }
       }
     } catch (e) {
       Log.e('Error uploading media', 'ENHANCED_MEDIA_SENDER', e);

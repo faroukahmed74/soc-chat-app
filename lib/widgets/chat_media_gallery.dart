@@ -3,8 +3,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/mongodb_chat_service.dart';
 import '../services/logger_service.dart';
 import '../services/media_download_service.dart';
+import '../services/media_download_manager.dart';
 import '../utils/responsive_utils.dart';
 import 'full_screen_media_preview.dart';
+import 'media_download_progress_indicator.dart';
+import 'whatsapp_download_indicator.dart';
+import 'dart:async';
 
 class ChatMediaGallery extends StatefulWidget {
   final String chatId;
@@ -678,18 +682,36 @@ class _MediaContextMenu extends StatelessWidget {
       return;
     }
 
-    MediaDownloadService.saveToDevice(
-      url: mediaUrl,
-      mediaType: item['messageType'] ?? item['type'] ?? 'image',
-      fileName: item['fileName']?.toString(),
-    ).then((_) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Media saved to device')),
-      );
+    _showDownloadProgress(context, mediaUrl);
+  }
+
+  void _showDownloadProgress(BuildContext context, String url) {
+    final mediaType = item['messageType'] ?? item['type'] ?? 'image';
+    final fileName = item['fileName']?.toString();
+    
+    // Use MediaDownloadManager for proper progress tracking
+    MediaDownloadManager().download(
+      url: url,
+      mediaType: mediaType,
+      fileName: fileName,
+      onProgress: (info) {
+        // Progress updates are handled by the manager
+      },
+    ).then((successMessage) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(successMessage),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
     }).catchError((e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Download failed: $e')),
-      );
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Download failed: $e')),
+        );
+      }
     });
   }
 
@@ -793,9 +815,9 @@ class _DocumentTile extends StatelessWidget {
       url: url,
       mediaType: 'document',
       fileName: item['fileName']?.toString(),
-    ).then((_) {
+    ).then((successMessage) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Document saved to device')),
+        SnackBar(content: Text(successMessage)),
       );
     }).catchError((e) {
       ScaffoldMessenger.of(context).showSnackBar(
