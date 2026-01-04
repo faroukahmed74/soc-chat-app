@@ -51,8 +51,16 @@ class _ChatMediaGalleryState extends State<ChatMediaGallery>
       final summary = await _chatService.fetchMediaSummary(widget.chatId);
       if (!mounted) return;
 
+      // Filter out text messages - only show media types
+      final mediaOnlyCategories = summary.where((category) {
+        final type = category.type.toLowerCase();
+        return type != 'text' && 
+               type != 'message' && 
+               (type == 'image' || type == 'video' || type == 'document' || type == 'audio');
+      }).toList();
+
       setState(() {
-        _categories = summary;
+        _categories = mediaOnlyCategories;
         _isLoading = false;
       });
 
@@ -109,7 +117,20 @@ class _ChatMediaGalleryState extends State<ChatMediaGallery>
 
       if (!mounted) return;
 
-      final newItems = refresh ? result.messages : [...existing.items, ...result.messages];
+      // Filter out text messages - only keep media items
+      final mediaItems = result.messages.where((item) {
+        final messageType = (item['messageType'] ?? item['type'] ?? '').toString().toLowerCase();
+        final hasMediaUrl = (item['mediaUrl'] ?? item['media_url'] ?? '').toString().isNotEmpty;
+        return messageType != 'text' && 
+               messageType != 'message' && 
+               hasMediaUrl &&
+               (messageType == 'image' || 
+                messageType == 'video' || 
+                messageType == 'document' || 
+                messageType == 'audio');
+      }).toList();
+
+      final newItems = refresh ? mediaItems : [...existing.items, ...mediaItems];
       final hasMore = result.hasMore;
 
       setState(() {

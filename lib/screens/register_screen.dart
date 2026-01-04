@@ -35,6 +35,7 @@ import '../services/localization_service.dart';
 import '../services/theme_service.dart';
 import '../services/local_auth_service.dart';
 import '../config/database_config.dart';
+import '../widgets/app_logo.dart';
 
 // =============================================================================
 // REGISTER SCREEN WIDGET
@@ -576,10 +577,10 @@ class _RegisterScreenState extends State<RegisterScreen> {
                         // =============================================================================
                         // APP LOGO SECTION
                         // =============================================================================
-                        Icon(
-                          Icons.chat_bubble,
+                        AppLogo(
                           size: iconSize,
-                          color: Theme.of(context).colorScheme.primary,
+                          showBackground: true,
+                          showAppName: false,
                         ),
                         SizedBox(height: isSmallScreen ? 16 : 24),
                         

@@ -13,6 +13,7 @@ import '../services/theme_service.dart';
 import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
 import '../services/localization_service.dart';
+import '../widgets/app_logo.dart';
 
 class RegisterScreenMongoDB extends StatefulWidget {
   const RegisterScreenMongoDB({Key? key}) : super(key: key);
@@ -180,15 +181,13 @@ class _RegisterScreenMongoDBState extends State<RegisterScreenMongoDB> {
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
                   // App Logo/Title
-                  Text(
-                    AppLocalizations.getString('app_name', _currentLanguage),
-                    style: const TextStyle(
-                      fontSize: 32,
-                      fontWeight: FontWeight.bold,
-                    ),
-                    textAlign: TextAlign.center,
+                  AppLogo(
+                    size: 100,
+                    showBackground: true,
+                    showAppName: true,
+                    showSubtitle: false,
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 16),
                   Text(
                     'Create your account',
                     style: TextStyle(

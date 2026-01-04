@@ -1799,18 +1799,18 @@ router.get('/chats/:id', verifyAdminToken, async (req, res) => {
       : [];
     
     const chatData = {
-      _id: chat._id,
-      id: chat._id.toString(),
-      name: chat.name,
-      type: chat.type || 'group',
-      members: members.map(member => ({
+        _id: chat._id,
+        id: chat._id.toString(),
+        name: chat.name,
+        type: chat.type || 'group',
+        members: members.map(member => ({
         id: member._id.toString(),
-        name: member.displayName,
+          name: member.displayName,
         email: member.email,
         role: member.role,
         profilePicture: member.profilePicture,
-      })),
-      memberIds: (chat.members || chat.memberIds || []).map(m => m.toString()),
+        })),
+        memberIds: (chat.members || chat.memberIds || []).map(m => m.toString()),
       createdBy: chat.createdBy?.toString(),
       owner: owner,
       moderators: moderators.map(mod => ({
@@ -1819,8 +1819,8 @@ router.get('/chats/:id', verifyAdminToken, async (req, res) => {
         email: mod.email,
       })),
       moderatorIds: moderatorIds.map(id => id.toString()),
-      createdAt: chat.createdAt,
-      updatedAt: chat.updatedAt,
+        createdAt: chat.createdAt,
+        updatedAt: chat.updatedAt,
       archived: chat.archived || false,
       muted: chat.muted || false,
       mutedUntil: chat.mutedUntil || null,

@@ -47,15 +47,37 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: ResponsiveUtils.getResponsivePadding(context),
       decoration: BoxDecoration(
         color: isDark ? const Color(0xFF1E1E1E) : Colors.white,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(
+            ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 20.0,
+              tablet: 24.0,
+              desktop: 28.0,
+            ),
+          ),
+        ),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.1),
-            blurRadius: 10,
-            offset: const Offset(0, -2),
+            blurRadius: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 10.0,
+              tablet: 12.0,
+              desktop: 14.0,
+            ),
+            offset: Offset(
+              0,
+              -ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 2.0,
+                tablet: 3.0,
+                desktop: 4.0,
+              ),
+            ),
           ),
         ],
       ),
@@ -63,78 +85,402 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            // Drag handle
+            Container(
+              margin: EdgeInsets.only(
+                top: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 8.0,
+                  tablet: 10.0,
+                  desktop: 12.0,
+                ),
+                bottom: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 4.0,
+                  tablet: 6.0,
+                  desktop: 8.0,
+                ),
+              ),
+              width: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 40.0,
+                tablet: 50.0,
+                desktop: 60.0,
+              ),
+              height: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 4.0,
+                tablet: 5.0,
+                desktop: 6.0,
+              ),
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            SizedBox(
+              height: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 8.0,
+                tablet: 10.0,
+                desktop: 12.0,
+              ),
+            ),
             // Header
             Row(
               children: [
-                Icon(
-                  Icons.attach_file,
-                  color: theme.colorScheme.primary,
-                  size: 24,
-                ),
-                const SizedBox(width: 12),
-                Text(
-                  'Send Media',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: isDark ? Colors.white : Colors.black87,
+                Container(
+                  padding: EdgeInsets.all(
+                    ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 8.0,
+                      tablet: 10.0,
+                      desktop: 12.0,
+                    ),
+                  ),
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        theme.colorScheme.primary,
+                        theme.colorScheme.primary.withValues(alpha: 0.7),
+                      ],
+                    ),
+                    borderRadius: BorderRadius.circular(
+                      ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 12.0,
+                        tablet: 14.0,
+                        desktop: 16.0,
+                      ),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                        blurRadius: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 8.0,
+                          tablet: 10.0,
+                          desktop: 12.0,
+                        ),
+                        offset: Offset(
+                          0,
+                          ResponsiveUtils.getResponsiveValue(
+                            context,
+                            mobile: 2.0,
+                            tablet: 3.0,
+                            desktop: 4.0,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.attach_file_rounded,
+                    color: Colors.white,
+                    size: ResponsiveUtils.getResponsiveIconSize(context),
                   ),
                 ),
-                const Spacer(),
-                IconButton(
-                  onPressed: widget.onClose,
-                  icon: Icon(
-                    Icons.close,
-                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                SizedBox(
+                  width: ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 12.0,
+                    tablet: 14.0,
+                    desktop: 16.0,
+                  ),
+                ),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Send Media',
+                        style: TextStyle(
+                          fontSize: ResponsiveUtils.getResponsiveFontSize(
+                            context,
+                            baseSize: 20,
+                          ),
+                          fontWeight: FontWeight.bold,
+                          color: isDark ? Colors.white : Colors.black87,
+                          letterSpacing: -0.5,
+                        ),
+                      ),
+                      Text(
+                        'Choose what to share',
+                        style: TextStyle(
+                          fontSize: ResponsiveUtils.getResponsiveFontSize(
+                            context,
+                            baseSize: 12,
+                          ),
+                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Container(
+                  decoration: BoxDecoration(
+                    color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                    shape: BoxShape.circle,
+                  ),
+                  child: IconButton(
+                    onPressed: widget.onClose,
+                    icon: Icon(
+                      Icons.close_rounded,
+                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      size: ResponsiveUtils.getResponsiveIconSize(context),
+                    ),
+                    padding: EdgeInsets.all(
+                      ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 8.0,
+                        tablet: 10.0,
+                        desktop: 12.0,
+                      ),
+                    ),
+                    constraints: const BoxConstraints(),
                   ),
                 ),
               ],
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 20),
             
-            // Media selection buttons (only show if no media selected)
-            if (_selectedMedia.isEmpty)
-              _buildMediaSelectionButtons(theme, isDark),
+            // Media selection buttons (always show, but can be collapsed)
+            _buildMediaSelectionButtons(theme, isDark),
 
             // Selected media preview (show grid if multiple, single if one)
-            if (_selectedMedia.isNotEmpty) _buildMediaPreview(theme, isDark),
+            if (_selectedMedia.isNotEmpty) ...[
+              _buildMediaPreview(theme, isDark),
+              SizedBox(
+                height: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 12.0,
+                  tablet: 14.0,
+                  desktop: 16.0,
+                ),
+              ),
+              // Add More button - shows quick action buttons
+              Container(
+                padding: EdgeInsets.symmetric(
+                  vertical: ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 8.0,
+                    tablet: 10.0,
+                    desktop: 12.0,
+                  ),
+                  horizontal: ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 12.0,
+                    tablet: 16.0,
+                    desktop: 20.0,
+                  ),
+                ),
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey.shade800 : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(
+                    ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 12.0,
+                      tablet: 14.0,
+                      desktop: 16.0,
+                    ),
+                  ),
+                  border: Border.all(
+                    color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+                  ),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildQuickActionButton(
+                      icon: Icons.photo_library_rounded,
+                      label: 'Photos',
+                      color: Colors.blue,
+                      onTap: _pickImageFromGallery,
+                      theme: theme,
+                    ),
+                    _buildQuickActionButton(
+                      icon: Icons.video_library_rounded,
+                      label: 'Videos',
+                      color: Colors.red,
+                      onTap: _pickVideoFromGallery,
+                      theme: theme,
+                    ),
+                    _buildQuickActionButton(
+                      icon: Icons.insert_drive_file_rounded,
+                      label: 'Files',
+                      color: Colors.orange,
+                      onTap: _pickDocument,
+                      theme: theme,
+                    ),
+                  ],
+                ),
+              ),
+            ],
 
             // Caption input
-            if (_selectedMedia != null) ...[
-              const SizedBox(height: 16),
-              TextField(
-                controller: _captionController,
-                decoration: InputDecoration(
-                  hintText: 'Add a caption...',
-                  hintStyle: TextStyle(
-                    color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+            if (_selectedMedia.isNotEmpty) ...[
+              SizedBox(
+                height: ResponsiveUtils.getResponsiveSpacing(context),
+              ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.text_fields_rounded,
+                        size: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 16.0,
+                          tablet: 18.0,
+                          desktop: 20.0,
+                        ),
+                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      ),
+                      SizedBox(
+                        width: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 6.0,
+                          tablet: 8.0,
+                          desktop: 10.0,
+                        ),
+                      ),
+                      Text(
+                        'Caption (optional)',
+                        style: TextStyle(
+                          fontSize: ResponsiveUtils.getResponsiveFontSize(
+                            context,
+                            baseSize: 12,
+                          ),
+                          fontWeight: FontWeight.w600,
+                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const Spacer(),
+                      ValueListenableBuilder<TextEditingValue>(
+                        valueListenable: _captionController,
+                        builder: (context, value, child) {
+                          final length = value.text.length;
+                          return Text(
+                            '$length / 500',
+                            style: TextStyle(
+                              fontSize: ResponsiveUtils.getResponsiveFontSize(
+                                context,
+                                baseSize: 11,
+                              ),
+                              color: length > 450
+                                  ? Colors.orange
+                                  : (isDark ? Colors.grey.shade500 : Colors.grey.shade500),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
                   ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                  SizedBox(
+                    height: ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 8.0,
+                      tablet: 10.0,
+                      desktop: 12.0,
                     ),
                   ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                  TextField(
+                    controller: _captionController,
+                    decoration: InputDecoration(
+                      hintText: 'Add a caption to your media...',
+                      hintStyle: TextStyle(
+                        color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
+                        fontSize: ResponsiveUtils.getResponsiveFontSize(
+                          context,
+                          baseSize: 14,
+                        ),
+                      ),
+                      prefixIcon: Icon(
+                        Icons.edit_rounded,
+                        size: ResponsiveUtils.getResponsiveIconSize(context),
+                        color: isDark ? Colors.grey.shade500 : Colors.grey.shade500,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          ResponsiveUtils.getResponsiveValue(
+                            context,
+                            mobile: 16.0,
+                            tablet: 18.0,
+                            desktop: 20.0,
+                          ),
+                        ),
+                        borderSide: BorderSide(
+                          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                        ),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          ResponsiveUtils.getResponsiveValue(
+                            context,
+                            mobile: 16.0,
+                            tablet: 18.0,
+                            desktop: 20.0,
+                          ),
+                        ),
+                        borderSide: BorderSide(
+                          color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                        ),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(
+                          ResponsiveUtils.getResponsiveValue(
+                            context,
+                            mobile: 16.0,
+                            tablet: 18.0,
+                            desktop: 20.0,
+                          ),
+                        ),
+                        borderSide: BorderSide(
+                          color: theme.colorScheme.primary,
+                          width: ResponsiveUtils.getResponsiveValue(
+                            context,
+                            mobile: 2.0,
+                            tablet: 2.5,
+                            desktop: 3.0,
+                          ),
+                        ),
+                      ),
+                      filled: true,
+                      fillColor: isDark ? Colors.grey.shade800 : Colors.grey.shade50,
+                      contentPadding: EdgeInsets.symmetric(
+                        horizontal: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 16.0,
+                          tablet: 20.0,
+                          desktop: 24.0,
+                        ),
+                        vertical: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 14.0,
+                          tablet: 16.0,
+                          desktop: 18.0,
+                        ),
+                      ),
                     ),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide(
-                      color: theme.colorScheme.primary,
-                      width: 2,
+                    style: TextStyle(
+                      color: isDark ? Colors.white : Colors.black87,
+                      fontSize: ResponsiveUtils.getResponsiveFontSize(
+                        context,
+                        baseSize: 14,
+                      ),
                     ),
+                    maxLines: ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 3,
+                      tablet: 4,
+                      desktop: 5,
+                    ),
+                    maxLength: 500,
+                    buildCounter: (context, {required currentLength, required isFocused, maxLength}) => null,
                   ),
-                  filled: true,
-                  fillColor: isDark ? Colors.grey.shade800 : Colors.grey.shade50,
-                ),
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black87,
-                ),
-                maxLines: 3,
+                ],
               ),
             ],
 
@@ -151,8 +497,8 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
             ],
 
             // Action buttons
-            if (_selectedMedia != null) ...[
-              const SizedBox(height: 16),
+            if (_selectedMedia.isNotEmpty) ...[
+              const SizedBox(height: 20),
               _buildActionButtons(theme, isDark),
             ],
           ],
@@ -163,13 +509,18 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
 
   Widget _buildMediaSelectionButtons(ThemeData theme, bool isDark) {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(
-          kIsWeb ? 'Attach a file:' : 'Choose media type:',
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            color: isDark ? Colors.white : Colors.black87,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 4),
+          child: Text(
+            kIsWeb ? 'Attach a file' : 'Choose media type',
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w600,
+              color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
+              letterSpacing: 0.5,
+            ),
           ),
         ),
         const SizedBox(height: 16),
@@ -306,38 +657,64 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
     required VoidCallback onTap,
     required double size,
   }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: size,
-        height: size,
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: color.withValues(alpha: 0.3),
-            width: 1,
-          ),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              icon,
-              color: color,
-              size: size * 0.4, // Responsive icon size
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(20),
+        child: Container(
+          width: size,
+          height: size,
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                color.withValues(alpha: 0.15),
+                color.withValues(alpha: 0.08),
+              ],
             ),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                color: color,
-                fontSize: size * 0.15, // Responsive font size
-                fontWeight: FontWeight.w600,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: color.withValues(alpha: 0.2),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: color.withValues(alpha: 0.1),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-            ),
-          ],
+            ],
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: EdgeInsets.all(size * 0.15),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  icon,
+                  color: color,
+                  size: size * 0.35,
+                ),
+              ),
+              SizedBox(height: size * 0.08),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: size * 0.14,
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: 0.3,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -352,32 +729,125 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
     if (_selectedMedia.length == 1) {
       final media = _selectedMedia.first;
       return Container(
-        padding: const EdgeInsets.all(12),
+        padding: ResponsiveUtils.getResponsivePadding(context),
         decoration: BoxDecoration(
-          color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-          borderRadius: BorderRadius.circular(12),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: isDark
+                ? [
+                    Colors.grey.shade800,
+                    Colors.grey.shade900,
+                  ]
+                : [
+                    Colors.grey.shade50,
+                    Colors.white,
+                  ],
+          ),
+          borderRadius: BorderRadius.circular(
+            ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 16.0,
+              tablet: 18.0,
+              desktop: 20.0,
+            ),
+          ),
           border: Border.all(
             color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-            width: 1,
+            width: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 1.5,
+              tablet: 2.0,
+              desktop: 2.5,
+            ),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 8.0,
+                tablet: 10.0,
+                desktop: 12.0,
+              ),
+              offset: Offset(
+                0,
+                ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 2.0,
+                  tablet: 3.0,
+                  desktop: 4.0,
+                ),
+              ),
+            ),
+          ],
         ),
         child: Row(
           children: [
-            // Media icon
+            // Media icon with gradient
             Container(
-              width: 48,
-              height: 48,
+              width: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 56.0,
+                tablet: 64.0,
+                desktop: 72.0,
+              ),
+              height: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 56.0,
+                tablet: 64.0,
+                desktop: 72.0,
+              ),
               decoration: BoxDecoration(
-                color: theme.colorScheme.primary.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(12),
+                gradient: LinearGradient(
+                  colors: [
+                    theme.colorScheme.primary,
+                    theme.colorScheme.primary.withValues(alpha: 0.7),
+                  ],
+                ),
+                borderRadius: BorderRadius.circular(
+                  ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 14.0,
+                    tablet: 16.0,
+                    desktop: 18.0,
+                  ),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: theme.colorScheme.primary.withValues(alpha: 0.3),
+                    blurRadius: ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 8.0,
+                      tablet: 10.0,
+                      desktop: 12.0,
+                    ),
+                    offset: Offset(
+                      0,
+                      ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 2.0,
+                        tablet: 3.0,
+                        desktop: 4.0,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               child: Icon(
                 _getMediaIcon(media.type),
-                color: theme.colorScheme.primary,
-                size: 24,
+                color: Colors.white,
+                size: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 28.0,
+                  tablet: 32.0,
+                  desktop: 36.0,
+                ),
               ),
             ),
-            const SizedBox(width: 16),
+            SizedBox(
+              width: ResponsiveUtils.getResponsiveSpacing(context),
+            ),
             // Media info
             Expanded(
               child: Column(
@@ -387,35 +857,127 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
                     media.fileName,
                     style: TextStyle(
                       color: isDark ? Colors.white : Colors.black87,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w600,
+                      fontSize: ResponsiveUtils.getResponsiveFontSize(
+                        context,
+                        baseSize: 15,
+                      ),
+                      fontWeight: FontWeight.w700,
                     ),
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${media.type.toUpperCase()} • ${_formatFileSize(media.optimizedSize)}',
-                    style: TextStyle(
-                      color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                      fontSize: 12,
+                  SizedBox(
+                    height: ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 6.0,
+                      tablet: 8.0,
+                      desktop: 10.0,
                     ),
+                  ),
+                  Row(
+                    children: [
+                      Container(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: ResponsiveUtils.getResponsiveValue(
+                            context,
+                            mobile: 8.0,
+                            tablet: 10.0,
+                            desktop: 12.0,
+                          ),
+                          vertical: ResponsiveUtils.getResponsiveValue(
+                            context,
+                            mobile: 4.0,
+                            tablet: 5.0,
+                            desktop: 6.0,
+                          ),
+                        ),
+                        decoration: BoxDecoration(
+                          color: theme.colorScheme.primary.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(
+                            ResponsiveUtils.getResponsiveValue(
+                              context,
+                              mobile: 6.0,
+                              tablet: 8.0,
+                              desktop: 10.0,
+                            ),
+                          ),
+                        ),
+                        child: Text(
+                          media.type.toUpperCase(),
+                          style: TextStyle(
+                            color: theme.colorScheme.primary,
+                            fontSize: ResponsiveUtils.getResponsiveFontSize(
+                              context,
+                              baseSize: 10,
+                            ),
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: 0.5,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 8.0,
+                          tablet: 10.0,
+                          desktop: 12.0,
+                        ),
+                      ),
+                      Icon(
+                        Icons.info_outline_rounded,
+                        size: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 14.0,
+                          tablet: 16.0,
+                          desktop: 18.0,
+                        ),
+                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                      ),
+                      SizedBox(
+                        width: ResponsiveUtils.getResponsiveValue(
+                          context,
+                          mobile: 4.0,
+                          tablet: 6.0,
+                          desktop: 8.0,
+                        ),
+                      ),
+                      Text(
+                        _formatFileSize(media.optimizedSize),
+                        style: TextStyle(
+                          color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                          fontSize: ResponsiveUtils.getResponsiveFontSize(
+                            context,
+                            baseSize: 12,
+                          ),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
                   ),
                 ],
               ),
             ),
             // Remove button
-            IconButton(
-              onPressed: () {
-                setState(() {
-                  _selectedMedia.clear();
-                  _captionController.clear();
-                  _uploadError = null;
-                });
-              },
-              icon: Icon(
-                Icons.close,
-                color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+            Container(
+              decoration: BoxDecoration(
+                color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+                shape: BoxShape.circle,
+              ),
+              child: IconButton(
+                onPressed: () {
+                  setState(() {
+                    _selectedMedia.clear();
+                    _captionController.clear();
+                    _uploadError = null;
+                  });
+                },
+                icon: Icon(
+                  Icons.close_rounded,
+                  color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
+                  size: 20,
+                ),
+                padding: const EdgeInsets.all(8),
+                constraints: const BoxConstraints(),
               ),
             ),
           ],
@@ -425,14 +987,58 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
 
     // Multiple media: show grid preview
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: ResponsiveUtils.getResponsivePadding(context),
       decoration: BoxDecoration(
-        color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
-        borderRadius: BorderRadius.circular(12),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: isDark
+              ? [
+                  Colors.grey.shade800,
+                  Colors.grey.shade900,
+                ]
+              : [
+                  Colors.grey.shade50,
+                  Colors.white,
+                ],
+        ),
+        borderRadius: BorderRadius.circular(
+          ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: 16.0,
+            tablet: 18.0,
+            desktop: 20.0,
+          ),
+        ),
         border: Border.all(
           color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-          width: 1,
+          width: ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: 1.5,
+            tablet: 2.0,
+            desktop: 2.5,
+          ),
         ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 8.0,
+              tablet: 10.0,
+              desktop: 12.0,
+            ),
+            offset: Offset(
+              0,
+              ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 2.0,
+                tablet: 3.0,
+                desktop: 4.0,
+              ),
+            ),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -440,48 +1046,140 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
           // Header with count and clear button
           Row(
             children: [
-              Icon(
-                Icons.attach_file,
-                color: theme.colorScheme.primary,
-                size: 20,
-              ),
-              const SizedBox(width: 8),
-              Text(
-                '${_selectedMedia.length} files selected',
-                style: TextStyle(
-                  color: isDark ? Colors.white : Colors.black87,
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
+              Container(
+                padding: EdgeInsets.all(
+                  ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 6.0,
+                    tablet: 8.0,
+                    desktop: 10.0,
+                  ),
+                ),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      theme.colorScheme.primary,
+                      theme.colorScheme.primary.withValues(alpha: 0.7),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(
+                    ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 8.0,
+                      tablet: 10.0,
+                      desktop: 12.0,
+                    ),
+                  ),
+                ),
+                child: Icon(
+                  Icons.collections_rounded,
+                  color: Colors.white,
+                  size: ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 18.0,
+                    tablet: 20.0,
+                    desktop: 22.0,
+                  ),
                 ),
               ),
-              const Spacer(),
-              IconButton(
-                onPressed: () {
-                  setState(() {
-                    _selectedMedia.clear();
-                    _captionController.clear();
-                    _uploadError = null;
-                  });
-                },
-                icon: Icon(
-                  Icons.close,
-                  color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                  size: 20,
+              SizedBox(
+                width: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 10.0,
+                  tablet: 12.0,
+                  desktop: 14.0,
                 ),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '${_selectedMedia.length} ${_selectedMedia.length == 1 ? 'file' : 'files'} selected',
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontSize: ResponsiveUtils.getResponsiveFontSize(
+                          context,
+                          baseSize: 15,
+                        ),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    Text(
+                      'Tap to remove any item',
+                      style: TextStyle(
+                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                        fontSize: ResponsiveUtils.getResponsiveFontSize(
+                          context,
+                          baseSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                decoration: BoxDecoration(
+                  color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+                  shape: BoxShape.circle,
+                ),
+                child: IconButton(
+                  onPressed: () {
+                    setState(() {
+                      _selectedMedia.clear();
+                      _captionController.clear();
+                      _uploadError = null;
+                    });
+                  },
+                  icon: Icon(
+                    Icons.close_rounded,
+                    color: isDark ? Colors.grey.shade300 : Colors.grey.shade700,
+                    size: ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 18.0,
+                      tablet: 20.0,
+                      desktop: 22.0,
+                    ),
+                  ),
+                  padding: EdgeInsets.all(
+                    ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 6.0,
+                      tablet: 8.0,
+                      desktop: 10.0,
+                    ),
+                  ),
+                  constraints: const BoxConstraints(),
+                ),
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          SizedBox(
+            height: ResponsiveUtils.getResponsiveSpacing(context),
+          ),
           // Grid of media thumbnails
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: ResponsiveUtils.isMobile(context) ? 3 : 4,
-              crossAxisSpacing: 8,
-              mainAxisSpacing: 8,
+              crossAxisCount: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 3,
+                tablet: 4,
+                desktop: 5,
+              ),
+              crossAxisSpacing: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 10.0,
+                tablet: 12.0,
+                desktop: 14.0,
+              ),
+              mainAxisSpacing: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 10.0,
+                tablet: 12.0,
+                desktop: 14.0,
+              ),
               childAspectRatio: 1,
             ),
             itemCount: _selectedMedia.length,
@@ -489,37 +1187,68 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
               final media = _selectedMedia[index];
               return Stack(
                 children: [
-                  // Thumbnail
-                  Container(
-                    decoration: BoxDecoration(
-                      color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(
-                        color: isDark ? Colors.grey.shade600 : Colors.grey.shade300,
-                        width: 1,
-                      ),
-                    ),
-                    child: media.type == 'image'
-                        ? Image.memory(
-                            media.bytes,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, __, ___) => Icon(
-                              _getMediaIcon(media.type),
-                              color: theme.colorScheme.primary,
-                            ),
-                          )
-                        : Center(
-                            child: Icon(
-                              _getMediaIcon(media.type),
-                              color: theme.colorScheme.primary,
-                              size: 32,
-                            ),
+                  // Thumbnail with enhanced styling
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(12),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        color: isDark ? Colors.grey.shade700 : Colors.grey.shade200,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(
+                          color: isDark ? Colors.grey.shade600 : Colors.grey.shade300,
+                          width: 1.5,
+                        ),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
                           ),
+                        ],
+                      ),
+                      child: media.type == 'image'
+                          ? Image.memory(
+                              media.bytes,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Container(
+                                color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                                child: Icon(
+                                  _getMediaIcon(media.type),
+                                  color: theme.colorScheme.primary,
+                                  size: 32,
+                                ),
+                              ),
+                            )
+                          : Container(
+                              color: isDark ? Colors.grey.shade800 : Colors.grey.shade100,
+                              child: Center(
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(
+                                      _getMediaIcon(media.type),
+                                      color: theme.colorScheme.primary,
+                                      size: 32,
+                                    ),
+                                    const SizedBox(height: 4),
+                                    Text(
+                                      media.type.substring(0, 1).toUpperCase(),
+                                      style: TextStyle(
+                                        color: theme.colorScheme.primary,
+                                        fontSize: 10,
+                                        fontWeight: FontWeight.w700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                    ),
                   ),
-                  // Remove button
+                  // Remove button with better styling
                   Positioned(
-                    top: 4,
-                    right: 4,
+                    top: 6,
+                    right: 6,
                     child: GestureDetector(
                       onTap: () {
                         setState(() {
@@ -527,19 +1256,47 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
                         });
                       },
                       child: Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(
+                        padding: const EdgeInsets.all(5),
+                        decoration: BoxDecoration(
                           color: Colors.red,
                           shape: BoxShape.circle,
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.3),
+                              blurRadius: 4,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
                         child: const Icon(
-                          Icons.close,
+                          Icons.close_rounded,
                           color: Colors.white,
                           size: 14,
                         ),
                       ),
                     ),
                   ),
+                  // Index badge for multiple items
+                  if (_selectedMedia.length > 1)
+                    Positioned(
+                      top: 6,
+                      left: 6,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.6),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          '${index + 1}',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ),
+                    ),
                 ],
               );
             },
@@ -550,54 +1307,204 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
   }
 
   Widget _buildUploadProgress(ThemeData theme, bool isDark) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Icon(
-              Icons.cloud_upload,
-              color: theme.colorScheme.primary,
-              size: 20,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              'Uploading...',
-              style: TextStyle(
-                color: isDark ? Colors.white : Colors.black87,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-            const Spacer(),
-            Text(
-              '${(_uploadProgress * 100).toStringAsFixed(0)}%',
-              style: TextStyle(
-                color: theme.colorScheme.primary,
-                fontSize: 14,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
+    return Container(
+      padding: ResponsiveUtils.getResponsivePadding(context),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            theme.colorScheme.primary.withValues(alpha: 0.1),
+            theme.colorScheme.primary.withValues(alpha: 0.05),
           ],
         ),
-        const SizedBox(height: 8),
-        LinearProgressIndicator(
-          value: _uploadProgress,
-          backgroundColor: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
-          valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+        borderRadius: BorderRadius.circular(
+          ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: 16.0,
+            tablet: 18.0,
+            desktop: 20.0,
+          ),
         ),
-      ],
+        border: Border.all(
+          color: theme.colorScheme.primary.withValues(alpha: 0.3),
+          width: ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: 1.5,
+            tablet: 2.0,
+            desktop: 2.5,
+          ),
+        ),
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: EdgeInsets.all(
+                  ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 8.0,
+                    tablet: 10.0,
+                    desktop: 12.0,
+                  ),
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.cloud_upload_rounded,
+                  color: theme.colorScheme.primary,
+                  size: ResponsiveUtils.getResponsiveIconSize(context),
+                ),
+              ),
+              SizedBox(
+                width: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 12.0,
+                  tablet: 14.0,
+                  desktop: 16.0,
+                ),
+              ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Uploading media...',
+                      style: TextStyle(
+                        color: isDark ? Colors.white : Colors.black87,
+                        fontSize: ResponsiveUtils.getResponsiveFontSize(
+                          context,
+                          baseSize: 15,
+                        ),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    SizedBox(
+                      height: ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 2.0,
+                        tablet: 4.0,
+                        desktop: 6.0,
+                      ),
+                    ),
+                    Text(
+                      'Please wait while we upload your files',
+                      style: TextStyle(
+                        color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
+                        fontSize: ResponsiveUtils.getResponsiveFontSize(
+                          context,
+                          baseSize: 12,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 10.0,
+                    tablet: 12.0,
+                    desktop: 14.0,
+                  ),
+                  vertical: ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 6.0,
+                    tablet: 8.0,
+                    desktop: 10.0,
+                  ),
+                ),
+                decoration: BoxDecoration(
+                  color: theme.colorScheme.primary.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(
+                    ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 8.0,
+                      tablet: 10.0,
+                      desktop: 12.0,
+                    ),
+                  ),
+                ),
+                child: Text(
+                  '${(_uploadProgress * 100).toStringAsFixed(0)}%',
+                  style: TextStyle(
+                    color: theme.colorScheme.primary,
+                    fontSize: ResponsiveUtils.getResponsiveFontSize(
+                      context,
+                      baseSize: 14,
+                    ),
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(
+            height: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 12.0,
+              tablet: 14.0,
+              desktop: 16.0,
+            ),
+          ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(
+              ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 8.0,
+                tablet: 10.0,
+                desktop: 12.0,
+              ),
+            ),
+            child: LinearProgressIndicator(
+              value: _uploadProgress,
+              minHeight: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 6.0,
+                tablet: 7.0,
+                desktop: 8.0,
+              ),
+              backgroundColor: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+              valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
   Widget _buildErrorMessage(ThemeData theme, bool isDark) {
     return Container(
-      padding: const EdgeInsets.all(12),
+      padding: EdgeInsets.all(
+        ResponsiveUtils.getResponsiveValue(
+          context,
+          mobile: 12.0,
+          tablet: 14.0,
+          desktop: 16.0,
+        ),
+      ),
       decoration: BoxDecoration(
         color: isDark ? Colors.red.shade900 : Colors.red.shade50,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(
+          ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: 12.0,
+            tablet: 14.0,
+            desktop: 16.0,
+          ),
+        ),
         border: Border.all(
           color: isDark ? Colors.red.shade700 : Colors.red.shade200,
-          width: 1,
+          width: ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: 1.0,
+            tablet: 1.5,
+            desktop: 2.0,
+          ),
         ),
       ),
       child: Row(
@@ -605,15 +1512,25 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
           Icon(
             Icons.error_outline,
             color: isDark ? Colors.red.shade300 : Colors.red.shade600,
-            size: 20,
+            size: ResponsiveUtils.getResponsiveIconSize(context),
           ),
-          const SizedBox(width: 8),
+          SizedBox(
+            width: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 8.0,
+              tablet: 10.0,
+              desktop: 12.0,
+            ),
+          ),
           Expanded(
             child: Text(
               _uploadError!,
               style: TextStyle(
                 color: isDark ? Colors.red.shade300 : Colors.red.shade700,
-                fontSize: 14,
+                fontSize: ResponsiveUtils.getResponsiveFontSize(
+                  context,
+                  baseSize: 14,
+                ),
               ),
             ),
           ),
@@ -626,7 +1543,7 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
     return Row(
       children: [
         Expanded(
-          child: OutlinedButton(
+          child: OutlinedButton.icon(
             onPressed: _isUploading ? null : () {
               setState(() {
                 _selectedMedia.clear();
@@ -634,53 +1551,134 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
                 _uploadError = null;
               });
             },
-            style: OutlinedButton.styleFrom(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+            icon: Icon(
+              Icons.close_rounded,
+              size: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 18.0,
+                tablet: 20.0,
+                desktop: 22.0,
               ),
-              side: BorderSide(
-                color: isDark ? Colors.grey.shade600 : Colors.grey.shade400,
-              ),
+              color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
             ),
-            child: Text(
+            label: Text(
               'Cancel',
               style: TextStyle(
                 color: isDark ? Colors.grey.shade400 : Colors.grey.shade600,
-                fontSize: 16,
+                fontSize: ResponsiveUtils.getResponsiveFontSize(
+                  context,
+                  baseSize: 15,
+                ),
                 fontWeight: FontWeight.w600,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              padding: EdgeInsets.symmetric(
+                vertical: ResponsiveUtils.getResponsiveButtonHeight(context) * 0.3,
+              ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 14.0,
+                    tablet: 16.0,
+                    desktop: 18.0,
+                  ),
+                ),
+              ),
+              side: BorderSide(
+                color: isDark ? Colors.grey.shade700 : Colors.grey.shade300,
+                width: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 1.5,
+                  tablet: 2.0,
+                  desktop: 2.5,
+                ),
               ),
             ),
           ),
         ),
-        const SizedBox(width: 16),
+        SizedBox(
+          width: ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: 12.0,
+            tablet: 14.0,
+            desktop: 16.0,
+          ),
+        ),
         Expanded(
-          child: ElevatedButton(
+          flex: 2,
+          child: ElevatedButton.icon(
             onPressed: (_isUploading || _selectedMedia.isEmpty) ? null : _uploadMedia,
+            icon: _isUploading
+                ? SizedBox(
+                    width: ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 18.0,
+                      tablet: 20.0,
+                      desktop: 22.0,
+                    ),
+                    height: ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 18.0,
+                      tablet: 20.0,
+                      desktop: 22.0,
+                    ),
+                    child: CircularProgressIndicator(
+                      strokeWidth: ResponsiveUtils.getResponsiveValue(
+                        context,
+                        mobile: 2.5,
+                        tablet: 3.0,
+                        desktop: 3.5,
+                      ),
+                      valueColor: const AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                  )
+                : Icon(
+                    Icons.send_rounded,
+                    size: ResponsiveUtils.getResponsiveValue(
+                      context,
+                      mobile: 18.0,
+                      tablet: 20.0,
+                      desktop: 22.0,
+                    ),
+                    color: Colors.white,
+                  ),
+            label: Text(
+              _isUploading ? 'Sending...' : 'Send ${_selectedMedia.length > 1 ? '(${_selectedMedia.length})' : ''}',
+              style: TextStyle(
+                fontSize: ResponsiveUtils.getResponsiveFontSize(
+                  context,
+                  baseSize: 15,
+                ),
+                fontWeight: FontWeight.w700,
+                letterSpacing: 0.3,
+              ),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: theme.colorScheme.primary,
               foregroundColor: Colors.white,
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+              padding: EdgeInsets.symmetric(
+                vertical: ResponsiveUtils.getResponsiveButtonHeight(context) * 0.3,
               ),
-            ),
-            child: _isUploading
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                    ),
-                  )
-                : Text(
-                    'Send',
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(
+                  ResponsiveUtils.getResponsiveValue(
+                    context,
+                    mobile: 14.0,
+                    tablet: 16.0,
+                    desktop: 18.0,
                   ),
+                ),
+              ),
+              elevation: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 2.0,
+                tablet: 3.0,
+                desktop: 4.0,
+              ),
+              shadowColor: theme.colorScheme.primary.withValues(alpha: 0.4),
+            ),
           ),
         ),
       ],
@@ -989,6 +1987,100 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
     if (bytes < 1024 * 1024 * 1024) return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
     return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  }
+
+  Widget _buildQuickActionButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onTap,
+    required ThemeData theme,
+  }) {
+    final isDark = theme.brightness == Brightness.dark;
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(
+          ResponsiveUtils.getResponsiveValue(
+            context,
+            mobile: 10.0,
+            tablet: 12.0,
+            desktop: 14.0,
+          ),
+        ),
+        child: Container(
+          padding: EdgeInsets.symmetric(
+            horizontal: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 12.0,
+              tablet: 14.0,
+              desktop: 16.0,
+            ),
+            vertical: ResponsiveUtils.getResponsiveValue(
+              context,
+              mobile: 8.0,
+              tablet: 10.0,
+              desktop: 12.0,
+            ),
+          ),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.1),
+            borderRadius: BorderRadius.circular(
+              ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 10.0,
+                tablet: 12.0,
+                desktop: 14.0,
+              ),
+            ),
+            border: Border.all(
+              color: color.withValues(alpha: 0.3),
+              width: ResponsiveUtils.getResponsiveValue(
+                context,
+                mobile: 1.0,
+                tablet: 1.5,
+                desktop: 2.0,
+              ),
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: color,
+                size: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 18.0,
+                  tablet: 20.0,
+                  desktop: 22.0,
+                ),
+              ),
+              SizedBox(
+                width: ResponsiveUtils.getResponsiveValue(
+                  context,
+                  mobile: 6.0,
+                  tablet: 8.0,
+                  desktop: 10.0,
+                ),
+              ),
+              Text(
+                label,
+                style: TextStyle(
+                  color: color,
+                  fontSize: ResponsiveUtils.getResponsiveFontSize(
+                    context,
+                    baseSize: 12,
+                  ),
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _pickContact() async {

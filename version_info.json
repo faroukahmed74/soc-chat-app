@@ -1,8 +1,8 @@
 {
-  "version": "1.0.30",
-  "build_number": "30",
+  "version": "1.0.31",
+  "build_number": "31",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.30 (Build 30) - Media Caching & PDF Viewing Enhancements:\n- Comprehensive media caching system - persistent cache for images, videos, and documents across all platforms\n- Faster chat screen performance - media loads instantly from cache after first view\n- Persistent cache across app restarts - cached media remains available even after closing the app\n- Automatic media preloading - background preloading of media when chat screen loads\n- Enhanced PDF full-screen viewing - fixed PDF viewing for single and multiple documents\n- Improved PDF detection - enhanced detection logic for better PDF identification\n- Better loading states - proper loading indicators and timeout handling for PDFs\n- Media cache management - automatic cleanup of old files and size limit enforcement (500MB max)\n- Web platform support - browser HTTP cache integration for web platform\n- Android/iOS cache support - file-based persistent cache for mobile platforms\n- PDF viewing fixes - resolved black screen issues when opening PDFs in full screen\n- Multiple PDF support - fixed full-screen viewing for multiple PDFs sent together\n- Cache statistics - track cache size and file count for monitoring\n- Performance optimizations - reduced network usage and faster media loading",
+  "release_notes": "SOC Chat App v1.0.31 (Build 31) - Logo Implementation & Icon Updates:\n- Integrated SOCLogo.png as the official app logo across all platforms\n- Updated app icon with white background for better visibility on home screens\n- Enhanced logo display in login and registration screens\n- Improved adaptive icon configuration with proper padding for full logo visibility\n- Updated flutter_launcher_icons to latest version (0.14.4) for better icon generation\n- Consistent logo usage throughout the application\n- Better logo rendering with proper sizing and background support\n- Web platform logo updates in loading screen and manifest\n- Improved app branding and visual identity",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": true,

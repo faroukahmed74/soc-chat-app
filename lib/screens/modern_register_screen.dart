@@ -12,6 +12,7 @@ import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
 import '../theme/app_design_system.dart';
 import '../utils/responsive_utils.dart';
+import '../widgets/app_logo.dart';
 
 class ModernRegisterScreen extends StatefulWidget {
   const ModernRegisterScreen({super.key});
@@ -225,20 +226,11 @@ class _ModernRegisterScreenState extends State<ModernRegisterScreen>
   Widget _buildHeader(bool isDark) {
     return Column(
       children: [
-        // App Icon
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            gradient: AppDesignSystem.primaryGradient,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: AppDesignSystem.shadowLG,
-          ),
-          child: const Icon(
-            Icons.person_add_outlined,
-            color: Colors.white,
-            size: 40,
-          ),
+        // App Logo
+        AppLogo(
+          size: 80,
+          showBackground: true,
+          showAppName: false,
         ),
         const SizedBox(height: 24),
         Text(

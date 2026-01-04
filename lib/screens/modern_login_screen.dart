@@ -12,6 +12,7 @@ import '../services/physical_auth_service.dart';
 import '../services/logger_service.dart';
 import '../theme/app_design_system.dart';
 import '../utils/responsive_utils.dart';
+import '../widgets/app_logo.dart';
 
 class ModernLoginScreen extends StatefulWidget {
   const ModernLoginScreen({super.key});
@@ -204,20 +205,11 @@ class _ModernLoginScreenState extends State<ModernLoginScreen>
   Widget _buildHeader(bool isDark) {
     return Column(
       children: [
-        // App Icon
-        Container(
-          width: 80,
-          height: 80,
-          decoration: BoxDecoration(
-            gradient: AppDesignSystem.primaryGradient,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: AppDesignSystem.shadowLG,
-          ),
-          child: const Icon(
-            Icons.chat_bubble_outline,
-            color: Colors.white,
-            size: 40,
-          ),
+        // App Logo
+        AppLogo(
+          size: 80,
+          showBackground: true,
+          showAppName: false,
         ),
         const SizedBox(height: 24),
         Text(

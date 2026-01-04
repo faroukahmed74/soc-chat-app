@@ -15,6 +15,7 @@ import '../services/theme_service.dart';
 import '../services/physical_auth_service.dart';
 import '../config/database_config.dart';
 import '../services/logger_service.dart';
+import '../widgets/app_logo.dart';
 
 // =============================================================================
 // LOGIN SCREEN WIDGET
@@ -276,10 +277,10 @@ class _LoginScreenState extends State<LoginScreen> {
                         // =============================================================================
                         // APP LOGO SECTION
                         // =============================================================================
-                        Icon(
-                          Icons.chat_bubble,
+                        AppLogo(
                           size: iconSize,
-                          color: Theme.of(context).colorScheme.primary,
+                          showBackground: true,
+                          showAppName: false,
                         ),
                         SizedBox(height: isSmallScreen ? 16 : 24),
                         
