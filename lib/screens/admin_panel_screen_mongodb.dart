@@ -452,11 +452,30 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
             },
           ).timeout(const Duration(seconds: 3));
           
+          // Consider endpoint operational if:
+          // - Status < 400 (success)
+          // - Status 401/403 (endpoint exists, just needs auth - this is normal for admin endpoints)
+          // - Status 404 means endpoint doesn't exist (offline)
+          // - Other 4xx/5xx are errors but endpoint exists
+          String status;
+          if (response.statusCode < 400) {
+            status = 'operational';
+          } else if (response.statusCode == 401 || response.statusCode == 403) {
+            // Endpoint exists but requires authentication - this is operational
+            status = 'operational';
+          } else if (response.statusCode == 404) {
+            // Endpoint doesn't exist
+            status = 'offline';
+          } else {
+            // Other errors (400, 500, etc.) - endpoint exists but has issues
+            status = 'error';
+          }
+          
           statusList.add({
             'name': endpoint['name'],
             'path': endpoint['path'],
             'method': endpoint['method'],
-            'status': response.statusCode < 400 ? 'operational' : 'error',
+            'status': status,
             'statusCode': response.statusCode,
             'responseTime': 'OK',
           });

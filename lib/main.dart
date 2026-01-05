@@ -154,7 +154,17 @@ Future<void> main() async {
     Log.i('Initializing services for physical server mode', 'MAIN');
     await LocalAuthService.initialize();
     // SecureMessageService removed - using MongoDB/ngrok API only
-    await LocalMessageStorage.initialize();
+    
+    // For web, initialize LocalMessageStorage in background to prevent blocking
+    if (kIsWeb) {
+      LocalMessageStorage.initialize().then((_) {
+        Log.i('LocalMessageStorage initialized (background)', 'MAIN');
+      }).catchError((e) {
+        Log.e('LocalMessageStorage initialization failed (non-blocking)', 'MAIN', e);
+      });
+    } else {
+      await LocalMessageStorage.initialize();
+    }
     
     // Initialize media cache service with error handling
     try {
@@ -166,12 +176,21 @@ Future<void> main() async {
     }
     
     // Initialize background services (after user might be logged in)
-    try {
-      await BackgroundServiceManager().initialize();
-      Log.i('Background services initialized', 'MAIN');
-    } catch (bgError) {
-      Log.e('Background services initialization failed, continuing', 'MAIN', bgError);
-      // Continue without background services if they fail
+    // For web, initialize in background to prevent blocking
+    if (kIsWeb) {
+      BackgroundServiceManager().initialize().then((_) {
+        Log.i('Background services initialized (background)', 'MAIN');
+      }).catchError((bgError) {
+        Log.e('Background services initialization failed (non-blocking)', 'MAIN', bgError);
+      });
+    } else {
+      try {
+        await BackgroundServiceManager().initialize();
+        Log.i('Background services initialized', 'MAIN');
+      } catch (bgError) {
+        Log.e('Background services initialization failed, continuing', 'MAIN', bgError);
+        // Continue without background services if they fail
+      }
     }
   } catch (e, st) {
     Log.e('Failed to initialize app services', 'MAIN', e, st);
@@ -453,15 +472,42 @@ class _AuthGateState extends State<AuthGate> {
   @override
   void initState() {
     super.initState();
-    _checkAuthStatus();
+    // For web, show UI immediately and check auth in background
+    if (kIsWeb) {
+      // Show login screen immediately to prevent blocking
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+          _isAuthenticated = false; // Default to login screen
+        });
+      }
+      // Check auth in background without blocking
+      Future.microtask(() {
+        _checkAuthStatus();
+      });
+    } else {
+      _checkAuthStatus();
+    }
   }
 
   Future<void> _checkAuthStatus() async {
     try {
       print('AuthGate: Starting authentication check...');
       
+      // For web, add timeout to prevent blocking
+      Future<String> tokenFuture = DatabaseConfig.getStoredAuthToken();
+      if (kIsWeb) {
+        tokenFuture = tokenFuture.timeout(
+          const Duration(milliseconds: 500),
+          onTimeout: () {
+            print('AuthGate: Token check timeout (non-blocking)');
+            return '';
+          },
+        );
+      }
+      
       // Simple check - just see if we have a token
-      final token = await DatabaseConfig.getStoredAuthToken();
+      final token = await tokenFuture;
       print('AuthGate: Stored token exists: ${token.isNotEmpty}');
       
       // For web offline mode, don't verify token immediately - show login screen
@@ -577,7 +623,21 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _initializeApp();
+    // For web, wrap initialization in timeout to prevent freezing
+    if (kIsWeb) {
+      _initializeApp().timeout(
+        const Duration(seconds: 2),
+        onTimeout: () {
+          Log.w('App initialization timeout (non-blocking)', 'MAIN_APP');
+          // Continue - app will work but some features may not be initialized
+        },
+      ).catchError((e) {
+        Log.e('App initialization error (non-blocking)', 'MAIN_APP', e);
+        // Continue - app will work but some features may not be initialized
+      });
+    } else {
+      _initializeApp();
+    }
   }
 
   @override
@@ -604,7 +664,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   Future<void> _initializeApp() async {
     try {
       Log.i('Starting app initialization...', 'MAIN_APP');
-      await _checkInitialPermissions(); // only checks, doesn’t request
+      await _checkInitialPermissions(); // only checks, doesn't request
 
       // ALWAYS initialize notifications (handles web/mobile inside)
       await _initializeNotifications();
@@ -619,37 +679,42 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       try {
         final realtime = RealtimeService.instance;
         
-        // CRITICAL: Initialize TURN config AFTER app initialization
-        // This ensures TURN servers are configured before any calls can be made
-        // For both web and mobile, initialize TURN here after app is ready
-        print('🔵 [MAIN_APP] Initializing TURN configuration AFTER app initialization...');
-        // Initialize TURN - await to ensure it completes before calls start
-        try {
-          await _initializeWebRTCCallService();
-          print('✅ [MAIN_APP] TURN configuration initialized successfully');
-        } catch (turnError, turnStack) {
-          print('❌ [MAIN_APP] ERROR initializing TURN config: $turnError');
-          Log.e('Failed to initialize TURN configuration', 'MAIN_APP', turnError, turnStack);
-          // Continue - app will work but cross-network calls will fail
-        }
-        
-        // For web offline mode, connect in background (non-blocking)
+        // For web, make TURN initialization non-blocking to prevent freezing
         if (kIsWeb) {
+          // On web, initialize TURN in background - don't block app initialization
+          print('🔵 [MAIN_APP] Initializing TURN configuration in background (Web)...');
+          _initializeWebRTCCallService().then((_) {
+            print('✅ [MAIN_APP] TURN configuration initialized successfully (background)');
+          }).catchError((turnError, turnStack) {
+            print('❌ [MAIN_APP] ERROR initializing TURN config (non-blocking): $turnError');
+            Log.e('Failed to initialize TURN configuration (non-blocking)', 'MAIN_APP', turnError, turnStack);
+            // Continue - app will work but cross-network calls will fail
+          });
+          
           // On web, connect in background - don't block app initialization
           realtime.connect().then((_) async {
             // Set up global call invitation listener after connection
             _setupCallInvitationListener(realtime);
-            // TURN config already initialized above
           }).catchError((e) {
             Log.e('Realtime connect failed (non-blocking)', 'MAIN_APP', e);
           });
         } else {
+          // For mobile, initialize TURN synchronously
+          print('🔵 [MAIN_APP] Initializing TURN configuration (Mobile)...');
+          try {
+            await _initializeWebRTCCallService();
+            print('✅ [MAIN_APP] TURN configuration initialized successfully');
+          } catch (turnError, turnStack) {
+            print('❌ [MAIN_APP] ERROR initializing TURN config: $turnError');
+            Log.e('Failed to initialize TURN configuration', 'MAIN_APP', turnError, turnStack);
+            // Continue - app will work but cross-network calls will fail
+          }
+          
           // On mobile, connect synchronously
           try {
             await realtime.connect();
             // Set up global call invitation listener after connection
             _setupCallInvitationListener(realtime);
-            // TURN config already initialized above
           } catch (realtimeError) {
             print('❌ [MAIN_APP] Realtime connection failed: $realtimeError');
             Log.e('Realtime connection failed', 'MAIN_APP', realtimeError);
