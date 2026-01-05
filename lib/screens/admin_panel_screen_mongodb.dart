@@ -1736,7 +1736,8 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
       for (final message in allMessages) {
         final mediaUrl = message['mediaUrl'];
         final type = message['type'];
-        if (mediaUrl != null && type == 'media') {
+        // Count all media types: media, image, video, document, file
+        if (mediaUrl != null && (type == 'media' || type == 'image' || type == 'video' || type == 'document' || type == 'file')) {
           final url = mediaUrl.toString();
           if (!mediaUrlsMap.containsKey(url)) {
             mediaUrlsMap[url] = {
@@ -1746,6 +1747,7 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
               'createdAt': message['createdAt'] ?? message['timestamp'],
               'fileName': message['fileName'] ?? 'Unknown',
               'size': message['size'] ?? 0,
+              'type': type,
             };
           }
         }
@@ -2520,28 +2522,28 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
             children: [
               _buildStatCard(
                 'Users',
-                '${_users.length}',
+                _systemStats?['totalUsers']?.toString() ?? '${_users.length}',
                 Icons.people,
                 Colors.blue,
                 () => _tabController.animateTo(1),
               ),
               _buildStatCard(
                 'Chats',
-                '${_chats.length}',
+                _systemStats?['totalChats']?.toString() ?? '${_chats.length}',
                 Icons.chat,
                 Colors.green,
                 () => _tabController.animateTo(2),
               ),
               _buildStatCard(
                 'Groups',
-                '${_groups.length}',
+                _systemStats?['totalGroups']?.toString() ?? '${_groups.length}',
                 Icons.group,
                 Colors.teal,
                 () => _tabController.animateTo(3),
               ),
               _buildStatCard(
                 'Messages',
-                '${_messages.length}',
+                _systemStats?['totalMessages']?.toString() ?? '${_messages.length}',
                 Icons.message,
                 Colors.orange,
                 () => _tabController.animateTo(4),
@@ -4220,153 +4222,162 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
         elevation: 0,
         centerTitle: false,
         actions: [
-          IconButton(
-            icon: const Icon(Icons.search),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const UnifiedSearchScreen(),
-                ),
-              );
-            },
-            tooltip: 'Advanced Search',
-          ),
-          IconButton(
-            icon: const Icon(Icons.security),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SecurityComplianceScreen(),
-                ),
-              );
-            },
-            tooltip: 'Security & Compliance',
-          ),
-          IconButton(
-            icon: const Icon(Icons.speed),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const PerformanceMonitoringScreen(),
-                ),
-              );
-            },
-            tooltip: 'Performance Monitoring',
-          ),
-          IconButton(
-            icon: const Icon(Icons.notifications_active),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const NotificationManagementScreen(),
-                ),
-              );
-            },
-            tooltip: 'Notification Management',
-          ),
-          IconButton(
-            icon: const Icon(Icons.flag),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const FeatureFlagsScreen(),
-                ),
-              );
-            },
-            tooltip: 'Feature Flags & A/B Testing',
-          ),
-          IconButton(
-            icon: const Icon(Icons.vpn_key),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const ApiManagementScreen(),
-                ),
-              );
-            },
-            tooltip: 'API Management',
-          ),
-          IconButton(
-            icon: const Icon(Icons.link),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const IntegrationManagementScreen(),
-                ),
-              );
-            },
-            tooltip: 'Integration Management',
-          ),
-          IconButton(
-            icon: const Icon(Icons.backup),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const BackupRestoreScreen(),
-                ),
-              );
-            },
-            tooltip: 'Backup & Restore',
-          ),
-          IconButton(
-            icon: const Icon(Icons.description),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const CustomReportsScreen(),
-                ),
-              );
-            },
-            tooltip: 'Custom Reports',
-          ),
-          IconButton(
-            icon: const Icon(Icons.group),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const UserSegmentationScreen(),
-                ),
-              );
-            },
-            tooltip: 'User Segmentation',
-          ),
-          IconButton(
-            icon: const Icon(Icons.campaign),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const AnnouncementSystemScreen(),
-                ),
-              );
-            },
-            tooltip: 'Announcement System',
-          ),
-          IconButton(
-            icon: const Icon(Icons.settings),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => const SystemConfigurationScreen(),
-                ),
-              );
-            },
-            tooltip: 'System Configuration',
-          ),
+          // Scrollable action buttons - all icons in a horizontal scrollable row
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                  IconButton(
+                    icon: const Icon(Icons.search),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const UnifiedSearchScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Advanced Search',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.security),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SecurityComplianceScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Security & Compliance',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.speed),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const PerformanceMonitoringScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Performance Monitoring',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.notifications_active),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const NotificationManagementScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Notification Management',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.flag),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const FeatureFlagsScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Feature Flags & A/B Testing',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.vpn_key),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const ApiManagementScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'API Management',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.link),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const IntegrationManagementScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Integration Management',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.backup),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const BackupRestoreScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Backup & Restore',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.description),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CustomReportsScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Custom Reports',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.group),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const UserSegmentationScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'User Segmentation',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.campaign),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const AnnouncementSystemScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'Announcement System',
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.settings),
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const SystemConfigurationScreen(),
+                        ),
+                      );
+                    },
+                    tooltip: 'System Configuration',
+                  ),
+                ],
+              ),
+            ),
         ],
         bottom: TabBar(
-          isScrollable: isMobile, // Allow scrolling on mobile
+          isScrollable: true, // Always allow scrolling on all platforms
           controller: _tabController,
           indicatorColor: Theme.of(context).colorScheme.onPrimary,
           labelColor: Theme.of(context).colorScheme.onPrimary,
@@ -4694,6 +4705,58 @@ class _AdminPanelScreenMongoDBState extends State<AdminPanelScreenMongoDB> with 
                                 }
                               },
                               tooltip: 'Moderate Chat',
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.delete, color: Colors.red),
+                              onPressed: () async {
+                                final chatId = chat['_id']?.toString() ?? chat['id']?.toString() ?? '';
+                                if (chatId.isEmpty) return;
+                                
+                                final confirmed = await showDialog<bool>(
+                                  context: context,
+                                  builder: (context) => AlertDialog(
+                                    title: const Text('Delete Chat'),
+                                    content: Text('This will permanently delete this chat and all ${chat['messageCount'] ?? 'its'} messages. This action cannot be undone.'),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context, false),
+                                        child: const Text('Cancel'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.pop(context, true),
+                                        style: TextButton.styleFrom(foregroundColor: Colors.red),
+                                        child: const Text('Delete'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+                                
+                                if (confirmed == true) {
+                                  try {
+                                    final success = await _adminService.deleteChat(chatId);
+                                    if (mounted) {
+                                      if (success) {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Chat deleted successfully')),
+                                        );
+                                        await _loadChats();
+                                      } else {
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          const SnackBar(content: Text('Failed to delete chat')),
+                                        );
+                                      }
+                                    }
+                                  } catch (e) {
+                                    Log.e('Error deleting chat', 'ADMIN_PANEL_MONGODB', e);
+                                    if (mounted) {
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text('Error: $e')),
+                                      );
+                                    }
+                                  }
+                                }
+                              },
+                              tooltip: 'Delete Chat',
                             ),
                             Icon(
                           Icons.arrow_forward_ios,
