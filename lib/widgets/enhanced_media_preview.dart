@@ -277,34 +277,38 @@ class _EnhancedMediaPreviewState extends State<EnhancedMediaPreview> {
   Widget _buildAudio() {
     return Stack(
       children: [
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[200],
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Row(
-            children: [
-              Icon(Icons.play_arrow,
-                  color: _themeService.isDarkMode ? Colors.white : Colors.black),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  widget.fileName ?? 'Audio',
-                  overflow: TextOverflow.ellipsis,
+        GestureDetector(
+          onTap: widget.onTap,
+          child: Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: _themeService.isDarkMode ? Colors.grey[800] : Colors.grey[200],
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.play_arrow,
+                    color: _themeService.isDarkMode ? Colors.white : Colors.black),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.fileName ?? 'Audio',
+                    overflow: TextOverflow.ellipsis,
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
         _downloadButton(),
+        if (widget.showFullScreenButton) _fullscreenButton(),
         // WhatsApp-style inline download progress indicator
         if (_downloadInfo != null && 
             (_downloadInfo!.state == DownloadState.downloading || 
              _downloadInfo!.state == DownloadState.saving))
           Positioned(
             top: 8,
-            right: 8,
+            right: widget.showFullScreenButton ? 56 : 8,
             child: WhatsAppDownloadIndicator(
               progress: _downloadInfo!.progress,
               statusMessage: _downloadInfo!.statusMessage,
