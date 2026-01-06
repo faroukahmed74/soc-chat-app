@@ -126,48 +126,64 @@
   
   <script>
     const serviceWorkerVersion = null;
+    
+    // Suppress service worker errors for HTTP contexts (expected behavior)
+    // Service workers require HTTPS or localhost, so errors on HTTP are normal
+    window.addEventListener('error', function(e) {
+      if (e.message && (
+        e.message.includes('Service Worker API unavailable') ||
+        e.message.includes('Secure Contexts') ||
+        e.message.includes('service worker')
+      )) {
+        e.preventDefault();
+        e.stopPropagation();
+        return false;
+      }
+    }, true);
+    
+    // Also suppress unhandled promise rejections related to service workers
+    window.addEventListener('unhandledrejection', function(e) {
+      if (e.reason && (
+        (typeof e.reason === 'string' && e.reason.includes('Service Worker')) ||
+        (e.reason.message && e.reason.message.includes('Service Worker'))
+      )) {
+        e.preventDefault();
+        return false;
+      }
+    });
   </script>
   
-  <!-- Firebase SDK for Web FCM - Load conditionally for offline support -->
-  <!-- Only load Firebase if online, app works offline without it -->
+  <!-- Firebase SDK for Web FCM - Loaded from local files for offline support -->
+  <!-- All Firebase files are bundled locally - no internet connection required -->
   <script>
-    // Conditionally load Firebase only when online (for web notifications)
-    // App works completely offline without Firebase
+    // Load Firebase from local files (no internet required)
     (function() {
-      function loadFirebaseIfOnline() {
-        // Check if online
-        if (navigator.onLine) {
-          // Try to load Firebase, but don't block if it fails
-          const firebaseApp = document.createElement('script');
-          firebaseApp.src = 'https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js';
-          firebaseApp.onerror = function() {
-            console.log('Firebase not available (offline mode)');
-          };
-          
-          const firebaseMessaging = document.createElement('script');
-          firebaseMessaging.src = 'https://www.gstatic.com/firebasejs/10.7.1/firebase-messaging-compat.js';
-          firebaseMessaging.onerror = function() {
-            console.log('Firebase messaging not available (offline mode)');
-          };
-          
-          document.head.appendChild(firebaseApp);
-          firebaseApp.onload = function() {
-            document.head.appendChild(firebaseMessaging);
-          };
-        } else {
-          console.log('Offline mode: Firebase not loaded');
-        }
+      function loadFirebaseLocal() {
+        // Load Firebase from local files (bundled with app)
+        const firebaseApp = document.createElement('script');
+        firebaseApp.src = './firebase/firebase-app-compat.js';
+        firebaseApp.onerror = function() {
+          console.log('Firebase app not available (local file missing)');
+        };
+        
+        const firebaseMessaging = document.createElement('script');
+        firebaseMessaging.src = './firebase/firebase-messaging-compat.js';
+        firebaseMessaging.onerror = function() {
+          console.log('Firebase messaging not available (local file missing)');
+        };
+        
+        document.head.appendChild(firebaseApp);
+        firebaseApp.onload = function() {
+          document.head.appendChild(firebaseMessaging);
+        };
       }
       
-      // Load Firebase if online
+      // Load Firebase from local files
       if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', loadFirebaseIfOnline);
+        document.addEventListener('DOMContentLoaded', loadFirebaseLocal);
       } else {
-        loadFirebaseIfOnline();
+        loadFirebaseLocal();
       }
-      
-      // Also try to load when coming back online
-      window.addEventListener('online', loadFirebaseIfOnline);
     })();
   </script>
   
@@ -339,12 +355,30 @@
         
         // Suppress service worker errors for HTTP (expected behavior)
         const originalConsoleError = console.error;
+        const originalConsoleWarn = console.warn;
         console.error = function(...args) {
-          if (args[0] && typeof args[0] === 'string' && args[0].includes('Service Worker API unavailable')) {
+          const message = args[0] ? (typeof args[0] === 'string' ? args[0] : (args[0].message || String(args[0]))) : '';
+          if (message && (
+            message.includes('Service Worker API unavailable') ||
+            message.includes('Secure Contexts') ||
+            message.includes('service worker') ||
+            message.includes('Service Worker')
+          )) {
             // Suppress service worker errors for HTTP - this is expected
             return;
           }
           originalConsoleError.apply(console, args);
+        };
+        console.warn = function(...args) {
+          const message = args[0] ? (typeof args[0] === 'string' ? args[0] : (args[0].message || String(args[0]))) : '';
+          if (message && (
+            message.includes('Service Worker') ||
+            message.includes('Secure Contexts')
+          )) {
+            // Suppress service worker warnings for HTTP - this is expected
+            return;
+          }
+          originalConsoleWarn.apply(console, args);
         };
         
         const isSecure = location.protocol === 'https:' || location.hostname === 'localhost' || location.hostname === '127.0.0.1';

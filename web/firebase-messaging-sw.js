@@ -17,6 +17,8 @@ const CORE_FILES = [
   '/responsive.css',
   '/manifest.json',
   '/flutter.js',
+  '/firebase/firebase-app-compat.js',
+  '/firebase/firebase-messaging-compat.js',
 ];
 
 // Icons to cache
@@ -125,8 +127,15 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   
-  // Skip Firebase CDN requests (not needed for offline)
-  if (url.hostname.includes('gstatic.com') || url.hostname.includes('googleapis.com')) {
+  // Block all external CDN requests - all resources must be local
+  if (url.hostname.includes('gstatic.com') || 
+      url.hostname.includes('googleapis.com') ||
+      url.hostname.includes('fonts.googleapis.com') ||
+      url.hostname.includes('fonts.gstatic.com') ||
+      url.hostname.includes('cdnjs.cloudflare.com') ||
+      url.hostname.includes('unpkg.com') ||
+      url.hostname.includes('cdn.jsdelivr.net')) {
+    console.log('[Service Worker] Blocked external CDN request:', url.hostname);
     return;
   }
   

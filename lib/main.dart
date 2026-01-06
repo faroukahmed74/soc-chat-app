@@ -679,6 +679,38 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       try {
         final realtime = RealtimeService.instance;
         
+        // =============================================================================
+        // WEBCRTC AND CALLING SYSTEM DISABLED - TO BE IMPLEMENTED LATER
+        // =============================================================================
+        // WebRTC initialization and call invitation listeners are disabled
+        // until the calling system is fully implemented.
+        // Uncomment the code below when ready to enable calling features.
+        // =============================================================================
+        
+        // Connect realtime service (for messaging) but skip WebRTC/calling initialization
+        if (kIsWeb) {
+          // On web, connect in background - don't block app initialization
+          realtime.connect().then((_) async {
+            // Call invitation listener disabled - to be implemented later
+            // _setupCallInvitationListener(realtime);
+            Log.i('Realtime service connected (calling system disabled)', 'MAIN_APP');
+          }).catchError((e) {
+            Log.e('Realtime connect failed (non-blocking)', 'MAIN_APP', e);
+          });
+        } else {
+          // On mobile, connect synchronously
+          try {
+            await realtime.connect();
+            // Call invitation listener disabled - to be implemented later
+            // _setupCallInvitationListener(realtime);
+            Log.i('Realtime service connected (calling system disabled)', 'MAIN_APP');
+          } catch (realtimeError) {
+            print('❌ [MAIN_APP] Realtime connection failed: $realtimeError');
+            Log.e('Realtime connection failed', 'MAIN_APP', realtimeError);
+          }
+        }
+        
+        /* DISABLED - WebRTC initialization (to be implemented later)
         // For web, make TURN initialization non-blocking to prevent freezing
         if (kIsWeb) {
           // On web, initialize TURN in background - don't block app initialization
@@ -721,6 +753,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
             // Continue - TURN config is already initialized
           }
         }
+        */
         
         // Join all chats after login: lightweight approach is to rely on message events
         realtime.onNewMessage((msg) async {
@@ -837,7 +870,13 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
   /// Initialize WebRTC Call Service with TURN server configuration
   /// Web: Uses local network IP (10.120.4.230)
   /// Mobile: Uses ngrok URL for TURN server access (only if not already initialized in main())
+  /// DISABLED - To be implemented later
   Future<void> _initializeWebRTCCallService() async {
+    // WebRTC initialization disabled - to be implemented later
+    Log.i('WebRTC Call Service initialization skipped (disabled until calling system is implemented)', 'MAIN_APP');
+    return;
+    
+    /* DISABLED - WebRTC initialization (to be implemented later)
     try {
       print('🔵 [MAIN_APP] ===========================================');
       print('🔵 [MAIN_APP] Initializing WebRTC Call Service...');
@@ -906,9 +945,17 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       // Continue without TURN - STUN servers will still work, but cross-network calls will fail
       print('⚠️ [MAIN_APP] Continuing without TURN - cross-network calls will NOT work');
     }
+    */
   }
 
+  /// Set up global call invitation listener
+  /// DISABLED - To be implemented later
   void _setupCallInvitationListener(RealtimeService realtime) {
+    // Call invitation listener disabled - to be implemented later
+    Log.i('Call invitation listener setup skipped (disabled until calling system is implemented)', 'MAIN_APP');
+    return;
+    
+    /* DISABLED - Call invitation listener (to be implemented later)
     realtime.onCallInvitation((data) {
       try {
         Log.i('📞 Received call invitation globally: $data', 'MAIN_APP');
@@ -995,6 +1042,7 @@ class _MainAppState extends State<MainApp> with WidgetsBindingObserver {
       }
     });
     Log.i('✅ Global call invitation listener set up', 'MAIN_APP');
+    */
   }
 
   Future<void> _checkInitialPermissions() async {
