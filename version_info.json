@@ -1,10 +1,10 @@
 {
-  "version": "1.0.32",
-  "build_number": "32",
+  "version": "1.0.33",
+  "build_number": "33",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.32 (Build 32) - Admin Panel Enhancements & Web Performance:\n- Enhanced admin panel with scrollable TabBar and AppBar icons for better accessibility\n- Added delete chat functionality for admins to delete individual chats and all messages\n- Fixed media files counting to include all types (image, video, document, file, media)\n- Fixed statistics display to use accurate API data instead of local arrays\n- Improved web app performance by making initialization non-blocking\n- Fixed web app freezing issues with timeout protection and background initialization\n- Fixed admin health status display in System Health Monitoring\n- Better responsive design for admin panel icons on all screen sizes\n- Enhanced user experience with proper error handling and loading states",
+  "release_notes": "SOC Chat App v1.0.33 (Build 33) - Admin Panel Enhancements & Web Performance:\n- Enhanced admin panel with scrollable TabBar and AppBar icons for better accessibility\n- Added delete chat functionality for admins to delete individual chats and all messages\n- Fixed media files counting to include all types (image, video, document, file, media)\n- Fixed statistics display to use accurate API data instead of local arrays\n- Improved web app performance by making initialization non-blocking\n- Fixed web app freezing issues with timeout protection and background initialization\n- Fixed admin health status display in System Health Monitoring\n- Better responsive design for admin panel icons on all screen sizes\n- Enhanced user experience with proper error handling and loading states",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": true,
-  "last_updated": "2025-01-20T12:00:00Z"
+  "last_updated": "2026-01-18T00:00:00Z"
 }
