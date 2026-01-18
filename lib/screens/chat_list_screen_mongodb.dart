@@ -18,6 +18,7 @@ import 'package:flutter/foundation.dart';
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:http/http.dart' as http;
 import '../utils/cairo_time_utils.dart';
 import '../services/theme_service.dart';
 import '../services/mongodb_chat_service.dart';
@@ -36,6 +37,7 @@ import '../services/realtime_service.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../config/version_config.dart';
+import '../config/database_config.dart';
 import '../theme/app_design_system.dart';
 import '../widgets/update_dialog.dart';
 
@@ -304,6 +306,9 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
 
       // Load initial chats
       await _loadChats();
+
+      // Ensure chatbot chat exists for this user (works on all platforms including iOS)
+      await _ensureChatbotChatExists();
 
       // Connect to realtime service for instant updates
       await _realtime.connect();
@@ -1677,14 +1682,141 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () {
-          Navigator.pushNamed(context, '/search');
-        },
-        backgroundColor: Theme.of(context).colorScheme.primary,
-        foregroundColor: Theme.of(context).colorScheme.onPrimary,
-        child: const Icon(Icons.person_add),
-        tooltip: 'Search Users',
+      floatingActionButton: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          // AI Chat Assistant Button (appears above the main FAB)
+          FloatingActionButton(
+            heroTag: 'fab_ai_chat',
+            onPressed: () async {
+              // Find or create chatbot chat
+              try {
+                final token = await _authService.getAuthToken();
+                if (token == null) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Please log in to chat with AI Assistant')),
+                    );
+                  }
+                  return;
+                }
+
+                final baseUrl = DatabaseConfig.physicalServerUrl;
+                String? chatbotUserId;
+                
+                // Search for chatbot user
+                try {
+                  final response = await http.get(
+                    Uri.parse('$baseUrl/api/users'),
+                    headers: {
+                      'Authorization': 'Bearer $token',
+                      'Content-Type': 'application/json',
+                      'ngrok-skip-browser-warning': 'true',
+                    },
+                  );
+
+                  if (response.statusCode == 200) {
+                    final data = json.decode(response.body);
+                    final users = data is List ? data : (data['users'] is List ? data['users'] : []);
+                    
+                    for (final user in users) {
+                      final email = (user['email'] ?? '').toString().toLowerCase();
+                      final displayName = (user['displayName'] ?? user['name'] ?? '').toString().toLowerCase();
+                      final role = (user['role'] ?? '').toString().toLowerCase();
+                      
+                      if (email.contains('bot') || 
+                          email.contains('assistant') || 
+                          email.contains('ai') ||
+                          displayName.contains('bot') || 
+                          displayName.contains('assistant') || 
+                          displayName.contains('ai') ||
+                          role == 'bot' || 
+                          role == 'assistant') {
+                        chatbotUserId = user['_id'] ?? user['id'];
+                        break;
+                      }
+                    }
+                  }
+                } catch (e) {
+                  Log.w('Error finding chatbot user: $e', 'CHAT_LIST_MONGODB');
+                }
+
+                if (chatbotUserId == null || chatbotUserId.isEmpty) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('AI Assistant is not available. Please contact support.')),
+                    );
+                  }
+                  return;
+                }
+
+                // Find or create chat with chatbot
+                final currentUserId = _currentUserId;
+                if (currentUserId == null || currentUserId.isEmpty) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('User not found. Please log in again.')),
+                    );
+                  }
+                  return;
+                }
+
+                final chatbotChat = await _chatService.findOrCreateChat(
+                  'private',
+                  'AI Assistant',
+                  [currentUserId, chatbotUserId],
+                );
+
+                if (chatbotChat != null && mounted) {
+                  final chatId = (chatbotChat['_id'] ?? chatbotChat['id'] ?? '').toString();
+                  if (chatId.isNotEmpty) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => ChatScreenMongoDB(
+                          chatId: chatId,
+                          chatName: 'AI Assistant',
+                          isGroupChat: false,
+                          userIds: [currentUserId.toString(), chatbotUserId.toString()],
+                        ),
+                      ),
+                    );
+                  }
+                } else {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Failed to open AI Assistant chat')),
+                    );
+                  }
+                }
+              } catch (e) {
+                Log.e('Error opening AI chat', 'CHAT_LIST_MONGODB', e);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Error: ${e.toString()}')),
+                  );
+                }
+              }
+            },
+            backgroundColor: Colors.purple,
+            foregroundColor: Colors.white,
+            child: const Icon(Icons.smart_toy),
+            tooltip: 'AI Assistant',
+          ),
+          const SizedBox(height: 12),
+          // Main Search Users Button
+          FloatingActionButton(
+            heroTag: 'fab_search',
+            onPressed: () {
+              Navigator.pushNamed(context, '/search');
+            },
+            backgroundColor: Theme.of(context).colorScheme.primary,
+            foregroundColor: Theme.of(context).colorScheme.onPrimary,
+            child: const Icon(Icons.person_add),
+            tooltip: 'Search Users',
+          ),
+        ],
       ),
     );
   }
@@ -1898,6 +2030,127 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
     } catch (e) {
       // Silently fail for automatic checks - don't show error to user
       Log.w('Automatic update check failed: $e', 'CHAT_LIST_MONGODB');
+    }
+  }
+
+  /// Ensure chatbot chat exists for the current user (works on all platforms including iOS)
+  /// This method checks if a chatbot user exists and creates a chat with it if needed
+  Future<void> _ensureChatbotChatExists() async {
+    try {
+      if (_currentUserId == null || _currentUserId!.isEmpty) {
+        Log.w('Cannot ensure chatbot chat: current user ID is null', 'CHAT_LIST_MONGODB');
+        return;
+      }
+
+      // Check if chatbot chat already exists in current chats
+      final hasChatbotChat = _chats.any((chat) {
+        final name = (chat['name'] ?? '').toString().toLowerCase();
+        final members = List<String>.from(chat['members'] ?? []);
+        // Check if chat name contains "bot" or "assistant" or has chatbot email
+        return name.contains('bot') || 
+               name.contains('assistant') || 
+               name.contains('ai') ||
+               members.any((id) => id.toString().contains('bot') || id.toString().contains('assistant'));
+      });
+
+      if (hasChatbotChat) {
+        Log.i('Chatbot chat already exists in chat list', 'CHAT_LIST_MONGODB');
+        return;
+      }
+
+      // Try to find chatbot user by searching for common chatbot identifiers
+      final token = await _authService.getAuthToken();
+      if (token == null) {
+        Log.w('Cannot ensure chatbot chat: no auth token', 'CHAT_LIST_MONGODB');
+        return;
+      }
+
+      final baseUrl = DatabaseConfig.physicalServerUrl;
+      
+      // Search for chatbot user by fetching all users and filtering
+      String? chatbotUserId;
+      
+      try {
+        final response = await http.get(
+          Uri.parse('$baseUrl/api/users'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+            'ngrok-skip-browser-warning': 'true',
+          },
+        );
+
+        if (response.statusCode == 200) {
+          final data = json.decode(response.body);
+          final users = data is List ? data : (data['users'] is List ? data['users'] : []);
+          
+          // Search for chatbot user by email, displayName, or role
+          for (final user in users) {
+            final email = (user['email'] ?? '').toString().toLowerCase();
+            final displayName = (user['displayName'] ?? user['name'] ?? '').toString().toLowerCase();
+            final role = (user['role'] ?? '').toString().toLowerCase();
+            
+            // Check if this is a chatbot user
+            if (email.contains('bot') || 
+                email.contains('assistant') || 
+                email.contains('ai') ||
+                displayName.contains('bot') || 
+                displayName.contains('assistant') || 
+                displayName.contains('ai') ||
+                role == 'bot' || 
+                role == 'assistant') {
+              chatbotUserId = user['_id'] ?? user['id'];
+              Log.i('Found chatbot user: $chatbotUserId (email: $email, name: $displayName)', 'CHAT_LIST_MONGODB');
+              break;
+            }
+          }
+        }
+      } catch (e) {
+        Log.w('Error fetching users to find chatbot: $e', 'CHAT_LIST_MONGODB');
+      }
+
+      if (chatbotUserId == null || chatbotUserId.isEmpty) {
+        Log.w('Chatbot user not found - chatbot chat will not be created automatically', 'CHAT_LIST_MONGODB');
+        Log.w('To enable chatbot, create a user with email containing "bot" or "assistant"', 'CHAT_LIST_MONGODB');
+        return;
+      }
+
+      // Check if chat already exists (might not be in current list if it has no messages)
+      final existingChat = await _chatService.findExistingChat(_currentUserId!, chatbotUserId);
+      if (existingChat != null) {
+        Log.i('Chatbot chat already exists (found via findExistingChat)', 'CHAT_LIST_MONGODB');
+        // Add it to the chat list if not already there
+        final chatId = existingChat['_id'] ?? existingChat['id'];
+        final chatExists = _chats.any((c) => 
+          (c['_id'] ?? c['id'] ?? '').toString() == chatId.toString()
+        );
+        if (!chatExists && mounted) {
+          setState(() {
+            _chats.add(existingChat);
+            _filteredChats = _applySearchFilter(_getChatsForCurrentTab());
+          });
+        }
+        return;
+      }
+
+      // Create chatbot chat
+      Log.i('Creating chatbot chat for user: $_currentUserId', 'CHAT_LIST_MONGODB');
+      final chatbotChat = await _chatService.findOrCreateChat(
+        'private',
+        'Chatbot Assistant',
+        [_currentUserId!, chatbotUserId],
+      );
+
+      if (chatbotChat != null && mounted) {
+        Log.i('✅ Chatbot chat created successfully', 'CHAT_LIST_MONGODB');
+        // Reload chats to include the new chatbot chat
+        await _loadChats();
+      } else {
+        Log.w('Failed to create chatbot chat', 'CHAT_LIST_MONGODB');
+      }
+    } catch (e, stackTrace) {
+      // Don't show error to user - this is a background operation
+      Log.e('Error ensuring chatbot chat exists', 'CHAT_LIST_MONGODB', e, stackTrace);
     }
   }
 }

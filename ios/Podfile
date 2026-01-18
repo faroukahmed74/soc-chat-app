@@ -107,6 +107,27 @@ post_install do |installer|
         # Add more if needed:
         # 'PERMISSION_LOCATION=1',
       ]
+      
+      # Ensure dSYM generation for all frameworks (including WebRTC)
+      if config.name == 'Release'
+        config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
+        config.build_settings['STRIP_INSTALLED_PRODUCT'] = 'YES'
+        config.build_settings['COPY_PHASE_STRIP'] = 'NO'
+      end
+      
+      # Fix for gRPC-C++ version string issue during archive builds
+      if target.name == 'gRPC-C++'
+        # Ensure version.h is generated and included
+        config.build_settings['HEADER_SEARCH_PATHS'] ||= ['$(inherited)']
+        config.build_settings['HEADER_SEARCH_PATHS'] << '$(PODS_TARGET_SRCROOT)/include'
+        config.build_settings['HEADER_SEARCH_PATHS'] << '$(PODS_CONFIGURATION_BUILD_DIR)/gRPC-C++/gRPC-C++.framework/Headers'
+        # Add preprocessor definition as fallback if version header is missing
+        config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] ||= []
+        unless config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'].include?('GRPC_CPP_VERSION_STRING')
+          # This will be overridden by the actual version.h if it exists
+          config.build_settings['GCC_PREPROCESSOR_DEFINITIONS'] << 'GRPC_CPP_VERSION_STRING="1.69.0"'
+        end
+      end
     end
   end
 end
