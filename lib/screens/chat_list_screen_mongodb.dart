@@ -40,6 +40,7 @@ import '../config/version_config.dart';
 import '../config/database_config.dart';
 import '../theme/app_design_system.dart';
 import '../widgets/update_dialog.dart';
+import '../services/ai_chat_service.dart';
 
 class ChatListScreenMongoDB extends StatefulWidget {
   const ChatListScreenMongoDB({Key? key}) : super(key: key);
@@ -73,6 +74,12 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
 
   // Track last message timestamps to detect new messages for sound
   final Map<String, DateTime> _lastMessageTimes = {};
+
+  // AI Chat state
+  Map<String, dynamic>? _aiStatus;
+  bool _isLoadingAIStatus = false;
+  bool _isOpeningAIChat = false;
+  Timer? _aiStatusTimer;
 
   DateTime? _parseChatTimestamp(dynamic value) {
     if (value == null) return null;
@@ -254,6 +261,11 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
     _loadUserRole();
     _searchController.addListener(_onSearchChanged);
     _maybeAutoCheckUpdate();
+    _checkAIStatus();
+    // Poll AI status every 30 seconds to check for model installation
+    _aiStatusTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _checkAIStatus();
+    });
   }
   
   void _onTabChanged() {
@@ -292,6 +304,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
     _chatsSubscription?.cancel();
     _searchController.dispose();
     _tabController.dispose();
+    _aiStatusTimer?.cancel();
     super.dispose();
   }
 
@@ -1682,207 +1695,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
           ),
         ],
       ),
-      floatingActionButton: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          // AI Chat Assistant Button (appears above the main FAB)
-          FloatingActionButton(
-            heroTag: 'fab_ai_chat',
-            onPressed: () async {
-              // First, check if chatbot chat already exists in current chat list
-              try {
-                String? chatbotChatId;
-                String? chatbotUserId;
-                
-                // Look for chatbot chat in the current chat list
-                // Check for exact matches first, then broader matches
-                for (final chat in _chats) {
-                  final chatName = (chat['name'] ?? '').toString();
-                  final chatNameLower = chatName.toLowerCase();
-                  final members = List<String>.from(chat['members'] ?? []);
-                  
-                  // Verify it's a private chat with 2 members first
-                  if (chat['type'] == 'private' && members.length == 2) {
-                    // Check for exact AI Assistant chat name matches
-                    if (chatNameLower == 'ai assistant' || 
-                        chatNameLower == 'chatbot assistant' ||
-                        chatNameLower == 'assistant' ||
-                        chatName == 'AI Assistant' ||
-                        chatName == 'Chatbot Assistant') {
-                      chatbotChatId = (chat['_id'] ?? chat['id'] ?? '').toString();
-                      // Get the other member (the chatbot user)
-                      final currentUserId = _currentUserId?.toString() ?? '';
-                      for (final memberId in members) {
-                        if (memberId.toString() != currentUserId) {
-                          chatbotUserId = memberId.toString();
-                          break;
-                        }
-                      }
-                      break;
-                    }
-                  }
-                }
-                
-                // If not found with exact match, try broader search but verify chatbot user
-                if (chatbotChatId == null) {
-                  final token = await _authService.getAuthToken();
-                  if (token != null) {
-                    try {
-                      final baseUrl = DatabaseConfig.physicalServerUrl;
-                      final response = await http.get(
-                        Uri.parse('$baseUrl/api/users'),
-                        headers: {
-                          'Authorization': 'Bearer $token',
-                          'Content-Type': 'application/json',
-                          'ngrok-skip-browser-warning': 'true',
-                        },
-                      );
-
-                      if (response.statusCode == 200) {
-                        final data = json.decode(response.body);
-                        final users = data is List ? data : (data['users'] is List ? data['users'] : []);
-                        
-                        // Find chatbot user ID first
-                        String? actualChatbotUserId;
-                        for (final user in users) {
-                          final email = (user['email'] ?? '').toString().toLowerCase();
-                          final displayName = (user['displayName'] ?? user['name'] ?? '').toString().toLowerCase();
-                          final role = (user['role'] ?? '').toString().toLowerCase();
-                          
-                          if (email.contains('bot') || 
-                              email.contains('assistant') || 
-                              email.contains('ai') ||
-                              displayName.contains('bot') || 
-                              displayName.contains('assistant') || 
-                              displayName.contains('ai') ||
-                              role == 'bot' || 
-                              role == 'assistant') {
-                            actualChatbotUserId = (user['_id'] ?? user['id'] ?? '').toString();
-                            break;
-                          }
-                        }
-                        
-                        // Now search chats again, but verify the chatbot user is a member
-                        if (actualChatbotUserId != null && actualChatbotUserId.isNotEmpty) {
-                          for (final chat in _chats) {
-                            final members = List<String>.from(chat['members'] ?? []);
-                            if (chat['type'] == 'private' && 
-                                members.length == 2 &&
-                                members.contains(actualChatbotUserId)) {
-                              chatbotChatId = (chat['_id'] ?? chat['id'] ?? '').toString();
-                              chatbotUserId = actualChatbotUserId;
-                              break;
-                            }
-                          }
-                        }
-                      }
-                    } catch (e) {
-                      Log.w('Error finding chatbot user for verification: $e', 'CHAT_LIST_MONGODB');
-                    }
-                  }
-                }
-                
-                // If found in chat list, use it directly
-                if (chatbotChatId != null && chatbotChatId.isNotEmpty) {
-                  Log.i('Found existing AI Assistant chat in list: $chatbotChatId', 'CHAT_LIST_MONGODB');
-                  if (mounted) {
-                    final members = <String>[];
-                    if (_currentUserId != null) members.add(_currentUserId.toString());
-                    if (chatbotUserId != null) members.add(chatbotUserId);
-                    
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (context) => ChatScreenMongoDB(
-                          chatId: chatbotChatId!,
-                          chatName: 'AI Assistant',
-                          isGroupChat: false,
-                          userIds: members,
-                        ),
-                      ),
-                    );
-                  }
-                  return;
-                }
-                
-                // If not found in list, try to find/create it using the existing method
-                Log.i('AI Assistant chat not found in list, using _ensureChatbotChatExists', 'CHAT_LIST_MONGODB');
-                await _ensureChatbotChatExists();
-                
-                // After ensuring it exists, find it in the updated chat list
-                await _loadChats();
-                
-                // Look again in the updated chat list
-                for (final chat in _chats) {
-                  final chatName = (chat['name'] ?? '').toString().toLowerCase();
-                  final members = List<String>.from(chat['members'] ?? []);
-                  
-                  if ((chatName.contains('ai assistant') || 
-                       chatName.contains('assistant') ||
-                       chatName == 'ai assistant') &&
-                      chat['type'] == 'private' && 
-                      members.length == 2) {
-                    final chatId = (chat['_id'] ?? chat['id'] ?? '').toString();
-                    if (chatId.isNotEmpty && mounted) {
-                      final userIds = <String>[];
-                      if (_currentUserId != null) userIds.add(_currentUserId.toString());
-                      for (final memberId in members) {
-                        if (memberId.toString() != _currentUserId?.toString()) {
-                          userIds.add(memberId.toString());
-                        }
-                      }
-                      
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (context) => ChatScreenMongoDB(
-                            chatId: chatId,
-                            chatName: 'AI Assistant',
-                            isGroupChat: false,
-                            userIds: userIds,
-                          ),
-                        ),
-                      );
-                      return;
-                    }
-                  }
-                }
-                
-                // If still not found, show error
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('AI Assistant chat not found. Please try again.')),
-                  );
-                }
-              } catch (e) {
-                Log.e('Error opening AI chat', 'CHAT_LIST_MONGODB', e);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Error: ${e.toString()}')),
-                  );
-                }
-              }
-            },
-            backgroundColor: Colors.purple,
-            foregroundColor: Colors.white,
-            child: const Icon(Icons.smart_toy),
-            tooltip: 'AI Assistant',
-          ),
-          const SizedBox(height: 12),
-          // Main Search Users Button
-          FloatingActionButton(
-            heroTag: 'fab_search',
-            onPressed: () {
-              Navigator.pushNamed(context, '/search');
-            },
-            backgroundColor: Theme.of(context).colorScheme.primary,
-            foregroundColor: Theme.of(context).colorScheme.onPrimary,
-            child: const Icon(Icons.person_add),
-            tooltip: 'Search Users',
-          ),
-        ],
-      ),
+      floatingActionButton: _buildFloatingActionButtons(),
     );
   }
 
@@ -2097,7 +1910,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
       Log.w('Automatic update check failed: $e', 'CHAT_LIST_MONGODB');
     }
   }
-
+  
   /// Ensure chatbot chat exists for the current user (works on all platforms including iOS)
   /// This method checks if a chatbot user exists and creates a chat with it if needed
   Future<void> _ensureChatbotChatExists() async {
@@ -2217,5 +2030,183 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
       // Don't show error to user - this is a background operation
       Log.e('Error ensuring chatbot chat exists', 'CHAT_LIST_MONGODB', e, stackTrace);
     }
+  }
+
+  /// Check AI status (Ollama availability, models, etc.)
+  Future<void> _checkAIStatus() async {
+    if (_isLoadingAIStatus) return;
+    
+    setState(() => _isLoadingAIStatus = true);
+    try {
+      final status = await AIChatService.getAIStatus();
+      if (mounted) {
+        setState(() {
+          _aiStatus = status;
+          _isLoadingAIStatus = false;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _isLoadingAIStatus = false);
+      }
+      Log.w('Failed to check AI status: $e', 'CHAT_LIST_MONGODB');
+    }
+  }
+
+  /// Open or create AI chat
+  Future<void> _openAIChat() async {
+    if (_isOpeningAIChat) return;
+    
+    setState(() => _isOpeningAIChat = true);
+    try {
+      // Check if AI is available
+      if (_aiStatus == null || _aiStatus!['enabled'] != true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('AI Assistant is not available. Please check server configuration.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+        setState(() => _isOpeningAIChat = false);
+        return;
+      }
+
+      // Get or create AI chat
+      final aiChatData = await AIChatService.getOrCreateAIChat();
+      
+      if (aiChatData != null && aiChatData['chatId'] != null) {
+        final chatId = aiChatData['chatId'] as String;
+        final chat = aiChatData['chat'] as Map<String, dynamic>;
+        
+        if (mounted) {
+          // Navigate to AI chat and refresh list when returning
+          await Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => ChatScreenMongoDB(
+                chatId: chatId,
+                chatName: chat['name'] ?? 'AI Assistant',
+                isGroupChat: false,
+                userIds: List<String>.from(chat['members'] ?? []),
+              ),
+            ),
+          );
+          
+          // Refresh chat list when returning from AI chat
+          if (mounted) {
+            await _loadChats();
+          }
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Failed to open AI chat. Please try again.'),
+              duration: Duration(seconds: 3),
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      Log.e('Error opening AI chat', 'CHAT_LIST_MONGODB', e);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: ${e.toString()}'),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isOpeningAIChat = false);
+      }
+    }
+  }
+
+  /// Build floating action buttons (AI chat + Search users)
+  Widget _buildFloatingActionButtons() {
+    final isDesktop = ResponsiveUtils.isDesktop(context);
+    final spacing = isDesktop ? 16.0 : 12.0;
+    
+    // Determine AI button state
+    final bool aiEnabled = _aiStatus?['enabled'] == true;
+    final bool ollamaAvailable = _aiStatus?['ollamaAvailable'] == true;
+    final bool isInstalling = !ollamaAvailable && _aiStatus != null; // Ollama not available but status was checked
+    
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        // AI Chat Button
+        FloatingActionButton(
+          heroTag: 'fab_ai_chat',
+          onPressed: _isOpeningAIChat ? null : _openAIChat,
+          backgroundColor: _isOpeningAIChat 
+              ? Colors.grey 
+              : (aiEnabled && ollamaAvailable 
+                  ? Colors.purple 
+                  : Colors.orange),
+          foregroundColor: Colors.white,
+          child: _isOpeningAIChat
+              ? const SizedBox(
+                  width: 20,
+                  height: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                  ),
+                )
+              : Stack(
+                  alignment: Alignment.center,
+                  children: [
+                    const Icon(Icons.smart_toy),
+                    if (isInstalling)
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        child: Container(
+                          width: 12,
+                          height: 12,
+                          decoration: const BoxDecoration(
+                            color: Colors.orange,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Center(
+                            child: SizedBox(
+                              width: 8,
+                              height: 8,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 1.5,
+                                valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+          tooltip: isInstalling
+              ? 'AI Assistant - Installing models...'
+              : (aiEnabled && ollamaAvailable
+                  ? 'Chat with AI Assistant'
+                  : 'AI Assistant - Not ready'),
+        ),
+        SizedBox(height: spacing),
+        // Search Users Button
+        FloatingActionButton(
+          heroTag: 'fab_search',
+          onPressed: () {
+            Navigator.pushNamed(context, '/search');
+          },
+          backgroundColor: Theme.of(context).colorScheme.primary,
+          foregroundColor: Theme.of(context).colorScheme.onPrimary,
+          child: const Icon(Icons.person_add),
+          tooltip: 'Search Users',
+        ),
+      ],
+    );
   }
 }

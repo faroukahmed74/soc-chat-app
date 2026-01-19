@@ -1269,6 +1269,122 @@ const messageRoutes = require('./routes/messages');
 const notificationRoutes = require('./routes/notifications');
 const adminRoutes = require('./routes/admin');
 
+// AI Service for local LLM integration (Ollama)
+let aiService;
+try {
+  aiService = require('./services/aiService');
+  console.log('✅ AI Service loaded (Ollama integration available)');
+  // Make AI Service accessible to all routes
+  app.locals.aiService = aiService;
+  
+  // Preload Ollama models in background (non-blocking)
+  // This makes first AI response faster
+  setTimeout(async () => {
+    try {
+      console.log('🔄 Preloading Ollama models in background...');
+      const textModel = process.env.OLLAMA_MODEL || 'llama3.1';
+      const visionModel = process.env.OLLAMA_VISION_MODEL || 'llava';
+      const http = require('http');
+      
+      // Preload text model
+      const textRequestData = JSON.stringify({
+        model: textModel,
+        messages: [{ role: 'user', content: 'Hi' }],
+        stream: false,
+        keep_alive: '2m',
+        options: { num_predict: 10 }
+      });
+      
+      const textReq = http.request({
+        hostname: process.env.OLLAMA_HOST || 'localhost',
+        port: parseInt(process.env.OLLAMA_PORT || '11434'),
+        path: '/api/chat',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(textRequestData)
+        },
+        timeout: 300000 // 5 minutes for first load
+      }, (res) => {
+        let data = '';
+        res.on('data', (chunk) => { data += chunk; });
+        res.on('end', () => {
+          if (res.statusCode === 200) {
+            console.log(`✅ Text model (${textModel}) preloaded successfully`);
+          } else {
+            console.warn(`⚠️ Text model preload returned status ${res.statusCode}`);
+          }
+        });
+      });
+      
+      textReq.on('error', () => {
+        console.warn('⚠️ Text model preload failed (non-critical)');
+      });
+      
+      textReq.on('timeout', () => {
+        textReq.destroy();
+        console.warn('⚠️ Text model preload timeout (non-critical)');
+      });
+      
+      textReq.write(textRequestData);
+      textReq.end();
+      
+      // Preload vision model (smaller test to avoid long wait)
+      setTimeout(() => {
+        const visionRequestData = JSON.stringify({
+          model: visionModel,
+          messages: [{ role: 'user', content: 'test', images: [] }],
+          stream: false,
+          keep_alive: '5m',
+          options: { num_predict: 5 }
+        });
+        
+        const visionReq = http.request({
+          hostname: process.env.OLLAMA_HOST || 'localhost',
+          port: parseInt(process.env.OLLAMA_PORT || '11434'),
+          path: '/api/chat',
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Content-Length': Buffer.byteLength(visionRequestData)
+          },
+          timeout: 300000
+        }, (res) => {
+          let data = '';
+          res.on('data', (chunk) => { data += chunk; });
+          res.on('end', () => {
+            if (res.statusCode === 200) {
+              console.log(`✅ Vision model (${visionModel}) preloaded successfully`);
+            } else {
+              console.warn(`⚠️ Vision model preload returned status ${res.statusCode}`);
+            }
+          });
+        });
+        
+        visionReq.on('error', () => {
+          console.warn('⚠️ Vision model preload failed (non-critical)');
+        });
+        
+        visionReq.on('timeout', () => {
+          visionReq.destroy();
+          console.warn('⚠️ Vision model preload timeout (non-critical)');
+        });
+        
+        visionReq.write(visionRequestData);
+        visionReq.end();
+      }, 10000); // Wait 10 seconds before preloading vision model
+      
+    } catch (e) {
+      console.warn('⚠️ Model preload error (non-critical):', e.message);
+    }
+  }, 5000); // Wait 5 seconds after server starts
+  
+} catch (e) {
+  console.warn('⚠️ AI Service not available:', e.message);
+  aiService = null;
+  app.locals.aiService = null;
+}
+
 // Use routes
 app.use('/auth', authRoutes);
 app.use('/chats', chatRoutes);
@@ -2968,6 +3084,26 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
       }
     }
     
+    // Process AI response (non-blocking - runs in background)
+    if (aiService && aiService.processMessageForAI) {
+      // Don't await - let it run in background so user gets immediate response
+      console.log(`[AI Service] Triggering AI processing for chat ${chatId}, members: ${(chat.members || []).map(m => m.toString()).join(', ')}`);
+      aiService.processMessageForAI(
+        {
+          ...message,
+          _id: result.insertedId,
+          chatId: chatId.toString(),
+          senderId: userId.toString()
+        },
+        chat,
+        db,
+        io
+      ).catch(err => {
+        console.error('[AI Service] Background processing error:', err);
+        console.error('[AI Service] Error stack:', err.stack);
+      });
+    }
+    
     // Return created message (with media URL rewritten for web clients)
     const mediaUrlForWeb = rewriteMediaUrlIfNeeded(message.mediaUrl, req.headers || {});
     res.status(201).json({
@@ -2987,6 +3123,247 @@ app.post('/api/chats/:chatId/messages', authenticateToken, async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
+
+// AI Bot Management Endpoints
+if (aiService) {
+  // Rate limiting for AI endpoints (per user)
+  const aiRateLimiter = rateLimit({
+    windowMs: parseInt(process.env.AI_RATE_LIMIT_WINDOW || '60000'), // 1 minute
+    max: parseInt(process.env.AI_RATE_LIMIT_MAX || '10'), // 10 requests per minute per user
+    message: {
+      error: 'Too many AI requests. Please wait before trying again.',
+      retryAfter: 60
+    },
+    standardHeaders: true,
+    legacyHeaders: false,
+    keyGenerator: (req) => {
+      // Rate limit per user ID
+      return req.user ? req.user.id : req.ip;
+    },
+    skip: (req) => {
+      // Skip rate limiting for status checks
+      return req.path === '/api/ai/status';
+    }
+  });
+
+  // Get AI bot status and info
+  app.get('/api/ai/status', authenticateToken, async (req, res) => {
+    try {
+      console.log('[AI Status] Request received from user:', req.user?.id);
+      
+      if (!db) {
+        console.error('[AI Status] Database not connected');
+        return res.status(503).json({ error: 'Database not connected' });
+      }
+      
+      const aiBotId = await aiService.getAIBotUserId(db);
+      const ollamaHealth = await aiService.checkOllamaHealth();
+      
+      const status = {
+        enabled: !!aiBotId,
+        aiBotId: aiBotId,
+        ollamaAvailable: ollamaHealth,
+        model: process.env.OLLAMA_MODEL || 'llama3.2',
+        host: process.env.OLLAMA_HOST || 'localhost',
+        port: process.env.OLLAMA_PORT || 11434
+      };
+      
+      console.log('[AI Status] Response:', JSON.stringify(status));
+      res.json(status);
+    } catch (error) {
+      console.error('[AI Status] Error:', error);
+      res.status(500).json({ error: 'Failed to get AI status' });
+    }
+  });
+
+  // Add AI bot to a chat
+  app.post('/api/chats/:chatId/ai/add', authenticateToken, aiRateLimiter, async (req, res) => {
+    try {
+      if (!db) {
+        return res.status(503).json({ error: 'Database not connected' });
+      }
+      const chatId = req.params.chatId;
+      const userId = req.user.id;
+      
+      // Verify user is a member of the chat
+      const chat = await db.collection('chats').findOne({
+        _id: new ObjectId(chatId),
+        members: new ObjectId(userId)
+      });
+      
+      if (!chat) {
+        return res.status(404).json({ error: 'Chat not found or access denied' });
+      }
+      
+      // Get AI bot user ID
+      const aiBotId = await aiService.getAIBotUserId(db);
+      if (!aiBotId) {
+        return res.status(404).json({ error: 'AI bot user not found. Run create-ai-bot.js script first.' });
+      }
+      
+      const aiBotObjectId = new ObjectId(aiBotId);
+      
+      // Check if AI bot is already in the chat
+      const hasAIBot = chat.members.some(m => m.toString() === aiBotId.toString());
+      if (hasAIBot) {
+        return res.json({ message: 'AI bot is already in this chat', chatId });
+      }
+      
+      // Add AI bot to chat
+      await db.collection('chats').updateOne(
+        { _id: new ObjectId(chatId) },
+        { $addToSet: { members: aiBotObjectId } }
+      );
+      
+      res.json({ 
+        message: 'AI bot added to chat successfully',
+        chatId,
+        aiBotId 
+      });
+    } catch (error) {
+      console.error('Error adding AI bot to chat:', error);
+      res.status(500).json({ error: 'Failed to add AI bot to chat' });
+    }
+  });
+
+  // Get or create user's private AI chat
+  app.get('/api/ai/chat', authenticateToken, aiRateLimiter, async (req, res) => {
+    try {
+      if (!db) {
+        return res.status(503).json({ error: 'Database not connected' });
+      }
+      const userId = req.user.id;
+      
+      // Get AI bot user ID
+      const aiBotId = await aiService.getAIBotUserId(db);
+      if (!aiBotId) {
+        return res.status(404).json({ 
+          error: 'AI bot user not found. Run create-ai-bot.js script first.',
+          aiBotExists: false
+        });
+      }
+      
+      const aiBotObjectId = new ObjectId(aiBotId);
+      const userObjectId = new ObjectId(userId);
+      
+      // Check if private chat already exists between user and AI bot
+      const existingChat = await db.collection('chats').findOne({
+        type: 'private',
+        members: { 
+          $all: [userObjectId, aiBotObjectId],
+          $size: 2
+        }
+      });
+      
+      if (existingChat) {
+        // Return existing chat
+        return res.json({
+          chatId: existingChat._id.toString(),
+          chat: {
+            _id: existingChat._id.toString(),
+            id: existingChat._id.toString(),
+            name: existingChat.name || 'AI Assistant',
+            type: existingChat.type,
+            members: existingChat.members.map(m => m.toString()),
+            createdAt: existingChat.createdAt,
+            updatedAt: existingChat.updatedAt
+          },
+          isNew: false
+        });
+      }
+      
+      // Create new private chat between user and AI bot
+      const chat = {
+        type: 'private',
+        name: 'AI Assistant',
+        members: [userObjectId, aiBotObjectId],
+        createdBy: userObjectId,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        lastMessageTime: new Date(),
+        lastMessage: null,
+        unreadCount: {},
+        memberRoles: {
+          [userId]: 'admin',
+          [aiBotId]: 'member'
+        }
+      };
+      
+      const result = await db.collection('chats').insertOne(chat);
+      const createdChat = await db.collection('chats').findOne({ _id: result.insertedId });
+      
+      if (!createdChat) {
+        return res.status(500).json({ error: 'Failed to create AI chat' });
+      }
+      
+      res.status(201).json({
+        chatId: createdChat._id.toString(),
+        chat: {
+          _id: createdChat._id.toString(),
+          id: createdChat._id.toString(),
+          name: createdChat.name || 'AI Assistant',
+          type: createdChat.type,
+          members: createdChat.members.map(m => m.toString()),
+          createdAt: createdChat.createdAt,
+          updatedAt: createdChat.updatedAt
+        },
+        isNew: true
+      });
+    } catch (error) {
+      console.error('Error getting/creating AI chat:', error);
+      res.status(500).json({ error: 'Failed to get/create AI chat' });
+    }
+  });
+
+  // Remove AI bot from a chat
+  app.post('/api/chats/:chatId/ai/remove', authenticateToken, aiRateLimiter, async (req, res) => {
+    try {
+      if (!db) {
+        return res.status(503).json({ error: 'Database not connected' });
+      }
+      const chatId = req.params.chatId;
+      const userId = req.user.id;
+      
+      // Verify user is a member of the chat
+      const chat = await db.collection('chats').findOne({
+        _id: new ObjectId(chatId),
+        members: new ObjectId(userId)
+      });
+      
+      if (!chat) {
+        return res.status(404).json({ error: 'Chat not found or access denied' });
+      }
+      
+      // Get AI bot user ID
+      const aiBotId = await aiService.getAIBotUserId(db);
+      if (!aiBotId) {
+        return res.status(404).json({ error: 'AI bot user not found' });
+      }
+      
+      const aiBotObjectId = new ObjectId(aiBotId);
+      
+      // Check if AI bot is in the chat
+      const hasAIBot = chat.members.some(m => m.toString() === aiBotId.toString());
+      if (!hasAIBot) {
+        return res.json({ message: 'AI bot is not in this chat', chatId });
+      }
+      
+      // Remove AI bot from chat
+      await db.collection('chats').updateOne(
+        { _id: new ObjectId(chatId) },
+        { $pull: { members: aiBotObjectId } }
+      );
+      
+      res.json({ 
+        message: 'AI bot removed from chat successfully',
+        chatId 
+      });
+    } catch (error) {
+      console.error('Error removing AI bot from chat:', error);
+      res.status(500).json({ error: 'Failed to remove AI bot from chat' });
+    }
+  });
+}
 
 // Mark messages as read
 app.patch('/api/chats/:chatId/messages/read', authenticateToken, async (req, res) => {

@@ -106,6 +106,27 @@ router.post('/', authenticateToken, async (req, res) => {
     const sender = await usersCollection.findOne({ _id: new ObjectId(req.user.id) });
     const senderName = sender?.displayName || sender?.username || 'Someone';
     
+    // Process AI response (non-blocking - runs in background)
+    const aiService = req.app.locals.aiService;
+    if (aiService && aiService.processMessageForAI) {
+      console.log(`[AI Service] Triggering AI processing for chat ${chatId}, members: ${(chat.members || []).map(m => m.toString()).join(', ')}`);
+      aiService.processMessageForAI(
+        {
+          ...newMessage,
+          _id: result.insertedId,
+          chatId: chatId.toString(),
+          senderId: req.user.id.toString(),
+          messageType: type || 'text'
+        },
+        chat,
+        database,
+        req.app.get('io')
+      ).catch(err => {
+        console.error('[AI Service] Background processing error:', err);
+        console.error('[AI Service] Error stack:', err.stack);
+      });
+    }
+    
     // CRITICAL: Update chat's lastMessageTime - this is what causes the frozen timestamp issue!
     const now = new Date();
     await chatsCollection.updateOne(
