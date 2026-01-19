@@ -262,3 +262,20 @@ generated_plugins.cmake
 GeneratedPluginRegistrant.swift
 /servers/local_api_server/uploads
 /build 2
+
+# Local AI/tooling artifacts (do not commit)
+lib/site-packages/
+Include/
+scripts/*.exe
+
+# Local helper scripts/docs (keep locally; ignore in git)
+AI_*.md
+MODEL_DOWNLOAD_INFO.md
+OLLAMA_*.md
+QUICK_AI_FIX.md
+START_AI_SERVICES.md
+TEST_AI_ENDPOINT.md
+download_*.bat
+download_*.ps1
+servers/local_api_server/AI_SETUP_GUIDE.md
+servers/local_api_server/scripts/
