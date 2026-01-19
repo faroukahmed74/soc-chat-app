@@ -32,7 +32,12 @@ function Write-Header {
 Write-Header "SOC Chat App - Web Release Build"
 
 # Configuration
-$WebApiUrl = "http://localhost:3003"
+# IMPORTANT:
+# For web deployments, DO NOT hardcode http://localhost:3003
+# because "localhost" refers to the *user's* PC, not the server.
+# Default to same-origin (empty) and serve via servers/offline_web_server.js
+# which proxies /api -> http://127.0.0.1:3003.
+$WebApiUrl = ""
 $MobileApiUrl = "https://soc-chat-app.ngrok-free.app"
 
 # Check Flutter
@@ -70,7 +75,10 @@ Write-Host ""
 
 Write-Info "Building web app (this may take a few minutes)..."
 # Note: --web-renderer flag is deprecated in Flutter 3.35+, using default renderer
-$webBuildCommand = "flutter build web --release --dart-define=API_BASE_URL_WEB=$WebApiUrl --dart-define=API_BASE_URL_MOBILE=$MobileApiUrl --dart-define=USE_PHYSICAL_SERVER=true"
+$webBuildCommand = "flutter build web --release --dart-define=API_BASE_URL_MOBILE=$MobileApiUrl --dart-define=USE_PHYSICAL_SERVER=true"
+if ($WebApiUrl -and $WebApiUrl.Trim().Length -gt 0) {
+    $webBuildCommand = "$webBuildCommand --dart-define=API_BASE_URL_WEB=$WebApiUrl"
+}
 Write-Host "Command: $webBuildCommand" -ForegroundColor Gray
 Write-Host ""
 
@@ -131,9 +139,9 @@ Write-Host ""
 Write-Info "Web build completed successfully! 🎉"
 
 Write-Header "Next Steps"
-Write-Host "To serve the web app locally:" -ForegroundColor Yellow
-Write-Host "  cd $buildDir" -ForegroundColor Cyan
-Write-Host "  python -m http.server 8080" -ForegroundColor Cyan
+Write-Host "To serve the web app WITH API proxy (recommended):" -ForegroundColor Yellow
+Write-Host "  node servers\\offline_web_server.js" -ForegroundColor Cyan
+Write-Host "  # serves http://localhost:8082 and proxies /api -> http://127.0.0.1:3003" -ForegroundColor Gray
 Write-Host ""
 Write-Host "Or deploy to a web server:" -ForegroundColor Yellow
 Write-Host "  Copy the contents of $buildDir to your web server" -ForegroundColor Cyan

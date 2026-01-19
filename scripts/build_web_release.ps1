@@ -5,7 +5,12 @@
 # Usage: .\scripts\build_web_release.ps1
 
 param(
-    [string]$WebApiUrl = "http://localhost:3003",
+    # IMPORTANT:
+    # For web deployments, DO NOT hardcode http://localhost:3003 because
+    # "localhost" refers to the *user's* PC, not the server.
+    # Leave empty to use same-origin (Uri.base.origin) and serve via servers/offline_web_server.js
+    # which proxies /api -> http://127.0.0.1:3003.
+    [string]$WebApiUrl = "",
     [string]$MobileApiUrl = "https://soc-chat-app.ngrok-free.app",
     [string]$WebRenderer = "canvaskit",
     [switch]$SkipClean = $false
@@ -72,7 +77,10 @@ Write-Info "Web Renderer: $WebRenderer"
 Write-Host ""
 
 Write-Info "Building web app (this may take a few minutes)..."
-$buildCommand = "flutter build web --release --web-renderer $WebRenderer --dart-define=API_BASE_URL_WEB=$WebApiUrl --dart-define=API_BASE_URL_MOBILE=$MobileApiUrl --dart-define=USE_PHYSICAL_SERVER=true"
+$buildCommand = "flutter build web --release --web-renderer $WebRenderer --dart-define=API_BASE_URL_MOBILE=$MobileApiUrl --dart-define=USE_PHYSICAL_SERVER=true"
+if ($WebApiUrl -and $WebApiUrl.Trim().Length -gt 0) {
+    $buildCommand = "$buildCommand --dart-define=API_BASE_URL_WEB=$WebApiUrl"
+}
 
 Write-Host "Command: $buildCommand" -ForegroundColor Gray
 Write-Host ""
@@ -121,11 +129,9 @@ if (Test-Path $buildDir) {
     Write-Info "Build completed successfully! 🎉"
     
     Write-Header "Next Steps"
-    Write-Host "To serve the web app locally:" -ForegroundColor Yellow
-    Write-Host "  cd $buildDir" -ForegroundColor Cyan
-    Write-Host "  python -m http.server 8080" -ForegroundColor Cyan
-    Write-Host "  # or" -ForegroundColor Gray
-    Write-Host "  npx serve -s . -l 8080" -ForegroundColor Cyan
+    Write-Host "To serve the web app WITH API proxy (recommended):" -ForegroundColor Yellow
+    Write-Host "  node servers\\offline_web_server.js" -ForegroundColor Cyan
+    Write-Host "  # serves http://localhost:8082 and proxies /api -> http://127.0.0.1:3003" -ForegroundColor Gray
     Write-Host ""
     Write-Host "To deploy:" -ForegroundColor Yellow
     Write-Host "  1. Upload the contents of '$buildDir' to your web server" -ForegroundColor White
