@@ -16,11 +16,80 @@ const fs = require('fs');
 const path = require('path');
 
 // Configuration
-const OLLAMA_HOST = process.env.OLLAMA_HOST || 'localhost';
+// IMPORTANT: On Windows, "localhost" may resolve to IPv6 (::1) first.
+// Many local services (including Ollama) may only listen on 127.0.0.1, causing intermittent "not available".
+const OLLAMA_HOST = process.env.OLLAMA_HOST || '127.0.0.1';
 const OLLAMA_PORT = process.env.OLLAMA_PORT || 11434;
 const OLLAMA_MODEL = process.env.OLLAMA_MODEL || 'llama3.2'; // Default model (lightweight)
 const OLLAMA_VISION_MODEL = process.env.OLLAMA_VISION_MODEL || 'llava'; // Vision model for images
 const OLLAMA_TIMEOUT = parseInt(process.env.OLLAMA_TIMEOUT || '120000'); // 120 seconds (2 minutes) - LLMs can take time, especially on first load
+// Limit CPU usage so the whole PC/server doesn't freeze under load (especially on Windows)
+const OLLAMA_NUM_THREAD = Math.max(1, parseInt(process.env.OLLAMA_NUM_THREAD || '2', 10) || 2);
+const OLLAMA_TEXT_CTX = Math.max(256, parseInt(process.env.OLLAMA_TEXT_CTX || '1024', 10) || 1024);
+const OLLAMA_VISION_CTX = Math.max(512, parseInt(process.env.OLLAMA_VISION_CTX || '2048', 10) || 2048);
+// Caps generation length (tokens). Smaller = faster, less chance of timeouts.
+const OLLAMA_NUM_PREDICT = Math.max(16, parseInt(process.env.OLLAMA_NUM_PREDICT || '64', 10) || 64);
+// Prefer non-streaming by default (simpler + more reliable). Enable only if you need token streaming.
+const OLLAMA_STREAM = process.env.OLLAMA_STREAM === 'true';
+
+// Quality tuning (defaults favor accuracy over creativity).
+function clampNumber(n, min, max) {
+  if (typeof n !== 'number' || Number.isNaN(n)) return min;
+  return Math.min(max, Math.max(min, n));
+}
+
+const OLLAMA_TEMPERATURE = clampNumber(parseFloat(process.env.OLLAMA_TEMPERATURE ?? '0.2'), 0, 2);
+const OLLAMA_TOP_P = clampNumber(parseFloat(process.env.OLLAMA_TOP_P ?? '0.9'), 0, 1);
+const OLLAMA_TOP_K = Math.max(0, parseInt(process.env.OLLAMA_TOP_K ?? '40', 10) || 40);
+const OLLAMA_REPEAT_PENALTY = clampNumber(parseFloat(process.env.OLLAMA_REPEAT_PENALTY ?? '1.1'), 0.8, 2.0);
+const OLLAMA_REPEAT_LAST_N = Math.max(0, parseInt(process.env.OLLAMA_REPEAT_LAST_N ?? '64', 10) || 64);
+
+// Reliability / Performance
+// Keep the API server responsive even if Ollama is slow by limiting concurrency and deduping per chat.
+const AI_DEBUG_LOGS = process.env.AI_DEBUG_LOGS === 'true';
+const AI_MAX_CONCURRENT_JOBS = Math.max(1, parseInt(process.env.AI_MAX_CONCURRENT_JOBS || '1', 10) || 1);
+const AI_MAX_QUEUE = Math.max(1, parseInt(process.env.AI_MAX_QUEUE || '100', 10) || 100);
+const AI_DEDUP_PER_CHAT = process.env.AI_DEDUP_PER_CHAT !== 'false'; // default true
+
+function logDebug(...args) {
+  if (AI_DEBUG_LOGS) console.log(...args);
+}
+
+function createSemaphore(max) {
+  let active = 0;
+  const waiters = [];
+  return {
+    get active() { return active; },
+    get queued() { return waiters.length; },
+    async acquire() {
+      if (active < max) {
+        active += 1;
+        return () => {
+          active -= 1;
+          const next = waiters.shift();
+          if (next) next();
+        };
+      }
+      if (waiters.length >= AI_MAX_QUEUE) {
+        throw new Error(`AI queue is full (${AI_MAX_QUEUE}).`);
+      }
+      await new Promise(resolve => waiters.push(resolve));
+      active += 1;
+      return () => {
+        active -= 1;
+        const next = waiters.shift();
+        if (next) next();
+      };
+    }
+  };
+}
+
+const aiSemaphore = createSemaphore(AI_MAX_CONCURRENT_JOBS);
+const perChatState = new Map(); // chatId(string) -> { running: boolean, pending: object|null }
+
+function chatKey(chatId) {
+  try { return String(chatId); } catch (_) { return 'unknown'; }
+}
 
 // AI Bot Configuration
 const AI_BOT_NAME = 'AI Assistant';
@@ -34,34 +103,67 @@ const MAX_IMAGE_SIZE = parseInt(process.env.OLLAMA_MAX_IMAGE_SIZE || '10485760')
 const ALLOW_EXTERNAL_IMAGES = process.env.OLLAMA_ALLOW_EXTERNAL_IMAGES === 'true'; // Allow external image downloads (default: false)
 const ALLOWED_IMAGE_EXTENSIONS = ['.jpg', '.jpeg', '.png', '.gif', '.webp']; // Allowed image formats
 
+function getOllamaHostCandidates() {
+  const h = String(OLLAMA_HOST || '').trim();
+  if (!h) return ['127.0.0.1'];
+  // Prefer IPv4 loopback if user configured "localhost" to avoid ::1 issues.
+  if (h.toLowerCase() === 'localhost') return ['127.0.0.1', 'localhost'];
+  return [h];
+}
+
 /**
  * Check if Ollama is available and running
  */
+let cachedOllamaHealth = { ok: false, ts: 0 };
 async function checkOllamaHealth() {
+  const candidates = getOllamaHostCandidates();
   return new Promise((resolve) => {
-    const options = {
-      hostname: OLLAMA_HOST,
-      port: OLLAMA_PORT,
-      path: '/api/tags',
-      method: 'GET',
-      timeout: 5000
+    const now = Date.now();
+    // Cache briefly to avoid spamming /api/tags during bursts.
+    if (now - cachedOllamaHealth.ts < 3000) {
+      resolve(!!cachedOllamaHealth.ok);
+      return;
+    }
+    let idx = 0;
+    const tryNext = () => {
+      const host = candidates[idx++];
+      if (!host) {
+        cachedOllamaHealth = { ok: false, ts: Date.now() };
+        resolve(false);
+        return;
+      }
+
+      const options = {
+        hostname: host,
+        port: OLLAMA_PORT,
+        path: '/api/tags',
+        method: 'GET',
+        timeout: 4000
+      };
+
+      const req = http.request(options, (res) => {
+        if (res.statusCode === 200) {
+          cachedOllamaHealth = { ok: true, ts: Date.now() };
+          resolve(true);
+        } else {
+          // Try other candidates before failing.
+          req.destroy();
+          tryNext();
+        }
+      });
+
+      req.on('error', () => {
+        tryNext();
+      });
+      req.on('timeout', () => {
+        req.destroy();
+        tryNext();
+      });
+
+      req.end();
     };
 
-    const req = http.request(options, (res) => {
-      if (res.statusCode === 200) {
-        resolve(true);
-      } else {
-        resolve(false);
-      }
-    });
-
-    req.on('error', () => resolve(false));
-    req.on('timeout', () => {
-      req.destroy();
-      resolve(false);
-    });
-
-    req.end();
+    tryNext();
   });
 }
 
@@ -126,9 +228,9 @@ async function downloadImageFromUrl(imageUrl) {
       const localPath = path.resolve(uploadsPath, relativePath);
       const resolvedUploadsPath = path.resolve(uploadsPath);
       
-      console.log(`[AI Service] 🔍 Looking for image at: ${localPath}`);
-      console.log(`[AI Service] Uploads directory: ${uploadsPath}`);
-      console.log(`[AI Service] Relative path: ${relativePath}`);
+      logDebug(`[AI Service] 🔍 Looking for image at: ${localPath}`);
+      logDebug(`[AI Service] Uploads directory: ${uploadsPath}`);
+      logDebug(`[AI Service] Relative path: ${relativePath}`);
       
       // SECURITY: Prevent path traversal attacks
       if (!localPath.startsWith(resolvedUploadsPath)) {
@@ -143,15 +245,23 @@ async function downloadImageFromUrl(imageUrl) {
       }
       
       // Check if file exists, with retry logic in case file is still being written
-      let fileExists = fs.existsSync(localPath);
-      if (!fileExists) {
+      let fileExists = false;
+      try {
+        await fs.promises.access(localPath, fs.constants.R_OK);
+        fileExists = true;
+      } catch (_) {
         // Wait a bit and retry (file might still be uploading)
         await new Promise(resolve => setTimeout(resolve, 500));
-        fileExists = fs.existsSync(localPath);
+        try {
+          await fs.promises.access(localPath, fs.constants.R_OK);
+          fileExists = true;
+        } catch (_) {
+          fileExists = false;
+        }
       }
       
       if (fileExists) {
-        const stats = fs.statSync(localPath);
+        const stats = await fs.promises.stat(localPath);
         
         // Check file size
         if (stats.size > MAX_IMAGE_SIZE) {
@@ -159,20 +269,21 @@ async function downloadImageFromUrl(imageUrl) {
           return null;
         }
         
-        console.log(`[AI Service] ✅ Loading local image: ${localPath} (${stats.size} bytes)`);
-        return fs.readFileSync(localPath);
+        logDebug(`[AI Service] ✅ Loading local image: ${localPath} (${stats.size} bytes)`);
+        return await fs.promises.readFile(localPath);
       } else {
         console.warn(`[AI Service] ❌ Local image file not found: ${localPath}`);
         // List directory to help debug
         const dirPath = path.dirname(localPath);
-        if (fs.existsSync(dirPath)) {
+        try {
+          await fs.promises.access(dirPath, fs.constants.R_OK);
           try {
-            const files = fs.readdirSync(dirPath);
+            const files = await fs.promises.readdir(dirPath);
             console.warn(`[AI Service] Directory exists. Files in directory: ${files.join(', ')}`);
           } catch (e) {
             console.warn(`[AI Service] Could not read directory: ${e.message}`);
           }
-        } else {
+        } catch (_) {
           console.warn(`[AI Service] Directory does not exist: ${dirPath}`);
         }
         return null;
@@ -253,7 +364,7 @@ async function downloadImageFromUrl(imageUrl) {
         
         res.on('end', () => {
           const buffer = Buffer.concat(chunks);
-          console.log(`[AI Service] Downloaded image: ${buffer.length} bytes`);
+          logDebug(`[AI Service] Downloaded image: ${buffer.length} bytes`);
           resolve(buffer);
         });
       });
@@ -312,17 +423,17 @@ async function generateAIResponse(userMessage, conversationHistory = [], userNam
     // Handle image processing
     let base64Image = imageBase64;
     if (imageUrl && !base64Image) {
-      console.log(`[AI Service] 📷 Processing image: ${imageUrl}`);
+      logDebug(`[AI Service] 📷 Processing image: ${imageUrl}`);
       try {
         const imageBuffer = await downloadImageFromUrl(imageUrl);
         if (imageBuffer) {
-          console.log(`[AI Service] Image downloaded: ${imageBuffer.length} bytes`);
+          logDebug(`[AI Service] Image downloaded: ${imageBuffer.length} bytes`);
           base64Image = imageToBase64(imageBuffer);
           if (!base64Image) {
             console.error('[AI Service] ❌ Failed to convert image to base64');
             return null;
           }
-          console.log(`[AI Service] ✅ Image converted to base64: ${base64Image.length} characters`);
+          logDebug(`[AI Service] ✅ Image converted to base64: ${base64Image.length} characters`);
         } else {
           console.error('[AI Service] ❌ Failed to download image - imageBuffer is null');
           return null;
@@ -384,23 +495,25 @@ async function generateAIResponse(userMessage, conversationHistory = [], userNam
         console.error(`[AI Service] ❌ Invalid base64 format detected. First 50 chars: ${imageData.substring(0, 50)}`);
         // Try to clean it - remove any non-base64 characters
         imageData = imageData.replace(/[^A-Za-z0-9+/=]/g, '');
-        console.log(`[AI Service] Cleaned base64. New length: ${imageData.length}`);
+        logDebug(`[AI Service] Cleaned base64. New length: ${imageData.length}`);
       }
       currentMessage.images = [imageData];
-      console.log(`[AI Service] ✅ Image added to message. Base64 length: ${imageData.length}, Model: ${modelToUse}, First chars: ${imageData.substring(0, 20)}...`);
+      logDebug(`[AI Service] ✅ Image added to message. Base64 length: ${imageData.length}, Model: ${modelToUse}, First chars: ${imageData.substring(0, 20)}...`);
     } else {
-      console.log(`[AI Service] ⚠️ No base64Image available. imageUrl was: ${imageUrl ? imageUrl.substring(0, 80) : 'null'}...`);
+      logDebug(`[AI Service] ⚠️ No base64Image available. imageUrl was: ${imageUrl ? imageUrl.substring(0, 80) : 'null'}...`);
     }
 
     contextMessages.push(currentMessage);
 
     // Build prompt with system instructions
     const systemPrompt = base64Image
-      ? `You are a helpful AI assistant in a chat application with vision capabilities. 
-Be friendly, concise, and helpful. Keep responses under ${MAX_RESPONSE_LENGTH} characters when possible.
+      ? `You are a helpful AI assistant in a chat application with vision capabilities.
+Be accurate and practical. If you are unsure, say so and ask a clarifying question.
+Be concise, but do not omit important steps. Prefer staying under ${MAX_RESPONSE_LENGTH} characters unless the user asks for more detail.
 You are chatting with ${userName}. Analyze the image and respond naturally.`
-      : `You are a helpful AI assistant in a chat application. 
-Be friendly, concise, and helpful. Keep responses under ${MAX_RESPONSE_LENGTH} characters when possible.
+      : `You are a helpful AI assistant in a chat application.
+Be accurate and practical. If you are unsure, say so and ask a clarifying question.
+Be concise, but do not omit important steps. Prefer staying under ${MAX_RESPONSE_LENGTH} characters unless the user asks for more detail.
 You are chatting with ${userName}. Respond naturally to their message.`;
 
     const messages = [
@@ -416,26 +529,34 @@ You are chatting with ${userName}. Respond naturally to their message.`;
     const requestData = JSON.stringify({
       model: modelToUse,
       messages: messages,
-      stream: false,
+      stream: OLLAMA_STREAM,
       keep_alive: isVisionRequest ? '5m' : '2m', // Keep vision model loaded for 5 minutes, text model for 2 minutes
       options: {
-        temperature: 0.7, // Creativity level (0-1)
-        top_p: 0.9,
-        num_predict: MAX_RESPONSE_LENGTH, // Use num_predict instead of max_tokens for Ollama
-        num_ctx: isVisionRequest ? 4096 : 2048 // Larger context for vision models
+        temperature: OLLAMA_TEMPERATURE,
+        top_p: OLLAMA_TOP_P,
+        top_k: OLLAMA_TOP_K,
+        repeat_penalty: OLLAMA_REPEAT_PENALTY,
+        repeat_last_n: OLLAMA_REPEAT_LAST_N,
+        num_predict: OLLAMA_NUM_PREDICT, // Use num_predict instead of max_tokens for Ollama
+        // Keep context smaller to reduce RAM + CPU spikes
+        num_ctx: isVisionRequest ? OLLAMA_VISION_CTX : OLLAMA_TEXT_CTX,
+        // Keep CPU usage bounded so the host machine stays responsive
+        num_thread: OLLAMA_NUM_THREAD
       }
     });
 
-    console.log(`[AI Service] Sending request to Ollama: ${OLLAMA_HOST}:${OLLAMA_PORT}, model: ${modelToUse}, timeout: ${requestTimeout}ms`);
-    console.log(`[AI Service] Request details: hasImage=${!!base64Image}, messageCount=${messages.length}, useVisionModel=${useVisionModel}, keepAlive=${isVisionRequest ? '5m' : '2m'}`);
+    logDebug(`[AI Service] Sending request to Ollama: ${OLLAMA_HOST}:${OLLAMA_PORT}, model: ${modelToUse}, timeout: ${requestTimeout}ms`);
+    logDebug(`[AI Service] Request details: hasImage=${!!base64Image}, messageCount=${messages.length}, useVisionModel=${useVisionModel}, keepAlive=${isVisionRequest ? '5m' : '2m'}`);
     if (base64Image) {
-      console.log(`[AI Service] Image will be sent with message. Base64 preview: ${base64Image.substring(0, 50)}...`);
-      console.log(`[AI Service] ⏳ Vision models can take 30-120 seconds. Please wait...`);
+      logDebug(`[AI Service] Image will be sent with message. Base64 preview: ${base64Image.substring(0, 50)}...`);
+      logDebug(`[AI Service] ⏳ Vision models can take 30-120 seconds. Please wait...`);
     }
 
     return new Promise((resolve, reject) => {
+      const hostCandidates = getOllamaHostCandidates();
+      const primaryHost = hostCandidates[0] || '127.0.0.1';
       const options = {
-        hostname: OLLAMA_HOST,
+        hostname: primaryHost,
         port: OLLAMA_PORT,
         path: '/api/chat',
         method: 'POST',
@@ -467,16 +588,57 @@ You are chatting with ${userName}. Respond naturally to their message.`;
 
       const req = http.request(options, (res) => {
         let data = '';
-        console.log(`[AI Service] Ollama response status: ${res.statusCode}`);
+        let buffer = '';
+        let content = '';
+        logDebug(`[AI Service] Ollama response status: ${res.statusCode}`);
 
         res.on('data', (chunk) => {
-          data += chunk;
+          const s = chunk.toString('utf8');
+          data += s;
+          if (!OLLAMA_STREAM) return;
+
+          buffer += s;
+
+          // Ollama stream format: newline-delimited JSON objects (NDJSON)
+          while (true) {
+            const nl = buffer.indexOf('\n');
+            if (nl === -1) break;
+            const line = buffer.slice(0, nl).trim();
+            buffer = buffer.slice(nl + 1);
+            if (!line) continue;
+
+            let obj;
+            try { obj = JSON.parse(line); } catch (_) { continue; }
+
+            const piece = obj?.message?.content;
+            if (typeof piece === 'string' && piece.length > 0) {
+              content += piece;
+              if (content.length >= MAX_RESPONSE_LENGTH) {
+                if (!resolved) {
+                  resolved = true;
+                  clearTimeout(globalTimeout);
+                  try { req.destroy(); } catch (_) {}
+                  resolve(content.slice(0, MAX_RESPONSE_LENGTH).trim());
+                }
+                return;
+              }
+            }
+
+            if (obj?.done === true) {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(globalTimeout);
+                resolve((content || '').trim() || null);
+              }
+              return;
+            }
+          }
         });
 
         res.on('end', () => {
           if (resolved) return;
           const elapsed = Date.now() - startTime;
-          console.log(`[AI Service] Ollama response received in ${elapsed}ms, data length: ${data.length}`);
+          logDebug(`[AI Service] Ollama response received in ${elapsed}ms, data length: ${data.length}`);
           
           try {
             if (res.statusCode !== 200) {
@@ -485,6 +647,28 @@ You are chatting with ${userName}. Respond naturally to their message.`;
                 resolved = true;
                 clearTimeout(globalTimeout);
                 resolve(null);
+              }
+              return;
+            }
+
+            if (OLLAMA_STREAM) {
+              // Flush any final JSON object that might not end with a newline.
+              const remaining = buffer.trim();
+              if (remaining) {
+                const lines = remaining.split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+                for (const line of lines) {
+                  try {
+                    const obj = JSON.parse(line);
+                    const piece = obj?.message?.content;
+                    if (typeof piece === 'string' && piece.length > 0) content += piece;
+                  } catch (_) {}
+                }
+              }
+              const cleaned = String(content || '').trim();
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(globalTimeout);
+                resolve(cleaned || null);
               }
               return;
             }
@@ -504,8 +688,8 @@ You are chatting with ${userName}. Respond naturally to their message.`;
             }
 
             // Clean and trim response
-            const cleanedResponse = aiResponse.trim();
-            console.log(`[AI Service] ✅ Generated response (${cleanedResponse.length} chars): "${cleanedResponse.substring(0, 100)}..."`);
+            const cleanedResponse = String(aiResponse).trim();
+            logDebug(`[AI Service] ✅ Generated response (${cleanedResponse.length} chars): "${cleanedResponse.substring(0, 100)}..."`);
             if (!resolved) {
               resolved = true;
               clearTimeout(globalTimeout);
@@ -528,10 +712,45 @@ You are chatting with ${userName}. Respond naturally to their message.`;
         const elapsed = Date.now() - startTime;
         console.error(`[AI Service] Request error after ${elapsed}ms:`, error.message);
         console.error(`[AI Service] Error code: ${error.code}`);
+        const canFallback =
+          hostCandidates.length > 1 &&
+          (error.code === 'ECONNREFUSED' || error.code === 'EHOSTUNREACH' || error.code === 'ENETUNREACH');
+
+        if (canFallback) {
+          const fallbackHost = hostCandidates[1];
+          logDebug(`[AI Service] Retrying Ollama on fallback host: ${fallbackHost}:${OLLAMA_PORT}`);
+          try {
+            const retryReq = http.request({ ...options, hostname: fallbackHost }, (res) => {
+              let data = '';
+              res.on('data', (chunk) => { data += chunk; });
+              res.on('end', () => {
+                if (resolved) return;
+                try {
+                  if (res.statusCode !== 200) return resolve(null);
+                  const response = JSON.parse(data);
+                  const aiResponse = response.message?.content || '';
+                  const cleanedResponse = String(aiResponse || '').trim();
+                  resolve(cleanedResponse || null);
+                } catch (_) {
+                  resolve(null);
+                }
+              });
+            });
+            retryReq.on('error', () => resolve(null));
+            retryReq.on('timeout', () => { retryReq.destroy(); resolve(null); });
+            retryReq.write(requestData);
+            retryReq.end();
+            return;
+          } catch (_) {
+            // fall through to resolve(null)
+          }
+        }
+
         if (error.code === 'ECONNREFUSED') {
-          console.error(`[AI Service] ❌ Cannot connect to Ollama at ${OLLAMA_HOST}:${OLLAMA_PORT}`);
+          console.error(`[AI Service] ❌ Cannot connect to Ollama at ${primaryHost}:${OLLAMA_PORT}`);
           console.error(`[AI Service] Make sure Ollama is running. Start it with: ollama serve`);
         }
+
         if (!resolved) {
           resolved = true;
           clearTimeout(globalTimeout);
@@ -552,10 +771,10 @@ You are chatting with ${userName}. Respond naturally to their message.`;
         }
       });
 
-      console.log(`[AI Service] Writing request data (${Buffer.byteLength(requestData)} bytes)...`);
+      logDebug(`[AI Service] Writing request data (${Buffer.byteLength(requestData)} bytes)...`);
       req.write(requestData);
       req.end();
-      console.log(`[AI Service] Request sent, waiting for response (timeout: ${OLLAMA_TIMEOUT}ms)...`);
+      logDebug(`[AI Service] Request sent, waiting for response (timeout: ${requestTimeout}ms)...`);
     });
   } catch (error) {
     console.error('[AI Service] Error generating AI response:', error);
@@ -639,102 +858,202 @@ async function getConversationHistory(chatId, db, limit = MAX_CONTEXT_MESSAGES) 
  * @returns {Promise<void>}
  */
 async function processMessageForAI(messageData, chat, db, io) {
+  const key = chatKey(messageData?.chatId);
+  const state = perChatState.get(key) || { running: false, pending: null };
+
+  // Always keep the latest pending message for this chat; if already running, return immediately.
+  if (state.running) {
+    state.pending = { messageData, chat, db, io };
+    perChatState.set(key, state);
+    logDebug(`[AI Service] Chat ${key} is already generating; queued latest pending message (dedup=${AI_DEDUP_PER_CHAT}).`);
+    return;
+  }
+
+  state.running = true;
+  state.pending = null;
+  perChatState.set(key, state);
+
+  const firstJob = { messageData, chat, db, io };
+  setImmediate(() => {
+    runPerChatLoop(key, firstJob).catch(err => {
+      console.error('[AI Service] Per-chat AI loop error:', err);
+    });
+  });
+}
+
+async function runPerChatLoop(key, firstJob) {
+  let job = firstJob;
+  while (job) {
+    // Acquire global concurrency slot (prevents server-wide overload)
+    let release = null;
+    try {
+      release = await aiSemaphore.acquire();
+    } catch (e) {
+      console.error(`[AI Service] Dropping AI job for chat ${key}: ${e?.message || e}`);
+      release = null;
+    }
+
+    try {
+      await processMessageForAIInternal(job.messageData, job.chat, job.db, job.io);
+    } finally {
+      try { if (release) release(); } catch (_) {}
+    }
+
+    const state = perChatState.get(key);
+    if (!state) break;
+    if (state.pending && AI_DEDUP_PER_CHAT) {
+      job = state.pending;
+      state.pending = null;
+      perChatState.set(key, state);
+    } else if (state.pending) {
+      // Even with dedup disabled, we still only store one pending job.
+      job = state.pending;
+      state.pending = null;
+      perChatState.set(key, state);
+    } else {
+      job = null;
+    }
+  }
+
+  const state = perChatState.get(key);
+  if (state) {
+    state.running = false;
+    state.pending = null;
+    perChatState.set(key, state);
+  }
+}
+
+async function processMessageForAIInternal(messageData, chat, db, io) {
   try {
     // Handle both 'type' and 'messageType' fields (messages can use either)
     const messageType = messageData.messageType || messageData.type || 'text';
     const mediaUrl = messageData.mediaUrl || messageData.media_url || null;
-    
-    console.log(`[AI Service] Processing message: chatId=${messageData.chatId}, senderId=${messageData.senderId}, type=${messageType}`);
-    console.log(`[AI Service] Message details: content=${messageData.content ? 'yes' : 'no'}, mediaUrl=${mediaUrl ? mediaUrl : 'no'}`);
-    
+
+    logDebug(`[AI Service] Processing message: chatId=${messageData.chatId}, senderId=${messageData.senderId}, type=${messageType}`);
+    logDebug(`[AI Service] Message details: content=${messageData.content ? 'yes' : 'no'}, mediaUrl=${mediaUrl ? mediaUrl : 'no'}`);
+
     // Process text messages OR image messages
-    // Image message: type is 'image' and has mediaUrl
     const isImageMessage = !!(messageType === 'image' && mediaUrl);
-    // Text message: not an image message, has content, and type is text/undefined/null
     const contentStr = messageData.content ? String(messageData.content).trim() : '';
     const hasContent = contentStr.length > 0;
     const isTextType = messageType === 'text' || messageType === undefined || messageType === null || messageType === '';
     const isTextMessage = !isImageMessage && isTextType && hasContent;
-    
-    console.log(`[AI Service] Message type check: isTextMessage=${isTextMessage}, isImageMessage=${isImageMessage}`);
-    console.log(`[AI Service] Details: messageType="${messageType}", hasContent=${hasContent}, hasMediaUrl=${!!mediaUrl}, mediaUrl="${mediaUrl ? mediaUrl.substring(0, 80) : 'none'}...", contentLength=${contentStr.length}`);
-    
-    // Skip if message is neither text nor image
+
+    logDebug(`[AI Service] Message type check: isTextMessage=${isTextMessage}, isImageMessage=${isImageMessage}`);
+    logDebug(`[AI Service] Details: messageType="${messageType}", hasContent=${hasContent}, hasMediaUrl=${!!mediaUrl}, mediaUrl="${mediaUrl ? mediaUrl.substring(0, 80) : 'none'}...", contentLength=${contentStr.length}`);
+
     if (!isTextMessage && !isImageMessage) {
-      console.log(`[AI Service] Skipping message - not text or image (type=${messageType}, hasContent=${hasContent}, hasMediaUrl=${!!mediaUrl})`);
+      logDebug(`[AI Service] Skipping message - not text or image (type=${messageType}, hasContent=${hasContent}, hasMediaUrl=${!!mediaUrl})`);
       return;
     }
 
-    // Get AI bot user ID
     const aiBotId = await getAIBotUserId(db);
     if (!aiBotId) {
-      console.log(`[AI Service] AI bot not found in database`);
-      // AI bot doesn't exist yet - skip
+      logDebug('[AI Service] AI bot not found in database');
       return;
     }
-    console.log(`[AI Service] AI bot ID: ${aiBotId}`);
+    logDebug(`[AI Service] AI bot ID: ${aiBotId}`);
 
-    // Check if message is from AI bot (prevent self-responses)
     const isFromAI = await isAIMessage(messageData.senderId, db);
     if (isFromAI) {
-      console.log(`[AI Service] Skipping - message is from AI bot itself`);
-      return; // Don't respond to own messages
+      logDebug('[AI Service] Skipping - message is from AI bot itself');
+      return;
     }
 
-    // Check if AI bot is a member of this chat
     const chatMembers = chat.members || [];
-    const aiBotObjectId = new (require('mongodb').ObjectId)(aiBotId);
     const hasAIBot = chatMembers.some(m => m.toString() === aiBotId.toString());
-
     if (!hasAIBot) {
-      console.log(`[AI Service] AI bot not in chat. Chat ID: ${messageData.chatId}, AI Bot ID: ${aiBotId}, Chat Members: ${chatMembers.map(m => m.toString()).join(', ')}`);
-      return; // AI bot is not in this chat
+      logDebug(`[AI Service] AI bot not in chat. Chat ID: ${messageData.chatId}, AI Bot ID: ${aiBotId}, Chat Members: ${chatMembers.map(m => m.toString()).join(', ')}`);
+      return;
     }
 
-    // Get conversation history for context
     const history = await getConversationHistory(messageData.chatId, db);
 
-    // Get sender info
-    const sender = await db.collection('users').findOne({ 
-      _id: new (require('mongodb').ObjectId)(messageData.senderId) 
+    const sender = await db.collection('users').findOne({
+      _id: new (require('mongodb').ObjectId)(messageData.senderId)
     });
     const senderName = sender?.displayName || sender?.username || 'User';
-    
-    console.log(`[AI Service] AI bot is in chat. Processing message from ${senderName}...`);
 
-    // Generate AI response
+    logDebug(`[AI Service] AI bot is in chat. Processing message from ${senderName}...`);
+
     const responseType = isImageMessage ? 'image' : 'text';
-    // Sanitize user message input to prevent prompt injection
     const rawUserMessage = messageData.content || (isImageMessage ? 'What is in this image?' : '');
     const userMessage = sanitizeInput(rawUserMessage);
     const imageUrl = isImageMessage ? mediaUrl : null;
-    
-    console.log(`[AI Service] Generating ${responseType} response for message from ${senderName}...`);
+
+    logDebug(`[AI Service] Generating ${responseType} response for message from ${senderName}...`);
     if (isImageMessage) {
-      console.log(`[AI Service] 📷 Processing image: ${imageUrl}`);
+      logDebug(`[AI Service] 📷 Processing image: ${imageUrl}`);
     }
-    
+
     const aiResponse = await generateAIResponse(
       userMessage,
       history,
       senderName,
       imageUrl,
-      null, // Let generateAIResponse download and convert the image
-      aiBotId // Pass AI bot ID for context role detection
+      null,
+      aiBotId
     );
 
     if (!aiResponse) {
       console.warn('[AI Service] Failed to generate response');
+      // Don't stay silent; users interpret this as "server hung".
+      const fallbackText =
+        'AI is temporarily unavailable (Ollama not responding). Please try again in a minute.';
+
+      // Create a visible bot message so the client gets feedback.
+      const chatIdObjectId = typeof messageData.chatId === 'string'
+        ? new (require('mongodb').ObjectId)(messageData.chatId)
+        : messageData.chatId;
+      const senderIdObjectId = new (require('mongodb').ObjectId)(aiBotId);
+
+      const aiMessage = {
+        chatId: chatIdObjectId,
+        senderId: senderIdObjectId,
+        content: fallbackText,
+        messageType: 'text',
+        mediaUrl: null,
+        createdAt: new Date(),
+        readBy: [],
+        status: 'failed',
+        replies: [],
+        reactions: {}
+      };
+
+      const result = await db.collection('messages').insertOne(aiMessage);
+
+      if (io) {
+        const createdAtIso = aiMessage.createdAt instanceof Date
+          ? aiMessage.createdAt.toISOString()
+          : new Date().toISOString();
+
+        const chatIdStr = messageData.chatId.toString();
+        const chatRoom = `chat:${chatIdStr}`;
+
+        io.to(chatRoom).emit('new_message', {
+          id: result.insertedId.toString(),
+          _id: result.insertedId.toString(),
+          senderName: AI_BOT_NAME,
+          chatId: chatIdStr,
+          senderId: aiBotId.toString(),
+          content: fallbackText,
+          messageType: 'text',
+          mediaUrl: null,
+          createdAt: createdAtIso,
+          timestamp: createdAtIso,
+          readBy: [],
+          status: 'failed'
+        });
+      }
+
       return;
     }
 
-    // Create AI bot message
-    // Ensure chatId and senderId are ObjectId format for database
-    const chatIdObjectId = typeof messageData.chatId === 'string' 
+    const chatIdObjectId = typeof messageData.chatId === 'string'
       ? new (require('mongodb').ObjectId)(messageData.chatId)
       : messageData.chatId;
     const senderIdObjectId = new (require('mongodb').ObjectId)(aiBotId);
-    
+
     const aiMessage = {
       chatId: chatIdObjectId,
       senderId: senderIdObjectId,
@@ -748,10 +1067,8 @@ async function processMessageForAI(messageData, chat, db, io) {
       reactions: {}
     };
 
-    // Save AI message to database
     const result = await db.collection('messages').insertOne(aiMessage);
 
-    // Update chat's last message
     const now = new Date();
     await db.collection('chats').updateOne(
       { _id: new (require('mongodb').ObjectId)(messageData.chatId) },
@@ -770,7 +1087,6 @@ async function processMessageForAI(messageData, chat, db, io) {
       }
     );
 
-    // Increment unread count for other members
     const otherMembers = chatMembers
       .filter(m => m.toString() !== aiBotId.toString())
       .map(m => m.toString());
@@ -778,15 +1094,10 @@ async function processMessageForAI(messageData, chat, db, io) {
     for (const memberId of otherMembers) {
       await db.collection('chats').updateOne(
         { _id: new (require('mongodb').ObjectId)(messageData.chatId) },
-        {
-          $inc: {
-            [`unreadCount.${memberId}`]: 1
-          }
-        }
+        { $inc: { [`unreadCount.${memberId}`]: 1 } }
       );
     }
 
-    // Emit Socket.IO event for real-time delivery
     if (io) {
       const createdAtIso = aiMessage.createdAt instanceof Date
         ? aiMessage.createdAt.toISOString()
@@ -794,10 +1105,9 @@ async function processMessageForAI(messageData, chat, db, io) {
 
       const chatIdStr = messageData.chatId.toString();
       const chatRoom = `chat:${chatIdStr}`;
-      
-      console.log(`[AI Service] Emitting new_message to room: ${chatRoom}`);
-      
-      // Emit to chat room (format: chat:${chatId})
+
+      logDebug(`[AI Service] Emitting new_message to room: ${chatRoom}`);
+
       io.to(chatRoom).emit('new_message', {
         id: result.insertedId.toString(),
         _id: result.insertedId.toString(),
@@ -812,8 +1122,7 @@ async function processMessageForAI(messageData, chat, db, io) {
         readBy: [],
         status: 'sent'
       });
-      
-      // Also emit to individual members to ensure delivery
+
       const memberIds = chatMembers.map(m => m.toString());
       for (const memberId of memberIds) {
         io.to(memberId).emit('new_message', {
@@ -833,11 +1142,9 @@ async function processMessageForAI(messageData, chat, db, io) {
       }
     }
 
-    console.log(`[AI Service] ✅ AI response sent: "${aiResponse.substring(0, 50)}..."`);
-
+    logDebug(`[AI Service] ✅ AI response sent: "${aiResponse.substring(0, 50)}..."`);
   } catch (error) {
     console.error('[AI Service] Error processing message for AI:', error);
-    // Don't throw - we don't want to break message sending if AI fails
   }
 }
 
