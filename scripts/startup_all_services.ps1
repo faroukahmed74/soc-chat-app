@@ -132,11 +132,11 @@ try {
         }
         
         Write-Log "  Starting Network URLs Service..."
-        $networkConfigJs = Join-Path $projectRoot "servers\local_network_config.js"
+        $networkConfigJs = Join-Path $projectRoot "servers\local_api_server\local_network_config.js"
         if (Test-Path $networkConfigJs) {
             $networkProcess = Start-Process -FilePath "node" `
                 -ArgumentList "local_network_config.js" `
-                -WorkingDirectory $projectRoot `
+                -WorkingDirectory (Join-Path $projectRoot "servers\local_api_server") `
                 -WindowStyle Hidden `
                 -PassThru
             

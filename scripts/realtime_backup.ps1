@@ -13,11 +13,10 @@ param(
 
 # Check if stopping
 if ($Stop) {
-    $process = Get-Process -Name "powershell" -ErrorAction SilentlyContinue | Where-Object {
-        $_.CommandLine -like "*realtime_backup.ps1*" -and $_.Id -ne $PID
-    }
-    if ($process) {
-        Stop-Process -Id $process.Id -Force
+    $procs = Get-CimInstance Win32_Process -Filter "Name='powershell.exe'" -ErrorAction SilentlyContinue |
+      Where-Object { $_.CommandLine -like "*realtime_backup.ps1*" -and $_.ProcessId -ne $PID }
+    if ($procs) {
+        foreach ($p in $procs) { Stop-Process -Id $p.ProcessId -Force -ErrorAction SilentlyContinue }
         Write-Host "[OK] Real-time backup stopped" -ForegroundColor Green
     } else {
         Write-Host "[INFO] No real-time backup process found" -ForegroundColor Yellow

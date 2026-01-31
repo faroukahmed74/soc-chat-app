@@ -13,8 +13,13 @@ param(
     [switch]$Compress = $true,
     [switch]$FullBackup = $true,
     [int]$RetentionDays = 30,
-    [switch]$Quiet = $false
+    [switch]$Quiet = $false,
+    # If mongodump is not available, stop MongoDB briefly for a consistent file-level copy.
+    [switch]$StopMongoForFileCopy = $true
 )
+
+# Track whether anything failed (so Task Scheduler shows failure)
+$script:HadErrors = $false
 
 # Colors for output
 function Write-Header {
@@ -32,6 +37,7 @@ function Write-Success {
 function Write-Error {
     param([string]$Message)
     Write-Host "[ERROR] $Message" -ForegroundColor Red
+    $script:HadErrors = $true
 }
 
 function Write-Info {
@@ -76,9 +82,16 @@ if ($mongoProcess) {
     Write-Info "MongoDB is running - using mongodump"
     
     # Try to use mongodump (requires MongoDB tools)
-    $mongodumpPath = "C:\Program Files\MongoDB\Server\6.0\bin\mongodump.exe"
+    $mongodumpPath = $null
+    foreach ($candidate in @(
+        "C:\Program Files\MongoDB\Tools\100\bin\mongodump.exe",
+        "C:\Program Files\MongoDB\Tools\bin\mongodump.exe",
+        "C:\Program Files\MongoDB\Server\6.0\bin\mongodump.exe"
+    )) {
+        if (Test-Path $candidate) { $mongodumpPath = $candidate; break }
+    }
     
-    if (Test-Path $mongodumpPath) {
+    if ($mongodumpPath -and (Test-Path $mongodumpPath)) {
         try {
             New-Item -ItemType Directory -Path $mongoBackupPath -Force | Out-Null
             
@@ -93,6 +106,8 @@ if ($mongoProcess) {
                 Write-Success "MongoDB backup completed: $([math]::Round($dbSize, 2)) MB"
             } else {
                 Write-Error "mongodump failed with exit code $LASTEXITCODE"
+                Write-Info "Falling back to direct file copy..."
+                $mongoProcess = $null  # Force file copy
             }
         } catch {
             Write-Error "Failed to run mongodump: $_"
@@ -107,19 +122,66 @@ if ($mongoProcess) {
 
 # Fallback: Direct file copy (if MongoDB is stopped or mongodump unavailable)
 if (-not $mongoProcess) {
-    Write-Info "Using direct file copy method (MongoDB should be stopped)"
+    Write-Info "Using direct file copy method"
     
     if (Test-Path $mongoDataPath) {
         try {
             New-Item -ItemType Directory -Path $mongoBackupPath -Force | Out-Null
             
-            Write-Info "Copying MongoDB data files..."
-            Copy-Item -Path $mongoDataPath -Destination (Join-Path $mongoBackupPath "data\db") -Recurse -Force
+            $destDb = Join-Path $mongoBackupPath "data\db"
+            New-Item -ItemType Directory -Path $destDb -Force | Out-Null
+
+            $mongoWasRunning = $false
+            if ($StopMongoForFileCopy) {
+                $svc = Get-Service -Name MongoDB -ErrorAction SilentlyContinue
+                if ($svc -and $svc.Status -eq "Running") {
+                    $mongoWasRunning = $true
+                    Write-Info "Stopping MongoDB service briefly for a consistent file copy..."
+                    Stop-Service -Name MongoDB -Force -ErrorAction Stop
+                    Start-Sleep -Seconds 2
+                }
+            } else {
+                Write-Info "NOTE: MongoDB service was NOT stopped (backup may be inconsistent)."
+            }
+
+            Write-Info "Copying MongoDB data files with robocopy..."
+            $robolog = Join-Path $backupPath "robocopy_mongodb_copy.log"
+            $rcArgs = @(
+                "`"$mongoDataPath`"",
+                "`"$destDb`"",
+                "/E",
+                "/COPY:DAT",
+                "/DCOPY:DAT",
+                "/R:2",
+                "/W:2",
+                "/NP",
+                "/NDL",
+                "/NFL",
+                "/LOG:`"$robolog`""
+            )
+            $p = Start-Process -FilePath "robocopy.exe" -ArgumentList $rcArgs -Wait -PassThru
+            if ($p.ExitCode -ge 8) {
+                Write-Error "Robocopy failed with exit code $($p.ExitCode). Log: $robolog"
+            } else {
+                Write-Success "MongoDB data copied (robocopy exit code $($p.ExitCode))."
+            }
+
+            if ($StopMongoForFileCopy -and $mongoWasRunning) {
+                Write-Info "Starting MongoDB service again..."
+                Start-Service -Name MongoDB -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+            }
             
             if (Test-Path $mongoLogPath) {
                 Copy-Item -Path $mongoLogPath -Destination (Join-Path $mongoBackupPath "log") -Recurse -Force
             }
             
+            # Basic sanity check: require WiredTiger.wt in file-level backup
+            $wt = Join-Path $destDb "WiredTiger.wt"
+            if (-not (Test-Path $wt)) {
+                Write-Error "MongoDB file backup looks incomplete (missing WiredTiger.wt): $wt"
+            }
+
             $dbSize = (Get-ChildItem $mongoBackupPath -Recurse | Measure-Object -Property Length -Sum).Sum / 1MB
             Write-Success "MongoDB files copied: $([math]::Round($dbSize, 2)) MB"
         } catch {
@@ -268,4 +330,11 @@ $backupListFile = Join-Path $BackupDir "latest_backup.txt"
 $finalBackupPath | Out-File -FilePath $backupListFile -Encoding UTF8
 
 Write-Host "`nBackup process completed!" -ForegroundColor Green
+
+# Exit non-zero if anything failed so Task Scheduler shows failure
+if ($script:HadErrors) {
+    Write-Host "[WARNING] Backup completed with errors (see output above)." -ForegroundColor Yellow
+    exit 1
+}
+exit 0
 

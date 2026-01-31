@@ -12,7 +12,12 @@
 param(
     [string]$MirrorDir = "F:\soc-chat-mirror",
     [switch]$Quiet = $false,
-    [switch]$DryRun = $false
+    [switch]$DryRun = $false,
+    # Safer defaults:
+    # - Stop MongoDB briefly to get a consistent dbPath mirror
+    [switch]$StopMongoForMirror = $true,
+    # If media source is empty, do NOT purge destination by default
+    [switch]$AllowEmptyMediaMirror = $false
 )
 
 # Colors for output
@@ -31,6 +36,7 @@ function Write-Success {
 function Write-Error {
     param([string]$Message)
     Write-Host "[ERROR] $Message" -ForegroundColor Red
+    $script:HadErrors = $true
 }
 
 function Write-Info {
@@ -39,6 +45,8 @@ function Write-Info {
         Write-Host "[INFO] $Message" -ForegroundColor Yellow
     }
 }
+
+$script:HadErrors = $false
 
 Write-Header "SOC Chat App - Mirror Backup"
 Write-Info "Mirror Directory: $MirrorDir"
@@ -75,6 +83,19 @@ if (Test-Path $mongoSourcePath) {
             Write-Info "DRY RUN: Would mirror MongoDB from $mongoSourcePath to $mongoMirrorPath"
         } else {
             Write-Info "Mirroring MongoDB database files..."
+
+            $mongoWasRunning = $false
+            if ($StopMongoForMirror) {
+                $svc = Get-Service -Name MongoDB -ErrorAction SilentlyContinue
+                if ($svc -and $svc.Status -eq "Running") {
+                    $mongoWasRunning = $true
+                    Write-Info "Stopping MongoDB service briefly for a consistent mirror..."
+                    Stop-Service -Name MongoDB -Force -ErrorAction Stop
+                    Start-Sleep -Seconds 2
+                }
+            } else {
+                Write-Info "NOTE: MongoDB service was NOT stopped (mirror may be inconsistent)."
+            }
             
             # Use robocopy for efficient mirroring (Windows built-in)
             # /MIR = Mirror mode (deletes files in destination that don't exist in source)
@@ -105,6 +126,12 @@ if (Test-Path $mongoSourcePath) {
             } else {
                 Write-Error "MongoDB mirror failed (exit code: $exitCode)"
             }
+
+            if ($StopMongoForMirror -and $mongoWasRunning) {
+                Write-Info "Starting MongoDB service again..."
+                Start-Service -Name MongoDB -ErrorAction SilentlyContinue
+                Start-Sleep -Seconds 2
+            }
             
             # Mirror logs if they exist
             if (Test-Path $mongoLogSource) {
@@ -120,6 +147,16 @@ if (Test-Path $mongoSourcePath) {
                     "/NFL"
                 )
                 & robocopy @logRobocopyArgs | Out-Null
+            }
+
+            # Sanity check: require WiredTiger.wt and no _repair_incomplete marker
+            $wt = Join-Path $mongoMirrorPath "WiredTiger.wt"
+            $repairMarker = Join-Path $mongoMirrorPath "_repair_incomplete"
+            if (-not (Test-Path $wt)) {
+                Write-Error "Mirror DB looks incomplete (missing WiredTiger.wt): $wt"
+            }
+            if (Test-Path $repairMarker) {
+                Write-Error "Mirror DB has _repair_incomplete marker (unsafe backup): $repairMarker"
             }
         }
     } catch {
@@ -145,12 +182,20 @@ if (Test-Path $mediaSourcePath) {
             Write-Info "DRY RUN: Would mirror $mediaCount files"
         } else {
             Write-Info "Mirroring media files..."
-            
-            # Use robocopy for efficient mirroring
+            $srcCount = (Get-ChildItem $mediaSourcePath -Recurse -File -ErrorAction SilentlyContinue | Measure-Object).Count
+            $useMir = $true
+            if (($srcCount -eq 0) -and (-not $AllowEmptyMediaMirror)) {
+                # Protect against wiping the mirror if source is empty/misconfigured
+                Write-Host "[WARNING] Media source has 0 files; using copy-only mode (no deletes) to avoid wiping mirror." -ForegroundColor Yellow
+                $useMir = $false
+            }
+
+            # Use robocopy for efficient mirroring/copy
+            $mode = if ($useMir) { "/MIR" } else { "/E" }
             $robocopyArgs = @(
                 "`"$mediaSourcePath`"",
                 "`"$mediaMirrorPath`"",
-                "/MIR",
+                $mode,
                 "/R:3",
                 "/W:1",
                 "/NP",
@@ -235,4 +280,10 @@ if (-not $DryRun) {
 }
 
 Write-Host "`nMirror backup process completed!" -ForegroundColor Green
+
+if ($script:HadErrors -and (-not $DryRun)) {
+    Write-Host "[WARNING] Mirror backup completed with errors." -ForegroundColor Yellow
+    exit 1
+}
+exit 0
 

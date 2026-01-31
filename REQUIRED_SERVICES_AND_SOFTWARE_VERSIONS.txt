@@ -1,0 +1,210 @@
+SOC Chat App — Required Software / Services / Versions (New PC Server Setup)
+Last updated: 2026-01-31
+
+Purpose
+- This is a practical checklist of everything needed to run this project again on a new PC/server.
+- It lists: required services, optional services, software, versions/minimums, ports, and where versions are pinned inside the repo.
+
+================================================================================
+1) OS / Platform
+================================================================================
+- Windows Server / Windows (current working server example):
+  - Microsoft Windows 10.0.20348 (Windows Server 2022 build family)
+- You can also run on Linux, but the repo startup scripts are Windows-first (.bat/.ps1).
+
+================================================================================
+2) REQUIRED services (must be running for core app)
+================================================================================
+
+2.1 MongoDB (Database) — REQUIRED
+- Purpose: stores users, chats, messages, call state, etc.
+- Minimum: MongoDB 4.4+
+- Recommended: MongoDB 6.x / 7.x
+- Installed/Tested (this server): MongoDB 6.0.x (commonly 6.0.6)
+- Default port: 27017
+- Default DB name (if MONGO_URI not set): soc_chat_app
+- Current-server dbPath/log path are defined by:
+  - scripts\run\start_mongodb.bat
+    - dbPath: D:\soc-chat-data\MongoDB\data\db
+    - log:   D:\soc-chat-data\MongoDB\log\mongodb.log
+- If running as a Windows Service:
+  - Service name: MongoDB
+
+2.2 SOC Local API Server (Node/Express) — REQUIRED
+- File: servers\local_api_server\server.js
+- Port: 3003
+- Depends on MongoDB being up first.
+- Start (manual):
+  - cd servers\local_api_server
+  - node server.js
+- NOTE: Dependencies are installed under servers\node_modules (see section 4).
+
+================================================================================
+3) OPTIONAL services (only if you use these features)
+================================================================================
+
+3.1 Web Proxy / Offline Web Server (Node) — OPTIONAL (but common)
+- File: servers\server.js (and/or servers\offline_web_server.js)
+- Purpose: serves the web build and proxies /api -> http://127.0.0.1:3003
+- Port: 8082
+
+3.2 Ollama (Local AI Server) — OPTIONAL (AI chat)
+- Tested version (this server): 0.15.2
+- Port: 11434
+- The API uses environment variables (see servers\local_api_server\.env):
+  - OLLAMA_HOST (default in code: 127.0.0.1)
+  - OLLAMA_PORT (default: 11434)
+  - OLLAMA_MODEL (default: llama3.2)
+  - OLLAMA_VISION_MODEL (default: llava)
+- Start:
+  - ollama serve
+- Verify:
+  - ollama --version
+  - ollama list
+
+3.3 TURN server (coturn via Docker) — OPTIONAL (WebRTC calls reliability)
+- Defined in: scripts\coturn-docker-compose.yml
+- Docker image in compose: coturn/coturn:latest
+  - Recommended for stability: pin a specific tag instead of "latest".
+- Ports:
+  - 3478/udp, 3478/tcp
+  - 50000-50100/udp (media relay ports)
+  - 5349 (TLS) is referenced in compose config, but may be disabled in command args
+
+3.4 ngrok — OPTIONAL (public tunnel for mobile testing / remote access)
+- Tested version (this server): 3.22.1
+- ngrok web UI: 4040
+- Typical: tunnel HTTP to 3003, plus optional TURN exposure
+
+3.5 FCM Server (Push notifications) — OPTIONAL
+- File: servers\fcm_server_production.js
+- Port: 3000
+- Dependencies & engine requirement are in servers\package.json (see section 4).
+
+3.6 Network URLs Service — OPTIONAL
+- File: servers\local_api_server\local_network_config.js
+- Port: 3004 (commonly used by the helper service)
+
+3.7 FFmpeg — OPTIONAL (media transcoding)
+- Install if you need server-side transcoding.
+- Verify:
+  - ffmpeg -version
+
+3.8 Redis — OPTIONAL
+- Used only if you enable features that require it (caching/rate limiting/queues).
+- Recommended: Redis 6+ / 7+
+
+================================================================================
+4) REQUIRED software (install on the server)
+================================================================================
+
+4.1 Git — REQUIRED (to clone/update repo)
+- Tested version (this server): 2.45.1.windows.1
+- Verify:
+  - git --version
+
+4.2 Node.js + npm — REQUIRED (backend runtime)
+- Tested version (this server): Node v22.20.0, npm 10.9.3
+- Minimum (servers): Node >=18.0.0, npm >=9.0.0  (from servers\package.json)
+- Cloud Functions engine: Node 18 (from functions\package.json)
+- Verify:
+  - node -v
+  - npm -v
+
+4.3 Docker + Docker Compose — REQUIRED ONLY if you use coturn via docker-compose
+- Needed for: scripts\coturn-docker-compose.yml
+- Verify:
+  - docker --version
+  - docker compose version
+
+4.4 Firebase CLI — REQUIRED ONLY if deploying functions (notifications)
+- Needed for: functions\ (firebase deploy / emulators)
+- Verify:
+  - firebase --version
+
+================================================================================
+5) Mobile/Web build tooling (only if you rebuild the client apps)
+================================================================================
+
+5.1 Flutter + Dart — REQUIRED ONLY for building Android/iOS/Web app bundles
+- Dart SDK constraint: ^3.9.0 (from pubspec.yaml)
+- Tested installs on this server (example):
+  - Flutter 3.35.3 (stable)
+  - Dart 3.9.2 (stable)
+- Verify:
+  - flutter --version
+  - dart --version
+- Dependency versions are pinned in:
+  - pubspec.lock
+
+5.2 Android toolchain (only if building Android)
+- Gradle wrapper: 8.12 (from android\gradle\wrapper\gradle-wrapper.properties)
+- Google Services Gradle plugin: 4.4.1 (from android\build.gradle.kts)
+- Android NDK: 27.0.12077973 (from android\app\build.gradle.kts)
+- JDK: typically 17+ is required by modern Android tooling (install a current LTS JDK).
+
+5.3 iOS toolchain (macOS only, only if building iOS)
+- Xcode + CocoaPods
+- Exact pod versions are pinned in: ios\Podfile.lock (if present)
+
+================================================================================
+6) Ports (firewall/router checklist)
+================================================================================
+
+- 27017  MongoDB
+- 3003   Local API server
+- 8082   Web proxy/offline server
+- 11434  Ollama (AI)
+- 3000   FCM server
+- 4040   ngrok UI
+- 3004   Network URLs service
+- 3478   TURN (coturn) TCP/UDP
+- 50000-50100 UDP media relay (coturn)
+- 5349   TURN TLS (only if enabled)
+
+================================================================================
+7) Where versions are pinned (do not guess)
+================================================================================
+
+- Node server dependencies: servers\package.json and servers\package-lock.json
+- Firebase functions dependencies: functions\package.json (+ lock file if present)
+- Flutter/Dart dependencies: pubspec.yaml + pubspec.lock
+- Android tooling: android\gradle\wrapper\gradle-wrapper.properties, android\build.gradle.kts, android\app\build.gradle.kts
+- TURN Docker image: scripts\coturn-docker-compose.yml (consider pinning a tag)
+
+================================================================================
+8) Minimal “bring-up” order (new server)
+================================================================================
+
+1) Install software (Git, Node/npm, MongoDB; optional: Docker, Ollama, ngrok, Firebase CLI)
+2) Clone repo
+3) Install server dependencies:
+   - cd servers
+   - npm ci     (recommended)  OR  npm install
+4) Start MongoDB (service or start_mongodb.bat)
+5) Start API server:
+   - cd servers\local_api_server
+   - node server.js
+6) Start Web server (optional, for web UI):
+   - cd servers
+   - node server.js
+7) Start optional services as needed:
+   - ollama serve
+   - docker compose -f scripts\coturn-docker-compose.yml up -d
+   - ngrok start --all --config=ngrok.yml
+   - node servers\fcm_server_production.js
+
+================================================================================
+9) MUST-backup items (to fully restore on a new server)
+================================================================================
+
+- MongoDB data (recommended: mongodump/mongorestore; alternatively file-level backup of the dbPath)
+- Uploaded media directory (commonly servers\local_api_server\uploads, but configurable)
+- Environment files (DO NOT commit to git):
+  - servers\local_api_server\.env
+  - servers\.env.production
+- Firebase Admin service account JSON (wherever you store it)
+- Android signing:
+  - android\key.properties + referenced keystore (.jks)
+- Any ngrok auth token / reserved domain settings (if used)
+

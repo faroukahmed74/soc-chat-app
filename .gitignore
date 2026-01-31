@@ -58,6 +58,10 @@ servers/.env
 servers/dist/
 servers/build/
 
+# Backup runtime artifacts (generated on this machine)
+scripts/realtime_backup_pid.txt
+scripts/realtime_backup_job.txt
+
 # Environment variables
 .env
 .env.local
