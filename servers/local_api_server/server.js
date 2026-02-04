@@ -540,13 +540,31 @@ async function connectToMongo(retryCount = 0) {
           try {
             // Try different possible paths
             const possiblePaths = [
-              path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json'),
-              path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-bc21fed17ba4.json'),
-              path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-ebf6280fb64f.json'),
               path.join(__dirname, 'assets', 'service-account', 'soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json'),
               path.join(__dirname, 'assets', 'service-account', 'soc-chat-app-ca57e-bc21fed17ba4.json'),
               path.join(__dirname, 'assets', 'service-account', 'soc-chat-app-ca57e-ebf6280fb64f.json'),
+              path.join(__dirname, 'assets', 'soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json'),
+              path.join(__dirname, 'assets', 'soc-chat-app-ca57e-bc21fed17ba4.json'),
+              path.join(__dirname, 'assets', 'soc-chat-app-ca57e-ebf6280fb64f.json'),
+              path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json'),
+              path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-bc21fed17ba4.json'),
+              path.join(__dirname, '..', 'assets', 'service-account', 'soc-chat-app-ca57e-ebf6280fb64f.json'),
             ];
+            // Also scan assets/ and assets/service-account/ for any *firebase*adminsdk*.json
+            const assetsDir = path.join(__dirname, 'assets');
+            const serviceAccountDir = path.join(assetsDir, 'service-account');
+            for (const dir of [serviceAccountDir, assetsDir]) {
+              if (fs.existsSync(dir)) {
+                try {
+                  const files = fs.readdirSync(dir);
+                  for (const f of files) {
+                    if (f.endsWith('.json') && (f.includes('firebase') || f.includes('adminsdk'))) {
+                      possiblePaths.unshift(path.join(dir, f));
+                    }
+                  }
+                } catch (_) {}
+              }
+            }
             
             let serviceAccountPath = null;
             for (const p of possiblePaths) {

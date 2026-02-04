@@ -1,0 +1,398 @@
+const express = require('express');
+const router = express.Router();
+const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
+const { MongoClient, ObjectId } = require('mongodb');
+
+// MongoDB connection
+let db;
+const mongoUri = process.env.MONGO_URI || 'mongodb://localhost:27017/soc_chat_app';
+// Ensure we use the same JWT secret as the main server
+const JWT_SECRET = process.env.JWT_SECRET || 'your_jwt_secret_here';
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+
+// Connect to MongoDB
+async function connectDB() {
+  if (db) return db;
+  try {
+    const client = new MongoClient(mongoUri);
+    await client.connect();
+    db = client.db();
+    return db;
+  } catch (error) {
+    // Fallback: if auth fails, try connecting without credentials to localhost
+    if (error?.codeName === 'AuthenticationFailed' || error?.code === 18) {
+      console.warn('Auth routes: Mongo auth failed, falling back to no-auth localhost connection');
+      const fallbackUri = 'mongodb://localhost:27017/soc_chat_app';
+      const client = new MongoClient(fallbackUri);
+      await client.connect();
+      db = client.db();
+      return db;
+    }
+    throw error;
+  }
+}
+
+// Register a new user
+router.post('/register', async (req, res) => {
+  try {
+    const { email, password, name, displayName, phoneNumber } = req.body;
+    
+    // Support both 'displayName' and 'name' for compatibility
+    const finalDisplayName = displayName || name;
+    
+    // Validate input
+    if (!email || !password || !finalDisplayName) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+    
+    const database = await connectDB();
+    const usersCollection = database.collection('users');
+    
+    // Check if user already exists
+    const existingUser = await usersCollection.findOne({ email });
+    if (existingUser) {
+      // If user exists but phone number or displayName is missing, update them
+      const updateFields = {};
+      if (phoneNumber && !existingUser.phoneNumber) {
+        updateFields.phoneNumber = phoneNumber;
+      }
+      if (finalDisplayName && !existingUser.displayName) {
+        updateFields.displayName = finalDisplayName;
+        // Also update name for backward compatibility
+        updateFields.name = finalDisplayName;
+      }
+      
+      if (Object.keys(updateFields).length > 0) {
+        updateFields.updatedAt = new Date();
+        await usersCollection.updateOne(
+          { _id: existingUser._id },
+          { $set: updateFields }
+        );
+        return res.status(200).json({ 
+          message: 'User information updated',
+          user: {
+            id: existingUser._id.toString(),
+            email: existingUser.email,
+            displayName: existingUser.displayName || finalDisplayName,
+            name: existingUser.displayName || existingUser.name || finalDisplayName,
+            phoneNumber: existingUser.phoneNumber || phoneNumber || '',
+            role: existingUser.role || 'user'
+          }
+        });
+      }
+      return res.status(400).json({ message: 'User already exists' });
+    }
+    
+    // Hash password
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    
+    // Create user - save as displayName (primary) and name (for backward compatibility)
+    const now = new Date();
+    const newUser = {
+      email,
+      password: hashedPassword,
+      displayName: finalDisplayName,
+      name: finalDisplayName, // Also save as name for backward compatibility
+      phoneNumber: phoneNumber || '',
+      role: 'user',
+      status: 'active',
+      createdAt: now,
+      updatedAt: now,
+      isOnline: false, // New users start offline until they log in
+      lastSeen: now
+    };
+    
+    const result = await usersCollection.insertOne(newUser);
+    
+    // Create token
+    const token = jwt.sign(
+      { id: result.insertedId.toString(), role: 'user', email, displayName: finalDisplayName },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+    
+    res.status(201).json({
+      message: 'User registered successfully',
+      token,
+      user: {
+        id: result.insertedId.toString(),
+        email,
+        displayName: finalDisplayName,
+        name: finalDisplayName,
+        phoneNumber: phoneNumber || '',
+        role: 'user'
+      }
+    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Login user
+router.post('/login', async (req, res) => {
+  try {
+    const { email, password } = req.body;
+    
+    // Validate input
+    if (!email || !password) {
+      return res.status(400).json({ message: 'All fields are required' });
+    }
+    
+    const database = await connectDB();
+    const usersCollection = database.collection('users');
+    
+    // Check if user exists
+    const user = await usersCollection.findOne({ email });
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+    
+    // Check password
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(400).json({ message: 'Invalid credentials' });
+    }
+    
+    // Check if user is disabled
+    if (user.disabled === true) {
+      return res.status(403).json({ 
+        message: 'Your account has been disabled. Please contact an administrator.' 
+      });
+    }
+    
+    // Check if user is locked
+    if (user.isLocked === true) {
+      const lockReason = user.lockedReason || 'No reason provided';
+      const lockedAt = user.lockedAt ? new Date(user.lockedAt).toLocaleString() : 'Unknown';
+      return res.status(403).json({ 
+        message: `Your account has been locked. Reason: ${lockReason}. Locked at: ${lockedAt}. Please contact an administrator.` 
+      });
+    }
+    
+    // Update online status and last seen
+    const now = new Date();
+    await usersCollection.updateOne(
+      { _id: user._id },
+      { 
+        $set: { 
+          isOnline: true,
+          lastSeen: now,
+          updatedAt: now
+        } 
+      }
+    );
+    
+    // Create token
+    const token = jwt.sign(
+      { id: user._id.toString(), role: user.role || 'user', email: user.email },
+      JWT_SECRET,
+      { expiresIn: JWT_EXPIRES_IN }
+    );
+    
+    res.status(200).json({
+      message: 'Login successful',
+      token,
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        displayName: user.displayName || user.name || '',
+        name: user.displayName || user.name || '',
+        phoneNumber: user.phoneNumber || '',
+        role: user.role || 'user'
+      }
+    });
+  } catch (error) {
+    console.error('Login error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get current user
+router.get('/user', async (req, res) => {
+  try {
+    // Get token from header
+    const token = req.headers.authorization?.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ message: 'No token, authorization denied' });
+    }
+    
+    // Verify token
+    const decoded = jwt.verify(token, JWT_SECRET);
+    
+    const database = await connectDB();
+    const usersCollection = database.collection('users');
+    
+    // Get user
+    const user = await usersCollection.findOne({ _id: new ObjectId(decoded.id) });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+    
+    res.status(200).json({
+      user: {
+        id: user._id.toString(),
+        email: user.email,
+        displayName: user.displayName || user.name || '',
+        name: user.displayName || user.name || '',
+        phoneNumber: user.phoneNumber || '',
+        role: user.role || 'user'
+      }
+    });
+  } catch (error) {
+    console.error('Get user error:', error);
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Verify token validity
+router.get('/verify', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization;
+    const token = authHeader && authHeader.split(' ')[1];
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    // Verify token
+    const decoded = jwt.verify(token, JWT_SECRET);
+
+    // Check user existence and status
+    const database = await connectDB();
+    const usersCollection = database.collection('users');
+    const user = await usersCollection.findOne({ _id: new ObjectId(decoded.id) });
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Check if user is disabled
+    if (user.disabled === true) {
+      return res.status(403).json({ 
+        valid: false,
+        message: 'Your account has been disabled. Please contact an administrator.' 
+      });
+    }
+    
+    // Check if user is locked
+    if (user.isLocked === true) {
+      return res.status(403).json({ 
+        valid: false,
+        message: 'Your account has been locked. Please contact an administrator.' 
+      });
+    }
+
+    return res.status(200).json({ valid: true });
+  } catch (error) {
+    if (error.name === 'JsonWebTokenError') {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+    console.error('Verify token error:', error);
+    return res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Get user profile
+router.get('/profile', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const database = await connectDB();
+    const usersCollection = database.collection('users');
+    
+    const user = await usersCollection.findOne({ _id: new ObjectId(decoded.id) });
+    
+    if (!user) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Return user data without password
+    const { password, ...userData } = user;
+    res.json(userData);
+  } catch (error) {
+    console.error('Profile fetch error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+// Update user profile
+router.put('/profile', async (req, res) => {
+  try {
+    const token = req.headers.authorization?.replace('Bearer ', '');
+    
+    if (!token) {
+      return res.status(401).json({ message: 'No token provided' });
+    }
+
+    const decoded = jwt.verify(token, JWT_SECRET);
+    const database = await connectDB();
+    const usersCollection = database.collection('users');
+    
+    // Support both 'phone' and 'phoneNumber' for compatibility
+    const { displayName, email, phone, phoneNumber, bio, password } = req.body;
+    const finalPhoneNumber = phoneNumber || phone || '';
+    
+    // Validate required fields
+    if (!displayName || !email) {
+      return res.status(400).json({ message: 'Display name and email are required' });
+    }
+
+    // Check if email is already taken by another user
+    const existingUser = await usersCollection.findOne({ 
+      email: email,
+      _id: { $ne: new ObjectId(decoded.id) }
+    });
+    
+    if (existingUser) {
+      return res.status(400).json({ message: 'Email is already taken' });
+    }
+
+    const updateData = {
+      displayName: displayName.trim(),
+      name: displayName.trim(), // Also update name for backward compatibility
+      email: email.trim(),
+      phoneNumber: finalPhoneNumber.trim(),
+      phone: finalPhoneNumber.trim(), // Also save as phone for backward compatibility
+      bio: bio?.trim() || '',
+      updatedAt: new Date()
+    };
+
+    // Hash password if provided
+    if (password && password.trim() !== '') {
+      const saltRounds = 10;
+      updateData.password = await bcrypt.hash(password, saltRounds);
+    }
+
+    const result = await usersCollection.updateOne(
+      { _id: new ObjectId(decoded.id) },
+      { $set: updateData }
+    );
+
+    if (result.matchedCount === 0) {
+      return res.status(404).json({ message: 'User not found' });
+    }
+
+    // Return updated user data
+    const updatedUser = await usersCollection.findOne({ _id: new ObjectId(decoded.id) });
+    const { password: _, ...userData } = updatedUser;
+    
+    res.json({
+      message: 'Profile updated successfully',
+      user: userData
+    });
+  } catch (error) {
+    console.error('Profile update error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+module.exports = router;

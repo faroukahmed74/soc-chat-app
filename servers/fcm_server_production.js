@@ -4,6 +4,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
+const fs = require('fs');
 require('dotenv').config();
 
 // Initialize Express app
@@ -63,8 +64,30 @@ try {
       client_x509_cert_url: process.env.FIREBASE_CLIENT_X509_CERT_URL,
     };
   } else {
-    // In development, use local service account file
-    serviceAccount = require('./assets/service-account/soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json');
+    // In development, use local service account file - check multiple locations
+    const candidates = [
+      path.join(__dirname, 'assets', 'service-account', 'soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json'),
+      path.join(__dirname, 'local_api_server', 'assets', 'service-account', 'soc-chat-app-ca57e-firebase-adminsdk-fbsvc-b395336526.json'),
+      path.join(__dirname, 'local_api_server', 'assets', 'service-account', 'soc-chat-app-ca57e-bc21fed17ba4.json'),
+      path.join(__dirname, 'local_api_server', 'assets', 'service-account', 'soc-chat-app-ca57e-ebf6280fb64f.json'),
+    ];
+    let found = null;
+    for (const p of candidates) {
+      if (fs.existsSync(p)) { found = p; break; }
+    }
+    if (!found) {
+      for (const dir of [
+        path.join(__dirname, 'assets', 'service-account'),
+        path.join(__dirname, 'local_api_server', 'assets', 'service-account'),
+      ]) {
+        if (!fs.existsSync(dir)) continue;
+        const files = fs.readdirSync(dir);
+        const adminsdk = files.find(f => f.includes('firebase') && f.includes('adminsdk') && f.endsWith('.json'));
+        if (adminsdk) { found = path.join(dir, adminsdk); break; }
+      }
+    }
+    if (!found) throw new Error('Firebase service account JSON not found. Place it in servers/assets/service-account/ or servers/local_api_server/assets/service-account/');
+    serviceAccount = require(found);
   }
 
   admin.initializeApp({

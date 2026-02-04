@@ -18,7 +18,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # of the product and file versions while build-number is used as the build suffix.
 version: 1.0.33+33
 environment:
-  sdk: '^3.9.0'
+  sdk: '>=3.8.0 <4.0.0'
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -49,7 +49,7 @@ dependencies:
   # Audio recording and playback - Voice messages
   audioplayers: ^5.2.1
   record: ^5.2.1
-  vibration: ^1.8.4
+  vibration: ^3.1.5
   
   # Video player for video messages
   video_player: ^2.8.12
@@ -68,7 +68,7 @@ dependencies:
   url_launcher: ^6.2.6
 
   # WebRTC for voice/video calls
-  flutter_webrtc: ^0.9.48
+  flutter_webrtc: ^1.0.0
 
   # For in-app notifications - Unified notification system
   flutter_local_notifications: ^17.2.4

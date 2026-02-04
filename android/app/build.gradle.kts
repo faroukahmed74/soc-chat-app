@@ -51,32 +51,31 @@ android {
             } else {
                 // Fallback to debug keystore if key.properties not found
                 val localDebugKeystore = file("debug.keystore")
-                if (localDebugKeystore.exists()) {
-                    storeFile = localDebugKeystore
-                    println("[signingConfigs] Using local debug.keystore for release signing")
-                } else {
-                    val userProfile = System.getenv("USERPROFILE") ?: System.getProperty("user.home")
-                    val globalDebugKeystorePath = "$userProfile/.android/debug.keystore"
-                    val globalDebugKeystore = file(globalDebugKeystorePath)
-                    if (globalDebugKeystore.exists()) {
-                        storeFile = globalDebugKeystore
-                        println("[signingConfigs] Using global debug.keystore: $globalDebugKeystorePath")
-                    } else {
-                        println("[signingConfigs] WARNING: debug.keystore not found locally or globally. Build may fail.")
-                        storeFile = localDebugKeystore // keep default path
-                    }
+                val userProfile = System.getenv("USERPROFILE") ?: System.getProperty("user.home")
+                val globalDebugKeystorePath = "$userProfile/.android/debug.keystore"
+                val globalDebugKeystore = file(globalDebugKeystorePath)
+                val keystoreToUse = when {
+                    localDebugKeystore.exists() -> localDebugKeystore.also { println("[signingConfigs] Using local debug.keystore") }
+                    globalDebugKeystore.exists() -> globalDebugKeystore.also { println("[signingConfigs] Using global debug.keystore") }
+                    else -> null
                 }
-                storePassword = "android"
-                // Default Android debug keystore alias is 'AndroidDebugKey'
-                keyAlias = "AndroidDebugKey"
-                keyPassword = "android"
+                if (keystoreToUse != null) {
+                    storeFile = keystoreToUse
+                    storePassword = "android"
+                    keyAlias = "AndroidDebugKey"
+                    keyPassword = "android"
+                }
             }
         }
     }
 
     buildTypes {
         release {
-            signingConfig = signingConfigs.getByName("release")
+            signingConfig = if (signingConfigs.getByName("release").storeFile?.exists() == true) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
             isMinifyEnabled = false
             isShrinkResources = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

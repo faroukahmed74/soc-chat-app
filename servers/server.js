@@ -179,8 +179,17 @@ function fsExists(p) {
 }
 
 // Handle all routes by serving index.html (for SPA) - MUST come last
+const buildWebIndex = path.join(__dirname, '..', 'build', 'web', 'index.html');
 app.get('*', (req, res) => {
-    res.sendFile(path.join(__dirname, '..', 'build', 'web', 'index.html'));
+  if (!require('fs').existsSync(buildWebIndex)) {
+    res.status(503).setHeader('Content-Type', 'text/html').end(
+      '<!DOCTYPE html><html><head><title>SOC Chat App</title></head><body>' +
+      '<h1>Web build not found</h1><p>Run from project root: <code>flutter build web --release</code> or <code>.\scripts\run_build_web.ps1</code></p>' +
+      '<p>Then restart the web server. Build output should be at <code>build/web/</code>.</p></body></html>'
+    );
+    return;
+  }
+  res.sendFile(buildWebIndex);
 });
 
 // Start the server

@@ -153,6 +153,23 @@ class EnhancedUnifiedMediaService {
     }
   }
 
+  /// Pick multiple videos from gallery (opens native video gallery, not documents)
+  static Future<List<EnhancedMediaResult>> pickMultipleVideosFromGallery(BuildContext context) async {
+    try {
+      Log.i('Starting multiple video selection from gallery', 'ENHANCED_MEDIA_SERVICE');
+
+      if (kIsWeb) {
+        return await _pickMultipleVideosFromGalleryWeb(context);
+      } else {
+        return await _pickMultipleVideosFromGalleryMobile(context);
+      }
+    } catch (e) {
+      Log.e('Error picking multiple videos from gallery', 'ENHANCED_MEDIA_SERVICE', e);
+      _showErrorSnackBar(context, 'Failed to select videos: $e');
+      return [];
+    }
+  }
+
   /// Pick multiple media files (images, videos, documents)
   static Future<List<EnhancedMediaResult>> pickMultipleMedia(BuildContext context) async {
     try {
@@ -493,6 +510,106 @@ class EnhancedUnifiedMediaService {
       Log.e('Error picking video from gallery on mobile', 'ENHANCED_MEDIA_SERVICE', e);
       _showErrorSnackBar(context, 'Failed to select video: ${e.toString()}');
       return null;
+    }
+  }
+
+  static Future<List<EnhancedMediaResult>> _pickMultipleVideosFromGalleryMobile(BuildContext context) async {
+    try {
+      Log.i('Requesting videos permission for multi-video gallery', 'ENHANCED_MEDIA_SERVICE');
+
+      final hasPermission = await _requestVideosPermission(context);
+      if (!hasPermission) {
+        Log.w('Videos permission denied for video gallery', 'ENHANCED_MEDIA_SERVICE');
+        _showPermissionDeniedDialog(context, 'Videos', 'video library access is needed to select videos');
+        return [];
+      }
+
+      Log.i('Videos permission granted, opening multi-video gallery', 'ENHANCED_MEDIA_SERVICE');
+
+      final List<XFile> videos = await _picker.pickMultiVideo(
+        maxDuration: const Duration(minutes: 10),
+        limit: 10,
+      );
+
+      if (videos.isEmpty) {
+        Log.i('User cancelled or no videos selected', 'ENHANCED_MEDIA_SERVICE');
+        return [];
+      }
+
+      Log.i('Selected ${videos.length} videos from gallery', 'ENHANCED_MEDIA_SERVICE');
+
+      final results = <EnhancedMediaResult>[];
+      for (final video in videos) {
+        try {
+          final bytes = await video.readAsBytes();
+          final duration = await _getVideoDuration(video.path);
+          final extension = video.name.split('.').last.toLowerCase();
+          final mimeType = _getMimeTypeFromExtension(extension);
+
+          results.add(EnhancedMediaResult(
+            bytes: bytes,
+            type: 'video',
+            fileName: video.name,
+            mimeType: mimeType,
+            originalSize: bytes.length,
+            optimizedSize: bytes.length,
+            duration: duration,
+            metadata: {
+              'source': 'gallery',
+              'platform': Platform.isIOS ? 'ios' : 'android',
+              'timestamp': DateTime.now().toIso8601String(),
+              'path': video.path,
+            },
+          ));
+        } catch (e) {
+          Log.e('Error processing video ${video.name}', 'ENHANCED_MEDIA_SERVICE', e);
+        }
+      }
+
+      return results;
+    } catch (e) {
+      Log.e('Error picking multiple videos from gallery on mobile', 'ENHANCED_MEDIA_SERVICE', e);
+      _showErrorSnackBar(context, 'Failed to select videos: ${e.toString()}');
+      return [];
+    }
+  }
+
+  static Future<List<EnhancedMediaResult>> _pickMultipleVideosFromGalleryWeb(BuildContext context) async {
+    try {
+      Log.i('Picking multiple videos on web', 'ENHANCED_MEDIA_SERVICE');
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.video,
+        allowMultiple: true,
+        withData: true,
+      );
+
+      if (result == null || result.files.isEmpty) return [];
+
+      final mediaResults = <EnhancedMediaResult>[];
+      for (final file in result.files) {
+        if (file.bytes != null && file.bytes!.isNotEmpty) {
+          final extension = file.extension?.toLowerCase() ?? 'mp4';
+          final mimeType = _getMimeTypeFromExtension(extension);
+
+          mediaResults.add(EnhancedMediaResult(
+            bytes: file.bytes!,
+            type: 'video',
+            fileName: file.name,
+            mimeType: mimeType,
+            originalSize: file.bytes!.length,
+            optimizedSize: file.bytes!.length,
+            metadata: {
+              'source': 'file_picker',
+              'platform': 'web',
+              'timestamp': DateTime.now().toIso8601String(),
+            },
+          ));
+        }
+      }
+      return mediaResults;
+    } catch (e) {
+      Log.e('Error picking multiple videos on web', 'ENHANCED_MEDIA_SERVICE', e);
+      return [];
     }
   }
 

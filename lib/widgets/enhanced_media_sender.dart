@@ -1789,9 +1789,8 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
   Future<void> _pickVideoFromGallery() async {
     try {
       Log.i('Starting multiple video pick from gallery', 'ENHANCED_MEDIA_SENDER');
-      // Use pickMultipleMedia with video filter
-      final allResults = await EnhancedUnifiedMediaService.pickMultipleMedia(context);
-      final results = allResults.where((r) => r.type == 'video').toList();
+      // Use pickMultipleVideosFromGallery to open native video gallery (not documents picker)
+      final results = await EnhancedUnifiedMediaService.pickMultipleVideosFromGallery(context);
       if (results.isNotEmpty) {
         setState(() {
           _selectedMedia.addAll(results);

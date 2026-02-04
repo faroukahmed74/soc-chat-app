@@ -14,6 +14,13 @@ REM ============================================================================
 
 cd /d "%~dp0"
 set "PROJECT_ROOT=%~dp0"
+if defined SOC_CHAT_APP_ROOT set "PROJECT_ROOT=%SOC_CHAT_APP_ROOT%"
+if not "%PROJECT_ROOT:~-1%"=="\" set "PROJECT_ROOT=%PROJECT_ROOT%\"
+if not exist "%PROJECT_ROOT%servers\local_api_server\server.js" set "PROJECT_ROOT=E:\GitHub\soc-chat-app\"
+if not exist "%PROJECT_ROOT%servers\local_api_server\server.js" (
+    echo ERROR: Project root not found. Run from SOC Chat App folder or set SOC_CHAT_APP_ROOT.
+    exit /b 1
+)
 set "API_SERVER_DIR=%PROJECT_ROOT%servers\local_api_server"
 
 set "CMD=%~1"
@@ -48,6 +55,10 @@ exit /b 1
 echo =============================================================================
 echo Starting ALL SOC Chat App services...
 echo =============================================================================
+
+REM Ensure ngrok and other tools in E:\Programs are on PATH
+if exist "E:\Programs" set "PATH=E:\Programs;E:\Programs\ngrok;%PATH%"
+if exist "E:\Programs\ngrok" set "PATH=E:\Programs\ngrok;%PATH%"
 
 echo [1/7] Starting MongoDB...
 net start MongoDB >nul 2>&1
@@ -158,8 +169,8 @@ exit /b %errorlevel%
 echo =============================================================================
 echo SOC Chat App - Services Status
 echo =============================================================================
-echo MongoDB:
-net start | findstr /i "MongoDB" >nul && (echo   RUNNING) || (echo   NOT RUNNING)
+echo MongoDB (27017):
+netstat -an | findstr ":27017" | findstr "LISTENING" >nul && (echo   LISTENING) || (echo   NOT LISTENING)
 echo API (3003):
 netstat -an | findstr ":3003" | findstr "LISTENING" >nul && (echo   LISTENING) || (echo   NOT LISTENING)
 echo Web (8082):
