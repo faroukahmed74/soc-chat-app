@@ -1,7 +1,7 @@
 // SOC Chat App - Local API Server
 // Replacement for Firebase services using MongoDB and Express
 
-require('dotenv').config();
+require('dotenv').config({ path: require('path').join(__dirname, '.env') });
 const express = require('express');
 const cors = require('cors');
 const morgan = require('morgan');
@@ -35,22 +35,24 @@ const server = http.createServer(app);
 app.set('trust proxy', true);
 // CORS allowed origins (comma-separated). Example: https://api.example.com,http://localhost:8080
 // Allow any local network IP on common ports
-const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8080,http://localhost:8082')
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || 'http://localhost:8080,http://localhost:8082,https://soc-chat-app.ngrok-free.app,http://soc-chat-app.ngrok-free.app')
   .split(',')
   .map(o => o.trim())
   .filter(Boolean);
-  
-// Note: Local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x) are 
+
+// Note: Local network IPs (192.168.x.x, 10.x.x.x, 172.16-31.x.x) are
 // automatically allowed by CORS configuration below
 
-// Add mobile-specific origins for better compatibility
+// Add mobile-specific origins for better compatibility (mobile via ngrok, web via proxy)
 const mobileOrigins = [
   'capacitor://localhost',
   'ionic://localhost',
   'http://localhost',
   'https://localhost',
   'http://127.0.0.1',
-  'https://127.0.0.1'
+  'https://127.0.0.1',
+  'https://soc-chat-app.ngrok-free.app',  // Mobile app via ngrok tunnel
+  'http://soc-chat-app.ngrok-free.app'
 ];
 
 const allOrigins = [...allowedOrigins, ...mobileOrigins];

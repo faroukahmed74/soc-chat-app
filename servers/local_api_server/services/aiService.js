@@ -115,12 +115,14 @@ function getOllamaHostCandidates() {
  * Check if Ollama is available and running
  */
 let cachedOllamaHealth = { ok: false, ts: 0 };
+const HEALTH_CACHE_MS_OK = 3000;   // Cache success for 3s
+const HEALTH_CACHE_MS_FAIL = 1000; // Cache failure for 1s (retry sooner)
 async function checkOllamaHealth() {
   const candidates = getOllamaHostCandidates();
   return new Promise((resolve) => {
     const now = Date.now();
-    // Cache briefly to avoid spamming /api/tags during bursts.
-    if (now - cachedOllamaHealth.ts < 3000) {
+    const cacheMs = cachedOllamaHealth.ok ? HEALTH_CACHE_MS_OK : HEALTH_CACHE_MS_FAIL;
+    if (now - cachedOllamaHealth.ts < cacheMs) {
       resolve(!!cachedOllamaHealth.ok);
       return;
     }
@@ -835,8 +837,12 @@ async function isAIMessage(senderId, db) {
  */
 async function getConversationHistory(chatId, db, limit = MAX_CONTEXT_MESSAGES) {
   try {
+    const { ObjectId } = require('mongodb');
+    const chatIdFilter = typeof chatId === 'string' && ObjectId.isValid(chatId)
+      ? new ObjectId(chatId)
+      : chatId;
     const messages = await db.collection('messages')
-      .find({ chatId: chatId.toString() })
+      .find({ chatId: chatIdFilter })
       .sort({ createdAt: -1 })
       .limit(limit)
       .toArray();
@@ -996,7 +1002,7 @@ async function processMessageForAIInternal(messageData, chat, db, io) {
     );
 
     if (!aiResponse) {
-      console.warn('[AI Service] Failed to generate response');
+      console.warn('[AI Service] Failed to generate response (check Ollama at http://' + (process.env.OLLAMA_HOST || '127.0.0.1') + ':' + (process.env.OLLAMA_PORT || '11434') + ', model: ' + (process.env.OLLAMA_MODEL || 'llama3.2:1b') + ')');
       // Don't stay silent; users interpret this as "server hung".
       const fallbackText =
         'AI is temporarily unavailable (Ollama not responding). Please try again in a minute.';

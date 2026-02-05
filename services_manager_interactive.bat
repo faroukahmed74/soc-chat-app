@@ -53,7 +53,7 @@ if defined SM_CHOICE (
     set /p "choice=Enter your choice (1-7): "
 )
 
-if "%choice%"=="1" goto START_ALL
+if "%choice%"=="1" goto START_ALL_VIA_BAT
 if "%choice%"=="2" goto STOP_ALL
 if "%choice%"=="3" goto RESTART_ALL
 if "%choice%"=="4" goto CHECK_STATUS
@@ -72,7 +72,24 @@ if defined SM_NONINTERACTIVE (
 goto MAIN_MENU
 
 :: =============================================================================
-:: START ALL SERVICES
+:: START ALL SERVICES (via start_all_services.bat)
+:: =============================================================================
+:START_ALL_VIA_BAT
+cls
+echo =============================================================================
+echo Starting All Services (via start_all_services.bat)...
+echo =============================================================================
+echo.
+if exist "%PROJECT_ROOT%start_all_services.bat" (
+    call "%PROJECT_ROOT%start_all_services.bat"
+) else (
+    echo ERROR: start_all_services.bat not found
+    pause
+)
+goto MAIN_MENU
+
+:: =============================================================================
+:: START ALL SERVICES (inline - kept for RESTART_ALL)
 :: =============================================================================
 :START_ALL
 cls
@@ -469,15 +486,16 @@ echo Start Individual Service
 echo =============================================================================
 echo.
 echo 1. MongoDB
-echo 2. API Server (Port 3003) - Includes Call System
-echo 3. TURN Server (coturn Docker) - Optional
-echo 4. ngrok Tunnel
-echo 5. Web Server (Port 8082)
-echo 6. Network URLs Service - Optional
-echo 7. FCM Server (Port 3000) - Optional
-echo 8. Back to Main Menu
+echo 2. Ollama AI (Port 11434) - For AI chat
+echo 3. API Server (Port 3003) - Includes AI + Call System
+echo 4. TURN Server (coturn Docker) - Optional
+echo 5. ngrok Tunnel
+echo 6. Web Server (Port 8082)
+echo 7. Network URLs Service - Optional
+echo 8. FCM Server (Port 3000) - Optional
+echo 9. Back to Main Menu
 echo.
-set /p "service_choice=Enter service to start (1-8): "
+set /p "service_choice=Enter service to start (1-9): "
 
 if "%service_choice%"=="1" (
     netstat -an | findstr ":27017" | findstr "LISTENING" >nul
@@ -490,11 +508,26 @@ if "%service_choice%"=="1" (
     pause
 )
 if "%service_choice%"=="2" (
+    netstat -an | findstr ":11434" | findstr "LISTENING" >nul
+    if !errorlevel! equ 0 (
+        echo Ollama already running on port 11434
+    ) else (
+        where ollama >nul 2>&1
+        if !errorlevel! equ 0 (
+            start /b "" ollama serve >nul 2>&1
+            echo Ollama AI started on port 11434
+        ) else (
+            echo Ollama not found in PATH. Install from https://ollama.ai
+        )
+    )
+    pause
+)
+if "%service_choice%"=="3" (
     start /D "%API_SERVER_DIR%" "SOC Chat App - API Server" cmd /c "set PORT=3003 ^&^& set HOST=0.0.0.0 ^&^& node server.js"
     echo API Server started
     pause
 )
-if "%service_choice%"=="3" (
+if "%service_choice%"=="4" (
     set "COTURN_COMPOSE=%PROJECT_ROOT%scripts\coturn-docker-compose.yml"
     if exist "%COTURN_COMPOSE%" (
         docker-compose -f "%COTURN_COMPOSE%" up -d >nul 2>&1
@@ -508,7 +541,7 @@ if "%service_choice%"=="3" (
     )
     pause
 )
-if "%service_choice%"=="4" (
+if "%service_choice%"=="5" (
     :: Always stop any existing ngrok processes first
     taskkill /f /im ngrok.exe >nul 2>&1
     ping 127.0.0.1 -n 1 -w 2000 >nul
@@ -536,12 +569,12 @@ if "%service_choice%"=="4" (
     :NGROK_INDIVIDUAL_STARTED
     pause
 )
-if "%service_choice%"=="5" (
+if "%service_choice%"=="6" (
     start /D "%PROJECT_ROOT%servers" "SOC Chat App - Web Server" cmd /c "set PORT=8082 ^&^& set API_TARGET=http://localhost:3003 ^&^& node server.js"
     echo Web server started
     pause
 )
-if "%service_choice%"=="6" (
+if "%service_choice%"=="7" (
     if exist "%API_SERVER_DIR%\local_network_config.js" (
         start /D "%API_SERVER_DIR%" "Network URLs Service" cmd /c "node local_network_config.js"
         echo Network URLs service started
@@ -550,7 +583,7 @@ if "%service_choice%"=="6" (
     )
     pause
 )
-if "%service_choice%"=="7" (
+if "%service_choice%"=="8" (
     set "FCM_DIR=%PROJECT_ROOT%servers"
     if exist "%FCM_DIR%\fcm_server_production.js" (
         start /D "%FCM_DIR%" "SOC Chat App - FCM Server" cmd /c "set PORT=3000 ^&^& node fcm_server_production.js"
@@ -563,7 +596,7 @@ if "%service_choice%"=="7" (
     )
     pause
 )
-if "%service_choice%"=="8" goto MAIN_MENU
+if "%service_choice%"=="9" goto MAIN_MENU
 goto START_INDIVIDUAL
 
 :: =============================================================================
@@ -587,43 +620,55 @@ set /p "build_choice=Enter build option (1-7): "
 
 if "%build_choice%"=="1" (
     echo Building web app...
+    cd /d "%PROJECT_ROOT%"
     if exist "%PROJECT_ROOT%scripts\run_build_web.ps1" (
         powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%scripts\run_build_web.ps1"
     ) else (
         flutter build web --release
     )
+    cd /d "%PROJECT_ROOT%"
     echo Web app build completed
     pause
 )
 if "%build_choice%"=="2" (
     echo Building Android APK...
+    cd /d "%PROJECT_ROOT%"
     flutter build apk --release
+    cd /d "%PROJECT_ROOT%"
     echo Android APK build completed
     pause
 )
 if "%build_choice%"=="3" (
     echo Building for SM-T585...
+    cd /d "%PROJECT_ROOT%"
     flutter build apk --release --dart-define=API_BASE_URL_MOBILE=https://soc-chat-app.ngrok-free.app
+    cd /d "%PROJECT_ROOT%"
     echo SM-T585 APK build completed
     pause
 )
 if "%build_choice%"=="4" (
     echo Building for DUB LX1...
+    cd /d "%PROJECT_ROOT%"
     flutter build apk --release --dart-define=API_BASE_URL_MOBILE=https://soc-chat-app.ngrok-free.app
+    cd /d "%PROJECT_ROOT%"
     echo DUB LX1 APK build completed
     pause
 )
 if "%build_choice%"=="5" (
     echo Building iOS App (Debug)...
     echo Note: iOS builds require macOS and Xcode
+    cd /d "%PROJECT_ROOT%"
     flutter build ios --debug --dart-define=API_BASE_URL_MOBILE=https://soc-chat-app.ngrok-free.app
+    cd /d "%PROJECT_ROOT%"
     echo iOS Debug build completed
     pause
 )
 if "%build_choice%"=="6" (
     echo Building iOS App (Release)...
     echo Note: Release builds require macOS, Xcode, and Apple Developer account
+    cd /d "%PROJECT_ROOT%"
     flutter build ios --release --dart-define=API_BASE_URL_MOBILE=https://soc-chat-app.ngrok-free.app
+    cd /d "%PROJECT_ROOT%"
     echo iOS Release build completed
     pause
 )

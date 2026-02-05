@@ -2059,13 +2059,24 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
     
     setState(() => _isOpeningAIChat = true);
     try {
+      // Re-check status on tap (handles stale/failed initial check)
+      await _checkAIStatus();
+      if (!mounted) return;
+      
       // Check if AI is available
       if (_aiStatus == null || _aiStatus!['enabled'] != true) {
+        final String message;
+        if (_aiStatus == null) {
+          message = 'Cannot reach server. Check your connection and server URL.';
+        } else {
+          // enabled is false = AI bot user not in MongoDB
+          message = 'AI bot not configured. Run create-ai-bot.js on the server.';
+        }
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('AI Assistant is not available. Please check server configuration.'),
-              duration: Duration(seconds: 3),
+            SnackBar(
+              content: Text(message),
+              duration: const Duration(seconds: 4),
             ),
           );
         }

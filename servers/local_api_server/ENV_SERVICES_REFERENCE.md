@@ -68,6 +68,11 @@ Ensure these are set (or have acceptable defaults) so all dependent services wor
 ### Ollama / AI
 
 - **OLLAMA_HOST**, **OLLAMA_PORT**, **OLLAMA_MODEL**, **OLLAMA_VISION_MODEL**, **OLLAMA_TIMEOUT**
+- **ALLOWED_ORIGINS** – Must include ngrok URL for mobile and proxy ports for web (e.g. `https://soc-chat-app.ngrok-free.app`, `http://localhost:8082`)
+
+**AI reachability:**
+- **Mobile (ngrok)**: App → `https://soc-chat-app.ngrok-free.app` → ngrok tunnel → API (3003) → Ollama (127.0.0.1:11434)
+- **Web (proxy)**: App → `http://host:8082` (same origin) → proxy → API (3003) → Ollama (127.0.0.1:11434)
 - **OLLAMA_MAX_CONTEXT_MESSAGES**, **OLLAMA_MAX_RESPONSE_LENGTH**, **OLLAMA_MAX_MESSAGE_LENGTH**, **OLLAMA_MAX_IMAGE_SIZE**, **OLLAMA_ALLOW_EXTERNAL_IMAGES**
 - **AI_RATE_LIMIT_WINDOW**, **AI_RATE_LIMIT_MAX**, **AI_MAX_CONCURRENT_JOBS**, **AI_MAX_QUEUE**, **AI_DEBUG_LOGS**
 - **OLLAMA_NUM_THREAD**, **OLLAMA_TEXT_CTX**, **OLLAMA_VISION_CTX**, **OLLAMA_NUM_PREDICT**, **OLLAMA_TEMPERATURE**, **OLLAMA_TOP_P**, **OLLAMA_TOP_K**, **OLLAMA_REPEAT_PENALTY**, **OLLAMA_REPEAT_LAST_N**

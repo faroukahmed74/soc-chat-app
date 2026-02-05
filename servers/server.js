@@ -25,12 +25,16 @@ console.log('NOTE: For remote access, ensure API server is running and accessibl
 // CRITICAL: Route order matters! Proxy routes MUST come before static file serving
 
 // Proxy Socket.IO for real-time messaging (comes first to avoid conflicts)
+// AI responses are delivered via Socket.IO - use long timeout for model loading
+const SOCKET_PROXY_TIMEOUT = 300000; // 5 minutes
 app.use(
   '/socket.io',
   createProxyMiddleware({
     target: API_TARGET,
     ws: true,
     changeOrigin: true,
+    timeout: SOCKET_PROXY_TIMEOUT,
+    proxyTimeout: SOCKET_PROXY_TIMEOUT,
     logLevel: 'warn',
     onProxyReq: (proxyReq, req, res) => {
       try {
@@ -45,11 +49,15 @@ app.use(
 );
 
 // Proxy API requests to local API server
+// Use 5 min timeout for AI endpoints (Ollama can take 30-120s per response)
+const API_PROXY_TIMEOUT = 300000; // 5 minutes
 app.use(
   '/api',
   createProxyMiddleware({
     target: API_TARGET,
     changeOrigin: true,
+    timeout: API_PROXY_TIMEOUT,
+    proxyTimeout: API_PROXY_TIMEOUT,
     logLevel: 'debug',
     // The /api prefix is automatically stripped by app.use('/api'), so we need to add it back
     pathRewrite: function (path, req) {
