@@ -40,6 +40,7 @@ import '../config/database_config.dart';
 import '../widgets/chat_media_gallery.dart';
 import '../utils/responsive_utils.dart';
 import '../utils/cairo_time_utils.dart';
+import '../utils/text_direction_utils.dart';
 import 'call_screen.dart';
 import '../services/call_types.dart';
 import '../services/webrtc_call_service.dart';
@@ -374,6 +375,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                   'readBy': msg['readBy'] ?? msg['read_by'] ?? [],
                   'status': msg['status'] ?? 'sent',
                   'reactions': msg['reactions'] ?? {},
+                  'aiProvider': msg['aiProvider'] ?? msg['ai_provider'],
                 });
                 // Sort messages by timestamp
                 _messages.sort((a, b) {
@@ -1961,6 +1963,35 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     }
   }
 
+  Widget _buildAIProviderBadge(String aiProvider) {
+    final isOpenAI = aiProvider.toLowerCase() == 'openai';
+    final label = isOpenAI ? 'ChatGPT' : (aiProvider.toLowerCase() == 'ollama' ? 'Ollama' : null);
+    if (label == null) return const SizedBox.shrink();
+    final icon = isOpenAI ? Icons.smart_toy : Icons.memory;
+    return Tooltip(
+      message: isOpenAI ? 'Powered by OpenAI (ChatGPT)' : 'Powered by Ollama (local AI)',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            icon,
+            size: 12,
+            color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.8),
+          ),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 10,
+              color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.8),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildMessageStatus(Map<String, dynamic> message, bool isDark) {
     final readBy = _extractReadBy(message);
     final status = message['status'] ?? message['messageStatus'];
@@ -2258,6 +2289,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     final replyTo = message['replyTo'];
     final replyToContent = message['replyToContent']?.toString() ?? '';
     final replyToSenderName = message['replyToSenderName']?.toString() ?? '';
+    final aiProvider = message['aiProvider']?.toString() ?? message['ai_provider']?.toString();
     
     // Extract reactions
     final serverReactions = _safeStringMap(message['reactions']);
@@ -2381,6 +2413,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             replyToContent.length > 50
                                 ? '${replyToContent.substring(0, 50)}...'
                                 : replyToContent,
+                            textDirection: getTextDirection(replyToContent),
                             style: ResponsiveUtils.getResponsiveCaptionStyle(
                               context,
                               color: isCurrentUser
@@ -2454,6 +2487,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                   if (isDeletedForEveryone)
                     Text(
                       displayContent,
+                      textDirection: getTextDirection(displayContent),
                       style: ResponsiveUtils.getResponsiveBodyStyle(
                         context,
                         color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -2485,6 +2519,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                   else if (messageType == 'text')
                     Text(
                       displayContent,
+                      textDirection: getTextDirection(displayContent),
                       style: ResponsiveUtils.getResponsiveBodyStyle(
                         context,
                         color: isCurrentUser
@@ -2559,6 +2594,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             padding: EdgeInsets.only(top: spacing * 0.67),
                             child: Text(
                               displayContent,
+                              textDirection: getTextDirection(displayContent),
                               style: ResponsiveUtils.getResponsiveCaptionStyle(
                                 context,
                                 color: isCurrentUser
@@ -2614,6 +2650,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             padding: EdgeInsets.only(top: spacing * 0.67),
                             child: Text(
                               displayContent,
+                              textDirection: getTextDirection(displayContent),
                               style: ResponsiveUtils.getResponsiveCaptionStyle(
                                 context,
                                 color: isCurrentUser
@@ -2670,6 +2707,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                             padding: EdgeInsets.only(top: spacing * 0.5),
                             child: Text(
                               displayContent,
+                              textDirection: getTextDirection(displayContent),
                               style: ResponsiveUtils.getResponsiveCaptionStyle(
                                 context,
                                 color: isCurrentUser
@@ -2760,6 +2798,10 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                               : Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
                       ),
+                      if (aiProvider != null && aiProvider.isNotEmpty && !isCurrentUser) ...[
+                        SizedBox(width: spacing * 0.5),
+                        _buildAIProviderBadge(aiProvider),
+                      ],
                       if (isCurrentUser) ...[
                         SizedBox(width: spacing * 0.33),
                         _buildMessageStatus(message, Theme.of(context).brightness == Brightness.dark),

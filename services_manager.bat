@@ -64,26 +64,12 @@ echo [1/8] Starting MongoDB...
 net start MongoDB >nul 2>&1
 if !errorlevel! equ 0 (echo   OK: MongoDB started) else (echo   WARN: MongoDB already running or failed)
 
-echo [2/8] Starting Ollama AI Service (for AI chat)...
-netstat -an | findstr ":11434" | findstr "LISTENING" >nul
-if !errorlevel! equ 0 (
-  echo   OK: Ollama already running on port 11434
-) else (
-  where ollama >nul 2>&1
-  if !errorlevel! equ 0 (
-    start /b "" ollama serve >nul 2>&1
-    echo   OK: Ollama starting (port 11434)
-  ) else (
-    echo   WARN: Ollama not found in PATH (AI chat will be disabled)
-  )
-)
-
-echo [3/8] Starting API Server (Port 3003 - includes AI service)...
+echo [2/8] Starting API Server (Port 3003)...
 cd /d "%API_SERVER_DIR%"
 start "SOC Chat App - API Server" cmd /c "set PORT=3003 && set HOST=0.0.0.0 && node server.js"
 cd /d "%PROJECT_ROOT%"
 
-echo [4/8] Starting TURN Server (coturn Docker) ^(optional^)...
+echo [3/8] Starting TURN Server (coturn Docker) ^(optional^)...
 set "COTURN_COMPOSE=%PROJECT_ROOT%scripts\coturn-docker-compose.yml"
 if exist "%COTURN_COMPOSE%" (
   docker-compose -f "%COTURN_COMPOSE%" up -d >nul 2>&1
@@ -92,22 +78,23 @@ if exist "%COTURN_COMPOSE%" (
   echo   INFO: coturn-docker-compose.yml not found, skipping
 )
 
-echo [5/8] Starting ngrok (All Tunnels)...
+echo [4/8] Starting ngrok (single instance - All Tunnels)...
 taskkill /f /im ngrok.exe >nul 2>&1
-timeout /t 2 /nobreak >nul
-REM Wait for ngrok to fully terminate (max 15 sec)
+timeout /t 3 /nobreak >nul
+REM Wait for ngrok to fully terminate before starting (prevents duplicate instances)
 set "NGROK_WAIT=0"
 :NGROK_KILL_LOOP
 tasklist | findstr /i "ngrok.exe" >nul
 if !errorlevel! equ 0 (
   set /a NGROK_WAIT+=1
-  if !NGROK_WAIT! geq 15 goto NGROK_START
+  if !NGROK_WAIT! geq 20 goto NGROK_KILL_DONE
   timeout /t 1 /nobreak >nul
   goto NGROK_KILL_LOOP
 )
-:NGROK_START
+:NGROK_KILL_DONE
+set "NGROK_CONFIG=%PROJECT_ROOT%scripts\ngrok.yml"
 set "NGROK_SCRIPTS=%PROJECT_ROOT%scripts"
-set "NGROK_CONFIG=%NGROK_SCRIPTS%\ngrok.yml"
+if not "%NGROK_SCRIPTS:~-1%"=="\" set "NGROK_SCRIPTS=%NGROK_SCRIPTS%\"
 if exist "%NGROK_CONFIG%" (
   cd /d "%NGROK_SCRIPTS%"
   start "SOC Chat App - ngrok (All Tunnels)" cmd /k "ngrok start --all --config=ngrok.yml"
@@ -117,15 +104,15 @@ if exist "%NGROK_CONFIG%" (
   cd /d "%NGROK_SCRIPTS%"
   start "SOC Chat App - ngrok (All Tunnels)" cmd /k "ngrok http 3003 --domain=soc-chat-app.ngrok-free.app"
   cd /d "%PROJECT_ROOT%"
-  echo   OK: ngrok started (HTTP - create scripts\ngrok.yml for TURN tunnel)
+  echo   OK: ngrok started (API tunnel - create scripts\ngrok.yml for TURN)
 )
 
-echo [6/8] Starting Web Server (Port 8082)...
+echo [5/8] Starting Web Server (Port 8082)...
 cd /d "%PROJECT_ROOT%servers"
 start "SOC Chat App - Web Server" cmd /c "set PORT=8082 && set API_TARGET=http://localhost:3003 && node server.js"
 cd /d "%PROJECT_ROOT%"
 
-echo [7/8] Starting Network URLs Service ^(optional^)...
+echo [6/8] Starting Network URLs Service ^(optional^)...
 cd /d "%API_SERVER_DIR%"
 if exist "local_network_config.js" (
   start "Network URLs Service" cmd /c "node local_network_config.js"
@@ -135,7 +122,7 @@ if exist "local_network_config.js" (
 )
 cd /d "%PROJECT_ROOT%"
 
-echo [8/8] Starting FCM Server ^(optional^)...
+echo [7/8] Starting FCM Server ^(optional^)...
 cd /d "%PROJECT_ROOT%servers"
 if exist "fcm_server_production.js" (
   start "SOC Chat App - FCM Server" cmd /c "set PORT=3000 && node fcm_server_production.js"
@@ -148,6 +135,29 @@ if exist "fcm_server_production.js" (
 )
 cd /d "%PROJECT_ROOT%"
 
+echo [8/8] Starting AI Services ^(OpenAI + Ollama^)...
+REM OpenAI: Uses OPENAI_API_KEY from .env - no process to start, API server uses it
+findstr /C:"OPENAI_API_KEY=sk-" "%API_SERVER_DIR%\.env" >nul 2>&1
+if !errorlevel! equ 0 (
+  echo   OK: OpenAI ^(ChatGPT^) configured in .env - primary AI
+) else (
+  echo   INFO: OpenAI not configured - set OPENAI_API_KEY in .env for ChatGPT
+)
+REM Ollama: Local fallback when OpenAI unavailable
+netstat -an | findstr ":11434" | findstr "LISTENING" >nul
+if !errorlevel! equ 0 (
+  echo   OK: Ollama already running on port 11434 ^(fallback AI^)
+  goto OLLAMA_DONE
+)
+where ollama >nul 2>&1
+if !errorlevel! neq 0 goto OLLAMA_NOT_FOUND
+start /b "" ollama serve >nul 2>&1
+echo   OK: Ollama starting (port 11434 - fallback AI)
+goto OLLAMA_DONE
+:OLLAMA_NOT_FOUND
+echo   WARN: Ollama not found in PATH ^(fallback AI disabled^)
+:OLLAMA_DONE
+
 echo.
 echo DONE. Web: http://localhost:8082   API: http://localhost:3003
 exit /b 0
@@ -157,28 +167,31 @@ echo ===========================================================================
 echo Stopping ALL SOC Chat App services...
 echo =============================================================================
 
-echo [1/7] Stopping ngrok...
+echo [1/8] Stopping ngrok...
 taskkill /f /im ngrok.exe >nul 2>&1
 
-echo [2/7] Stopping TURN Server (coturn Docker)...
+echo [2/8] Stopping TURN Server (coturn Docker)...
 set "COTURN_COMPOSE=%PROJECT_ROOT%scripts\coturn-docker-compose.yml"
 if exist "%COTURN_COMPOSE%" (
   docker-compose -f "%COTURN_COMPOSE%" down >nul 2>&1
 )
 
-echo [3/7] Stopping API Server...
+echo [3/8] Stopping API Server...
 taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - API Server" >nul 2>&1
 
-echo [4/7] Stopping Web Server...
+echo [4/8] Stopping Web Server...
 taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - Web Server" >nul 2>&1
 
-echo [5/7] Stopping Network URLs Service...
+echo [5/8] Stopping Network URLs Service...
 taskkill /f /im cmd.exe /fi "WINDOWTITLE eq Network URLs Service" >nul 2>&1
 
-echo [6/7] Stopping FCM Server...
+echo [6/8] Stopping FCM Server...
 taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - FCM Server" >nul 2>&1
 
-echo [7/7] Stopping MongoDB...
+echo [7/8] Stopping Ollama AI Service...
+taskkill /f /im ollama.exe >nul 2>&1
+
+echo [8/8] Stopping MongoDB...
 net stop MongoDB >nul 2>&1
 
 echo DONE.
@@ -196,14 +209,15 @@ echo SOC Chat App - Services Status
 echo =============================================================================
 echo MongoDB (27017):
 netstat -an | findstr ":27017" | findstr "LISTENING" >nul && (echo   LISTENING) || (echo   NOT LISTENING)
-echo Ollama AI (11434):
-netstat -an | findstr ":11434" | findstr "LISTENING" >nul && (echo   LISTENING) || (echo   NOT LISTENING)
+echo AI Services:
+findstr /C:"OPENAI_API_KEY=sk-" "%API_SERVER_DIR%\.env" >nul 2>&1 && (echo   OpenAI: Configured in .env) || (echo   OpenAI: Not configured)
+netstat -an | findstr ":11434" | findstr "LISTENING" >nul && (echo   Ollama: LISTENING) || (echo   Ollama: NOT LISTENING - fallback AI disabled)
 echo API (3003):
 netstat -an | findstr ":3003" | findstr "LISTENING" >nul && (echo   LISTENING) || (echo   NOT LISTENING)
 echo Web (8082):
 netstat -an | findstr ":8082" | findstr "LISTENING" >nul && (echo   LISTENING) || (echo   NOT LISTENING)
-echo ngrok (4040):
-netstat -an | findstr ":4040" | findstr "LISTENING" >nul && (echo   LISTENING) || (echo   NOT LISTENING)
+echo ngrok:
+tasklist | findstr /i "ngrok" >nul && (echo   RUNNING) || (netstat -an | findstr ":4040" | findstr "LISTENING" >nul && (echo   RUNNING) || (echo   NOT RUNNING))
 echo FCM (3000):
 netstat -an | findstr ":3000" | findstr "LISTENING" >nul && (echo   LISTENING) || (echo   NOT LISTENING)
 exit /b 0

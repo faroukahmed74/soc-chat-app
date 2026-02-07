@@ -134,9 +134,14 @@ class _UserSearchScreenState extends State<UserSearchScreen> {
   List<DocumentSnapshot> _getVisibleUsers(Set<String> blockedIds) {
     if (_allUsers == null) return [];
     final visible = _allUsers!
-        .where((user) =>
-            user.id != _currentUserId &&
-            !blockedIds.contains(user.id))
+        .where((user) {
+          final data = user.data();
+          final role = (data['role'] ?? '').toString();
+          final isAIBot = data['isAIBot'] == true;
+          // Exclude AI Assistant - only appears in chat list via AI button, not in Search Users
+          if (role == 'ai_bot' || isAIBot) return false;
+          return user.id != _currentUserId && !blockedIds.contains(user.id);
+        })
         .toList();
     if (_searchQuery.isEmpty) return visible;
     final matches = <DocumentSnapshot>[];

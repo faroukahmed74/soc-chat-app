@@ -459,7 +459,8 @@ router.get('/:chatId', authenticateToken, async (req, res) => {
         replyTo: msg.replyTo ? msg.replyTo.toString() : null,
         replyToContent: msg.replyToContent || '',
         replyToSenderName: msg.replyToSenderName || '',
-        reactions: msg.reactions || {} // Include reactions field
+        reactions: msg.reactions || {}, // Include reactions field
+        aiProvider: msg.aiProvider || null // 'openai' | 'ollama' for AI bot messages
       };
       
       if (msg.isDeletedForEveryone) {

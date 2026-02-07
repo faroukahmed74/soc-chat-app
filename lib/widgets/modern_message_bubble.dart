@@ -8,6 +8,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import '../services/theme_service.dart';
 import '../utils/responsive_utils.dart';
+import '../utils/text_direction_utils.dart';
 import 'enhanced_media_preview.dart';
 
 class ModernMessageBubble extends StatefulWidget {
@@ -273,6 +274,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
       default:
         return Text(
           content,
+          textDirection: getTextDirection(content),
           style: TextStyle(
             color: widget.isCurrentUser
                 ? Colors.white
@@ -411,6 +413,7 @@ class _ModernMessageBubbleState extends State<ModernMessageBubble>
             padding: const EdgeInsets.only(top: 8),
             child: Text(
               content,
+              textDirection: getTextDirection(content),
               style: TextStyle(
                 color: widget.isCurrentUser
                     ? Colors.white

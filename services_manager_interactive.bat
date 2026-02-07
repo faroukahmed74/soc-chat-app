@@ -44,25 +44,27 @@ echo 3. Restart All Services
 echo 4. Check Services Status
 echo 5. Start Individual Service
 echo 6. Build and Deploy
-echo 7. Clean Up and Exit
+echo 7. Configure Firewall (allow IP:8082 from network)
+echo 8. Clean Up and Exit
 echo.
 if defined SM_CHOICE (
     set "choice=%SM_CHOICE%"
     echo Auto choice: %choice%
 ) else (
-    set /p "choice=Enter your choice (1-7): "
+    set /p "choice=Enter your choice (1-8): "
 )
 
-if "%choice%"=="1" goto START_ALL_VIA_BAT
+if "%choice%"=="1" goto RUN_START_ALL_BAT
 if "%choice%"=="2" goto STOP_ALL
 if "%choice%"=="3" goto RESTART_ALL
 if "%choice%"=="4" goto CHECK_STATUS
 if "%choice%"=="5" goto START_INDIVIDUAL
 if "%choice%"=="6" goto BUILD_DEPLOY
-if "%choice%"=="7" goto CLEANUP_EXIT
+if "%choice%"=="7" goto CONFIGURE_FIREWALL
+if "%choice%"=="8" goto CLEANUP_EXIT
 
 echo.
-echo Invalid choice! Please enter a number between 1-7.
+echo Invalid choice! Please enter a number between 1-8.
 echo.
 if defined SM_NONINTERACTIVE (
     ping 127.0.0.1 -n 1 -w 2000 >nul
@@ -72,24 +74,24 @@ if defined SM_NONINTERACTIVE (
 goto MAIN_MENU
 
 :: =============================================================================
-:: START ALL SERVICES (via start_all_services.bat)
+:: OPTION 1: Run start_all_services.bat (opens in new window)
 :: =============================================================================
-:START_ALL_VIA_BAT
+:RUN_START_ALL_BAT
 cls
 echo =============================================================================
-echo Starting All Services (via start_all_services.bat)...
+echo Starting All Services...
 echo =============================================================================
 echo.
-if exist "%PROJECT_ROOT%start_all_services.bat" (
-    call "%PROJECT_ROOT%start_all_services.bat"
-) else (
-    echo ERROR: start_all_services.bat not found
-    pause
-)
+echo Opening start_all_services.bat in a new window...
+start "SOC Chat App - Start All Services" cmd /k "cd /d "%PROJECT_ROOT%" && start_all_services.bat"
+echo.
+echo start_all_services.bat has been launched. Check the new window for progress.
+echo.
+pause
 goto MAIN_MENU
 
 :: =============================================================================
-:: START ALL SERVICES (inline - kept for RESTART_ALL)
+:: START ALL SERVICES (used by RESTART and internal calls)
 :: =============================================================================
 :START_ALL
 cls
@@ -137,22 +139,30 @@ echo   [X] MongoDB not listening. Install MongoDB 6.0 or run: scripts\run\start_
 :SVC1_DONE
 ping 127.0.0.1 -n 1 -w 2000 >nul
 
-:: [2/8] Ollama
-echo [2/8] Starting Ollama AI Service (Optional - for AI chat)...
+:: [2/8] AI Services (OpenAI + Ollama)
+echo [2/8] Starting AI Services (OpenAI + Ollama)...
+REM OpenAI: Uses OPENAI_API_KEY from .env - no process to start
+findstr /C:"OPENAI_API_KEY=sk-" "%API_SERVER_DIR%\.env" >nul 2>&1
+if !errorlevel! equ 0 (
+    echo   [OK] OpenAI ^(ChatGPT^) configured in .env - primary AI
+) else (
+    echo   [INFO] OpenAI not configured - set OPENAI_API_KEY in .env for ChatGPT
+)
+REM Ollama: Local fallback when OpenAI unavailable
 netstat -an | findstr ":11434" | findstr "LISTENING" >nul
 if !errorlevel! equ 0 (
-    echo   [OK] Ollama already running on port 11434
+    echo   [OK] Ollama already running on port 11434 ^(fallback AI^)
     set "SVC2=OK"
     goto SVC2_DONE
 )
 where ollama >nul 2>&1
 if !errorlevel! neq 0 goto SVC2_FAIL
 start /b "" ollama serve >nul 2>&1
-echo   [OK] Ollama starting (port 11434)
+echo   [OK] Ollama starting (port 11434 - fallback AI)
 set "SVC2=OK"
 goto SVC2_DONE
 :SVC2_FAIL
-echo   [WARN]  Ollama not found in PATH (AI chat will be disabled)
+echo   [WARN]  Ollama not found in PATH ^(fallback AI disabled^)
 :SVC2_DONE
 ping 127.0.0.1 -n 1 -w 2000 >nul
 
@@ -302,6 +312,9 @@ echo   - Public API: https://soc-chat-app.ngrok-free.app
 echo   - Web App: http://localhost:8082
 echo   - Local Network: http://[YOUR_IP]:8082
 echo.
+echo If other PCs cannot access via IP:8082, run as Admin:
+echo   scripts\run_configure_firewall_web.bat
+echo.
 echo Verifying key ports (27017, 3003, 8082)...
 netstat -an | findstr ":27017" | findstr "LISTENING" >nul
 if !errorlevel! equ 0 (echo   MongoDB 27017: OK) else (echo   MongoDB 27017: NOT listening)
@@ -329,25 +342,28 @@ echo Stopping All Services...
 echo =============================================================================
 echo.
 
-echo [1/7] Stopping ngrok...
+echo [1/8] Stopping ngrok...
 taskkill /f /im ngrok.exe >nul 2>&1
 
-echo [2/7] Stopping TURN Server (coturn Docker)...
+echo [2/8] Stopping TURN Server (coturn Docker)...
 docker-compose -f "%PROJECT_ROOT%scripts\coturn-docker-compose.yml" down >nul 2>&1
 
-echo [3/7] Stopping API Server...
+echo [3/8] Stopping API Server...
 taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - API Server" >nul 2>&1
 
-echo [4/7] Stopping Web Server...
+echo [4/8] Stopping Web Server...
 taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - Web Server" >nul 2>&1
 
-echo [5/7] Stopping Network URLs Service...
+echo [5/8] Stopping Network URLs Service...
 taskkill /f /im cmd.exe /fi "WINDOWTITLE eq Network URLs Service" >nul 2>&1
 
 echo [6/7] Stopping FCM Server...
 taskkill /f /im node.exe /fi "WINDOWTITLE eq SOC Chat App - FCM Server" >nul 2>&1
 
-echo [7/7] Stopping MongoDB...
+echo [7/8] Stopping Ollama AI Service...
+taskkill /f /im ollama.exe >nul 2>&1
+
+echo [8/8] Stopping MongoDB...
 net stop MongoDB >nul 2>&1
 
 echo.
@@ -370,11 +386,13 @@ echo ===========================================================================
 echo Restarting All Services...
 echo =============================================================================
 echo.
-set "STOP_ALL_AS_SUB=1"
-call :STOP_ALL
-set "STOP_ALL_AS_SUB="
-ping 127.0.0.1 -n 1 -w 2000 >nul
-call :START_ALL
+echo Running stop-all then start-all (single ngrok instance)...
+call "%PROJECT_ROOT%services_manager.bat" stop-all
+ping 127.0.0.1 -n 1 -w 3000 >nul
+call "%PROJECT_ROOT%services_manager.bat" start-all
+echo.
+echo Restart complete.
+pause
 goto MAIN_MENU
 
 :: =============================================================================
@@ -399,13 +417,19 @@ if !errorlevel! equ 0 (
     echo   Status: [X] NOT LISTENING
 )
 
-echo [2/8] Checking Ollama AI Service (Port 11434)...
+echo [2/8] Checking AI Services (OpenAI + Ollama)...
+findstr /C:"OPENAI_API_KEY=sk-" "%API_SERVER_DIR%\.env" >nul 2>&1
+if !errorlevel! equ 0 (
+    echo   OpenAI: [OK] Configured in .env ^(primary AI^)
+) else (
+    echo   OpenAI: [INFO] Not configured - set OPENAI_API_KEY in .env for ChatGPT
+)
 netstat -an | findstr ":11434" | findstr "LISTENING" >nul
 if !errorlevel! equ 0 (
-    echo   Status: [OK] LISTENING
+    echo   Ollama: [OK] LISTENING on port 11434 ^(fallback AI^)
     set /a RUNNING_COUNT+=1
 ) else (
-    echo   Status: [WARN]  NOT LISTENING (Optional - AI chat disabled)
+    echo   Ollama: [WARN]  NOT LISTENING ^(fallback AI disabled^)
 )
 
 echo [3/8] Checking API Server (Port 3003)...
@@ -427,12 +451,18 @@ if !errorlevel! equ 0 (
 )
 
 echo [5/8] Checking ngrok...
-netstat -an | findstr ":4040" | findstr "LISTENING" >nul
+tasklist | findstr /i "ngrok" >nul
 if !errorlevel! equ 0 (
     echo   Status: [OK] RUNNING
     set /a RUNNING_COUNT+=1
 ) else (
-    echo   Status: [X] NOT RUNNING
+    netstat -an | findstr ":4040" | findstr "LISTENING" >nul
+    if !errorlevel! equ 0 (
+        echo   Status: [OK] RUNNING
+        set /a RUNNING_COUNT+=1
+    ) else (
+        echo   Status: [X] NOT RUNNING
+    )
 )
 
 echo [6/8] Checking Web Server (Port 8082)...
@@ -444,13 +474,13 @@ if !errorlevel! equ 0 (
     echo   Status: [X] NOT LISTENING
 )
 
-echo [7/8] Checking Network URLs Service...
-tasklist | findstr "cmd.exe" | findstr "Network URLs" >nul
+echo [7/8] Checking Network URLs Service (Port 3004)...
+netstat -an | findstr ":3004" | findstr "LISTENING" >nul
 if !errorlevel! equ 0 (
     echo   Status: [OK] RUNNING
     set /a RUNNING_COUNT+=1
 ) else (
-    echo   Status: [WARN]  NOT RUNNING (Optional)
+    echo   Status: [WARN]  NOT RUNNING (Optional - local network discovery)
 )
 
 echo [8/8] Checking FCM Server (Port 3000)...
@@ -486,14 +516,16 @@ echo Start Individual Service
 echo =============================================================================
 echo.
 echo 1. MongoDB
-echo 2. Ollama AI (Port 11434) - For AI chat
-echo 3. API Server (Port 3003) - Includes AI + Call System
+echo 2. Ollama AI ^(fallback - port 11434^)
+echo 3. API Server (Port 3003) - Includes Call System
 echo 4. TURN Server (coturn Docker) - Optional
 echo 5. ngrok Tunnel
 echo 6. Web Server (Port 8082)
 echo 7. Network URLs Service - Optional
 echo 8. FCM Server (Port 3000) - Optional
 echo 9. Back to Main Menu
+echo.
+echo Note: OpenAI ^(ChatGPT^) is configured via OPENAI_API_KEY in .env - no separate start.
 echo.
 set /p "service_choice=Enter service to start (1-9): "
 
@@ -515,7 +547,7 @@ if "%service_choice%"=="2" (
         where ollama >nul 2>&1
         if !errorlevel! equ 0 (
             start /b "" ollama serve >nul 2>&1
-            echo Ollama AI started on port 11434
+            echo Ollama AI started on port 11434 ^(fallback AI^)
         ) else (
             echo Ollama not found in PATH. Install from https://ollama.ai
         )
@@ -620,60 +652,63 @@ set /p "build_choice=Enter build option (1-7): "
 
 if "%build_choice%"=="1" (
     echo Building web app...
-    cd /d "%PROJECT_ROOT%"
     if exist "%PROJECT_ROOT%scripts\run_build_web.ps1" (
         powershell -NoProfile -ExecutionPolicy Bypass -File "%PROJECT_ROOT%scripts\run_build_web.ps1"
     ) else (
         flutter build web --release
     )
-    cd /d "%PROJECT_ROOT%"
     echo Web app build completed
     pause
 )
 if "%build_choice%"=="2" (
     echo Building Android APK...
-    cd /d "%PROJECT_ROOT%"
     flutter build apk --release
-    cd /d "%PROJECT_ROOT%"
     echo Android APK build completed
     pause
 )
 if "%build_choice%"=="3" (
     echo Building for SM-T585...
-    cd /d "%PROJECT_ROOT%"
     flutter build apk --release --dart-define=API_BASE_URL_MOBILE=https://soc-chat-app.ngrok-free.app
-    cd /d "%PROJECT_ROOT%"
     echo SM-T585 APK build completed
     pause
 )
 if "%build_choice%"=="4" (
     echo Building for DUB LX1...
-    cd /d "%PROJECT_ROOT%"
     flutter build apk --release --dart-define=API_BASE_URL_MOBILE=https://soc-chat-app.ngrok-free.app
-    cd /d "%PROJECT_ROOT%"
     echo DUB LX1 APK build completed
     pause
 )
 if "%build_choice%"=="5" (
     echo Building iOS App (Debug)...
     echo Note: iOS builds require macOS and Xcode
-    cd /d "%PROJECT_ROOT%"
     flutter build ios --debug --dart-define=API_BASE_URL_MOBILE=https://soc-chat-app.ngrok-free.app
-    cd /d "%PROJECT_ROOT%"
     echo iOS Debug build completed
     pause
 )
 if "%build_choice%"=="6" (
     echo Building iOS App (Release)...
     echo Note: Release builds require macOS, Xcode, and Apple Developer account
-    cd /d "%PROJECT_ROOT%"
     flutter build ios --release --dart-define=API_BASE_URL_MOBILE=https://soc-chat-app.ngrok-free.app
-    cd /d "%PROJECT_ROOT%"
     echo iOS Release build completed
     pause
 )
 if "%build_choice%"=="7" goto MAIN_MENU
 goto BUILD_DEPLOY
+
+:: =============================================================================
+:: CONFIGURE FIREWALL (Option 7)
+:: =============================================================================
+:CONFIGURE_FIREWALL
+cls
+echo =============================================================================
+echo Configure Firewall for Local Network Access
+echo =============================================================================
+echo.
+echo This allows other PCs to access http://YOUR_IP:8082
+echo Requires Administrator privileges.
+echo.
+call "%PROJECT_ROOT%scripts\run_configure_firewall_web.bat"
+goto MAIN_MENU
 
 :: =============================================================================
 :: CLEANUP AND EXIT

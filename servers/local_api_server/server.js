@@ -1862,10 +1862,14 @@ app.post('/api/media/upload', authenticateToken, async (req, res) => {
 
 // User Routes
 // Get all users (for user search functionality)
+// Exclude AI bot - it should only appear in chat list via the AI chat button, not in Search Users
 app.get('/api/users', authenticateToken, async (req, res) => {
   try {
     const users = await db.collection('users')
-      .find({}, { projection: { password: 0 } })
+      .find({
+        role: { $ne: 'ai_bot' },
+        isAIBot: { $ne: true }
+      }, { projection: { password: 0 } })
       .toArray();
     
     // Transform users to match expected format
@@ -3179,9 +3183,11 @@ if (aiService) {
       const aiBotId = await aiService.getAIBotUserId(db);
       const ollamaHealth = await aiService.checkOllamaHealth();
       
+      const openaiKey = (process.env.OPENAI_API_KEY || '').trim();
       const status = {
         enabled: !!aiBotId,
         aiBotId: aiBotId,
+        openaiAvailable: !!openaiKey,
         ollamaAvailable: ollamaHealth,
         model: process.env.OLLAMA_MODEL || 'llama3.2',
         host: process.env.OLLAMA_HOST || 'localhost',

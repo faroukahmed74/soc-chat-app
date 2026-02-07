@@ -1,13 +1,13 @@
 /**
- * AI Service - Free, Unlimited, Secure Local LLM Integration
- * Uses Ollama for local AI responses (no external API calls, no costs)
+ * AI Service - Dual AI Provider (OpenAI + Ollama)
+ * 
+ * Priority: OpenAI (ChatGPT) first if API key is set, then Ollama as fallback
  * 
  * Features:
- * - 100% free and unlimited usage
- * - Fully secure (all data stays on your server)
- * - Works offline (no internet required)
+ * - OpenAI: High-quality responses when API key is configured
+ * - Ollama: Free local fallback when OpenAI unavailable or no key
  * - Context-aware conversations
- * - Image analysis support (vision API)
+ * - Image analysis support (vision API for both)
  */
 
 const http = require('http');
@@ -51,6 +51,12 @@ const AI_MAX_CONCURRENT_JOBS = Math.max(1, parseInt(process.env.AI_MAX_CONCURREN
 const AI_MAX_QUEUE = Math.max(1, parseInt(process.env.AI_MAX_QUEUE || '100', 10) || 100);
 const AI_DEDUP_PER_CHAT = process.env.AI_DEDUP_PER_CHAT !== 'false'; // default true
 
+// OpenAI (ChatGPT) Configuration - used first when API key is set
+const OPENAI_API_KEY = (process.env.OPENAI_API_KEY || '').trim();
+const OPENAI_MODEL = process.env.OPENAI_MODEL || 'gpt-4o-mini'; // Cost-effective, fast
+const OPENAI_VISION_MODEL = process.env.OPENAI_VISION_MODEL || 'gpt-4o-mini'; // Supports vision
+const OPENAI_TIMEOUT = parseInt(process.env.OPENAI_TIMEOUT || '60000'); // 60 seconds
+
 function logDebug(...args) {
   if (AI_DEBUG_LOGS) console.log(...args);
 }
@@ -86,6 +92,7 @@ function createSemaphore(max) {
 
 const aiSemaphore = createSemaphore(AI_MAX_CONCURRENT_JOBS);
 const perChatState = new Map(); // chatId(string) -> { running: boolean, pending: object|null }
+let lastUsedProvider = null; // 'openai' | 'ollama' - set when generating response, read by caller
 
 function chatKey(chatId) {
   try { return String(chatId); } catch (_) { return 'unknown'; }
@@ -405,7 +412,128 @@ function imageToBase64(imageBuffer) {
 }
 
 /**
- * Generate AI response using Ollama
+ * Generate AI response using OpenAI (ChatGPT) API
+ * @returns {Promise<string|null>} - AI response or null on failure
+ */
+async function generateOpenAIResponse(userMessage, conversationHistory = [], userName = 'User', imageUrl = null, imageBase64 = null, aiBotId = null) {
+  if (!OPENAI_API_KEY) return null;
+
+  let base64Image = imageBase64;
+  if (imageUrl && !base64Image) {
+    const imageBuffer = await downloadImageFromUrl(imageUrl);
+    if (imageBuffer) base64Image = imageToBase64(imageBuffer);
+  }
+
+  const useVision = !!base64Image;
+  const model = useVision ? OPENAI_VISION_MODEL : OPENAI_MODEL;
+
+  const contextMessages = conversationHistory
+    .slice(-MAX_CONTEXT_MESSAGES)
+    .map(msg => {
+      const msgSenderId = msg.senderId ? msg.senderId.toString() : '';
+      const isFromAI = aiBotId && msgSenderId === aiBotId.toString();
+      return {
+        role: isFromAI ? 'assistant' : 'user',
+        content: msg.content || ''
+      };
+    });
+
+  const sanitizedMessage = sanitizeInput(userMessage);
+  const textContent = sanitizedMessage || (base64Image ? 'What is in this image?' : '');
+
+  let currentUserContent;
+  if (base64Image) {
+    let imageData = base64Image.trim();
+    if (imageData.startsWith('data:')) {
+      const commaIndex = imageData.indexOf(',');
+      if (commaIndex !== -1) imageData = imageData.substring(commaIndex + 1).trim();
+    }
+    currentUserContent = [
+      { type: 'text', text: textContent },
+      { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${imageData}` } }
+    ];
+  } else {
+    currentUserContent = textContent;
+  }
+
+  const isArabic = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(userMessage || '');
+  const langInstruction = isArabic
+    ? ' The user wrote in Arabic. Respond in Arabic with correct grammar, proper word order (right-to-left), and natural sentence structure. Do not mix or reverse word order.'
+    : '';
+  const systemPrompt = `You are a helpful AI assistant in a chat application.
+Be accurate and practical. If you are unsure, say so and ask a clarifying question.
+Be concise. Prefer staying under ${MAX_RESPONSE_LENGTH} characters unless the user asks for more detail.
+You are chatting with ${userName}. Respond naturally.${langInstruction}`;
+
+  const messages = [
+    { role: 'system', content: systemPrompt },
+    ...contextMessages.map(m => ({ role: m.role, content: m.content })),
+    { role: 'user', content: currentUserContent }
+  ];
+
+  const requestBody = JSON.stringify({
+    model,
+    messages,
+    max_tokens: Math.min(1024, MAX_RESPONSE_LENGTH * 2),
+    temperature: OLLAMA_TEMPERATURE
+  });
+
+  return new Promise((resolve) => {
+    const options = {
+      hostname: 'api.openai.com',
+      port: 443,
+      path: '/v1/chat/completions',
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        'Content-Type': 'application/json',
+        'Content-Length': Buffer.byteLength(requestBody)
+      },
+      timeout: OPENAI_TIMEOUT
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', chunk => { data += chunk; });
+      res.on('end', () => {
+        try {
+          if (res.statusCode !== 200) {
+            console.warn(`[AI Service] OpenAI API error: ${res.statusCode} - ${data.substring(0, 200)}`);
+            resolve(null);
+            return;
+          }
+          const parsed = JSON.parse(data);
+          const content = parsed?.choices?.[0]?.message?.content?.trim();
+          if (content) {
+            logDebug('[AI Service] ✅ OpenAI response received');
+            resolve(content);
+          } else {
+            resolve(null);
+          }
+        } catch (e) {
+          console.warn('[AI Service] OpenAI response parse error:', e.message);
+          resolve(null);
+        }
+      });
+    });
+
+    req.on('error', (err) => {
+      console.warn('[AI Service] OpenAI request error:', err.message);
+      resolve(null);
+    });
+    req.on('timeout', () => {
+      req.destroy();
+      console.warn('[AI Service] OpenAI request timeout');
+      resolve(null);
+    });
+
+    req.write(requestBody);
+    req.end();
+  });
+}
+
+/**
+ * Generate AI response using Ollama (local)
  * @param {string} userMessage - The user's message (optional for image-only messages)
  * @param {Array} conversationHistory - Previous messages for context
  * @param {string} userName - Name of the user sending the message
@@ -414,15 +542,28 @@ function imageToBase64(imageBuffer) {
  * @returns {Promise<string>} - AI generated response
  */
 async function generateAIResponse(userMessage, conversationHistory = [], userName = 'User', imageUrl = null, imageBase64 = null, aiBotId = null) {
+  lastUsedProvider = null;
   try {
-    // Check if Ollama is available
+    // 1. Try OpenAI (ChatGPT) first if API key is configured
+    if (OPENAI_API_KEY) {
+      logDebug('[AI Service] Trying OpenAI first...');
+      const openAIResult = await generateOpenAIResponse(userMessage, conversationHistory, userName, imageUrl, imageBase64, aiBotId);
+      if (openAIResult) {
+        lastUsedProvider = 'openai';
+        console.log('[AI Service] ✅ Response from OpenAI (ChatGPT)');
+        return openAIResult;
+      }
+      logDebug('[AI Service] OpenAI unavailable, falling back to Ollama');
+    }
+
+    // 2. Fallback to Ollama
     const isHealthy = await checkOllamaHealth();
     if (!isHealthy) {
       console.warn('[AI Service] Ollama is not available. Install and start Ollama first.');
       return null;
     }
 
-    // Handle image processing
+    // Handle image processing for Ollama
     let base64Image = imageBase64;
     if (imageUrl && !base64Image) {
       logDebug(`[AI Service] 📷 Processing image: ${imageUrl}`);
@@ -507,16 +648,19 @@ async function generateAIResponse(userMessage, conversationHistory = [], userNam
 
     contextMessages.push(currentMessage);
 
-    // Build prompt with system instructions
+    const isArabic = /[\u0600-\u06FF\u0750-\u077F\u08A0-\u08FF\uFB50-\uFDFF\uFE70-\uFEFF]/.test(userMessage || '');
+    const langInstruction = isArabic
+      ? ' The user wrote in Arabic. Respond in Arabic with correct grammar, proper word order (right-to-left), and natural sentence structure. Do not mix or reverse word order.'
+      : '';
     const systemPrompt = base64Image
       ? `You are a helpful AI assistant in a chat application with vision capabilities.
 Be accurate and practical. If you are unsure, say so and ask a clarifying question.
 Be concise, but do not omit important steps. Prefer staying under ${MAX_RESPONSE_LENGTH} characters unless the user asks for more detail.
-You are chatting with ${userName}. Analyze the image and respond naturally.`
+You are chatting with ${userName}. Analyze the image and respond naturally.${langInstruction}`
       : `You are a helpful AI assistant in a chat application.
 Be accurate and practical. If you are unsure, say so and ask a clarifying question.
 Be concise, but do not omit important steps. Prefer staying under ${MAX_RESPONSE_LENGTH} characters unless the user asks for more detail.
-You are chatting with ${userName}. Respond naturally to their message.`;
+You are chatting with ${userName}. Respond naturally to their message.${langInstruction}`;
 
     const messages = [
       { role: 'system', content: systemPrompt },
@@ -691,6 +835,8 @@ You are chatting with ${userName}. Respond naturally to their message.`;
 
             // Clean and trim response
             const cleanedResponse = String(aiResponse).trim();
+            lastUsedProvider = 'ollama';
+            console.log('[AI Service] ✅ Response from Ollama');
             logDebug(`[AI Service] ✅ Generated response (${cleanedResponse.length} chars): "${cleanedResponse.substring(0, 100)}..."`);
             if (!resolved) {
               resolved = true;
@@ -1070,7 +1216,8 @@ async function processMessageForAIInternal(messageData, chat, db, io) {
       readBy: [],
       status: 'sent',
       replies: [],
-      reactions: {}
+      reactions: {},
+      aiProvider: lastUsedProvider || 'unknown' // 'openai' | 'ollama' - for debugging/display
     };
 
     const result = await db.collection('messages').insertOne(aiMessage);
@@ -1114,6 +1261,7 @@ async function processMessageForAIInternal(messageData, chat, db, io) {
 
       logDebug(`[AI Service] Emitting new_message to room: ${chatRoom}`);
 
+      const aiProviderVal = lastUsedProvider || 'unknown';
       io.to(chatRoom).emit('new_message', {
         id: result.insertedId.toString(),
         _id: result.insertedId.toString(),
@@ -1126,7 +1274,8 @@ async function processMessageForAIInternal(messageData, chat, db, io) {
         createdAt: createdAtIso,
         timestamp: createdAtIso,
         readBy: [],
-        status: 'sent'
+        status: 'sent',
+        aiProvider: aiProviderVal
       });
 
       const memberIds = chatMembers.map(m => m.toString());
@@ -1143,7 +1292,8 @@ async function processMessageForAIInternal(messageData, chat, db, io) {
           createdAt: createdAtIso,
           timestamp: createdAtIso,
           readBy: [],
-          status: 'sent'
+          status: 'sent',
+          aiProvider: aiProviderVal
         });
       }
     }

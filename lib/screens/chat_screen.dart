@@ -25,6 +25,7 @@ import '../services/fcm_notification_service.dart';
 import '../services/secure_media_service.dart';
 import '../services/media_cache_service.dart';
 import '../utils/responsive_utils.dart';
+import '../utils/text_direction_utils.dart';
 import '../utils/group_chat_naming_utility.dart';
 import '../widgets/enhanced_media_preview.dart';
 import '../widgets/voice_message_player.dart';
@@ -1760,8 +1761,10 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         return _buildDocumentContent(data, isCurrentUser);
       case 'text':
       default:
+        final text = data['text'] ?? '';
         return Text(
-          data['text'] ?? '',
+          text,
+          textDirection: getTextDirection(text),
           style: TextStyle(
             color: isCurrentUser ? Colors.white : Colors.black87,
             fontSize: 16,
@@ -1840,6 +1843,7 @@ class _ChatScreenState extends State<ChatScreen> with TickerProviderStateMixin {
         ],
         Text(
           text,
+          textDirection: getTextDirection(text),
           style: TextStyle(
             color: isCurrentUser ? Colors.white : Colors.black87,
             fontSize: 12,

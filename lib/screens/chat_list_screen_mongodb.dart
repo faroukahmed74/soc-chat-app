@@ -1962,23 +1962,27 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
           final data = json.decode(response.body);
           final users = data is List ? data : (data['users'] is List ? data['users'] : []);
           
-          // Search for chatbot user by email, displayName, or role
+          // Search for chatbot user by role first (most reliable), then specific email/name patterns.
+          // IMPORTANT: Do NOT use email.contains('ai') - it matches "gmail.com" and creates
+          // wrong chats with regular users!
           for (final user in users) {
             final email = (user['email'] ?? '').toString().toLowerCase();
             final displayName = (user['displayName'] ?? user['name'] ?? '').toString().toLowerCase();
             final role = (user['role'] ?? '').toString().toLowerCase();
-            
-            // Check if this is a chatbot user
-            if (email.contains('bot') || 
-                email.contains('assistant') || 
-                email.contains('ai') ||
-                displayName.contains('bot') || 
-                displayName.contains('assistant') || 
-                displayName.contains('ai') ||
-                role == 'bot' || 
-                role == 'assistant') {
+            final isAIBot = user['isAIBot'] == true;
+
+            // Primary: role from create-ai-bot.js (ai_bot, bot, assistant)
+            if (role == 'ai_bot' || role == 'bot' || role == 'assistant' || isAIBot) {
               chatbotUserId = user['_id'] ?? user['id'];
-              Log.i('Found chatbot user: $chatbotUserId (email: $email, name: $displayName)', 'CHAT_LIST_MONGODB');
+              Log.i('Found chatbot user by role: $chatbotUserId (role: $role)', 'CHAT_LIST_MONGODB');
+              break;
+            }
+            // Secondary: specific patterns only (avoid 'ai' alone - matches gmail!)
+            if (email.contains('ai-assistant') ||
+                email.contains('ai-assistant@') ||
+                (displayName.contains('ai assistant') || displayName.contains('chatbot'))) {
+              chatbotUserId = user['_id'] ?? user['id'];
+              Log.i('Found chatbot user by pattern: $chatbotUserId (email: $email, name: $displayName)', 'CHAT_LIST_MONGODB');
               break;
             }
           }
@@ -2142,10 +2146,12 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
     final isDesktop = ResponsiveUtils.isDesktop(context);
     final spacing = isDesktop ? 16.0 : 12.0;
     
-    // Determine AI button state
+    // Determine AI button state - ready when OpenAI OR Ollama is available
     final bool aiEnabled = _aiStatus?['enabled'] == true;
     final bool ollamaAvailable = _aiStatus?['ollamaAvailable'] == true;
-    final bool isInstalling = !ollamaAvailable && _aiStatus != null; // Ollama not available but status was checked
+    final bool openaiAvailable = _aiStatus?['openaiAvailable'] == true;
+    final bool aiReady = ollamaAvailable || openaiAvailable;
+    final bool isInstalling = !aiReady && _aiStatus != null; // Neither provider available but status was checked
     
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -2157,7 +2163,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
           onPressed: _isOpeningAIChat ? null : _openAIChat,
           backgroundColor: _isOpeningAIChat 
               ? Colors.grey 
-              : (aiEnabled && ollamaAvailable 
+              : (aiEnabled && aiReady 
                   ? Colors.purple 
                   : Colors.orange),
           foregroundColor: Colors.white,
@@ -2201,7 +2207,7 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
                 ),
           tooltip: isInstalling
               ? 'AI Assistant - Installing models...'
-              : (aiEnabled && ollamaAvailable
+              : (aiEnabled && aiReady
                   ? 'Chat with AI Assistant'
                   : 'AI Assistant - Not ready'),
         ),

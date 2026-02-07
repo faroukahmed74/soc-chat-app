@@ -67,6 +67,8 @@ Ensure these are set (or have acceptable defaults) so all dependent services wor
 
 ### Ollama / AI
 
+- **OPENAI_API_KEY** – (Optional) OpenAI API key for ChatGPT. When set, AI uses OpenAI first, then Ollama as fallback.
+- **OPENAI_MODEL**, **OPENAI_VISION_MODEL** – (Optional) Model names, default: gpt-4o-mini
 - **OLLAMA_HOST**, **OLLAMA_PORT**, **OLLAMA_MODEL**, **OLLAMA_VISION_MODEL**, **OLLAMA_TIMEOUT**
 - **ALLOWED_ORIGINS** – Must include ngrok URL for mobile and proxy ports for web (e.g. `https://soc-chat-app.ngrok-free.app`, `http://localhost:8082`)
 
