@@ -1,7 +1,7 @@
-==== Services Health (2025-10-20T18:23:41.9723762+03:00) ====
+==== Services Health (2026-06-08T17:32:01.9077958+03:00) ====
 API :3003              OK    port=True, health=True
-Web Proxy :8082        FAIL  port=True, /api/health=False
+Web Proxy :8082        OK    port=True, /api/health=True
 Local Network :3004    OK    port=True, health=True
-FCM :3000              FAIL  port=False
+FCM :3000              OK    port=True
 ngrok admin :4040      OK    port=True
-Summary: 3/5 OK
+Summary: 5/5 OK
