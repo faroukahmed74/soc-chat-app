@@ -1,10 +1,10 @@
 {
-  "version": "1.0.34",
-  "build_number": "34",
+  "version": "1.0.35",
+  "build_number": "35",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.34 (Build 34) - AI Agent Update:\n- OpenAI (ChatGPT) integration as primary AI with Ollama as fallback\n- AI Assistant shows ChatGPT or Ollama badge on each message\n- Fixed AI \"Not ready\" - now shows ready when OpenAI OR Ollama is available\n- Arabic language support: proper RTL display and correct word order in AI responses\n- AI reads images (vision) via OpenAI or Ollama llava model\n- Create AI bot script for MongoDB setup\n- Improved AI status check and provider detection",
+  "release_notes": "SOC Chat App v1.0.35 (Build 35) - Offline Messaging Update:\n- Chats and messages stay visible when internet drops (WhatsApp-style local cache)\n- Offline message queue: send text, voice, images, video, and contacts while offline\n- Queued messages auto-send when connection returns\n- Pending and failed message indicators with tap-to-retry\n- Offline banners on chat list and chat screen with Send now action\n- Cross-platform support: Android, iOS, and Web",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": true,
-  "last_updated": "2026-02-04T00:00:00Z"
+  "last_updated": "2026-06-14T00:00:00Z"
 }

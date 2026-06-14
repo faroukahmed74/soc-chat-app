@@ -11,6 +11,7 @@ import 'dart:async';
 import '../config/database_config.dart';
 import '../services/database_service.dart';
 import 'logger_service.dart';
+import 'local_message_storage.dart';
 
 class MongoDBChatService {
   static final MongoDBChatService _instance = MongoDBChatService._internal();
@@ -47,9 +48,11 @@ class MongoDBChatService {
     }
   }
 
-  /// Get user chats
+  /// Get user chats — caches locally; returns cache when offline.
   Future<List<Map<String, dynamic>>> getUserChats() async {
+    String? userId;
     try {
+      userId = await _getCurrentUserId();
       final token = await _getAuthToken();
       if (token == null) throw Exception('No auth token');
 
@@ -61,35 +64,47 @@ class MongoDBChatService {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-      );
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
-        // Support both router response { chats: [...] } and legacy raw array
+        List<Map<String, dynamic>> chats;
         if (data is Map && data['chats'] is List) {
-          return List<Map<String, dynamic>>.from(data['chats']);
+          chats = List<Map<String, dynamic>>.from(data['chats']);
+        } else if (data is List) {
+          chats = List<Map<String, dynamic>>.from(data);
+        } else {
+          chats = [];
         }
-        if (data is List) {
-          return List<Map<String, dynamic>>.from(data);
+
+        if (userId != null && chats.isNotEmpty) {
+          await LocalMessageStorage.saveChatsList(userId, chats);
         }
-        return [];
+        return chats;
       } else {
         throw Exception('Failed to load chats: ${response.statusCode}');
       }
     } catch (e) {
-      Log.e('Error getting user chats', 'MONGODB_CHAT_SERVICE', e);
+      Log.e('Error getting user chats (using cache if available)', 'MONGODB_CHAT_SERVICE', e);
+      userId ??= await _getCurrentUserId();
+      if (userId != null) {
+        final cached = await LocalMessageStorage.getCachedChats(userId);
+        if (cached.isNotEmpty) {
+          Log.i('Returning ${cached.length} cached chats (offline)', 'MONGODB_CHAT_SERVICE');
+          return cached;
+        }
+      }
       return [];
     }
   }
 
-  /// Get chat messages
+  /// Get chat messages — caches locally; returns cache when offline.
   Future<List<Map<String, dynamic>>> getChatMessages(String chatId, {int limit = 50, int offset = 0}) async {
     try {
       final token = await _getAuthToken();
       if (token == null) throw Exception('No auth token');
 
       final baseUrl = DatabaseConfig.physicalServerUrl;
-      // API uses page/limit at /api/messages/:chatId
       final int page = (offset ~/ limit) + 1;
       final response = await http.get(
         Uri.parse('$baseUrl/api/messages/$chatId?limit=$limit&page=$page'),
@@ -98,20 +113,29 @@ class MongoDBChatService {
           'Content-Type': 'application/json',
           'ngrok-skip-browser-warning': 'true',
         },
-      );
+      ).timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final body = json.decode(response.body);
-        // Router returns { messages: [...], pagination: {...} }
         final List<dynamic> messages = (body is Map && body['messages'] is List)
             ? body['messages']
             : (body is List ? body : []);
-        return List<Map<String, dynamic>>.from(messages);
+        final result = List<Map<String, dynamic>>.from(messages);
+
+        if (result.isNotEmpty) {
+          await LocalMessageStorage.saveChatMessagesList(chatId, result);
+        }
+        return result;
       } else {
         throw Exception('Failed to load messages: ${response.statusCode}');
       }
     } catch (e) {
-      Log.e('Error getting chat messages', 'MONGODB_CHAT_SERVICE', e);
+      Log.e('Error getting chat messages (using cache if available)', 'MONGODB_CHAT_SERVICE', e);
+      final cached = await LocalMessageStorage.getCachedChatMessages(chatId);
+      if (cached.isNotEmpty) {
+        Log.i('Returning ${cached.length} cached messages for $chatId (offline)', 'MONGODB_CHAT_SERVICE');
+        return cached;
+      }
       return [];
     }
   }
@@ -139,11 +163,16 @@ class MongoDBChatService {
 
       if (response.statusCode == 201 || response.statusCode == 200) {
         final body = json.decode(response.body);
-        // Prefer standardized { messageData: {...} }
+        Map<String, dynamic>? message;
         if (body is Map && body['messageData'] is Map) {
-          return Map<String, dynamic>.from(body['messageData']);
+          message = Map<String, dynamic>.from(body['messageData']);
+        } else if (body is Map) {
+          message = Map<String, dynamic>.from(body);
         }
-        return Map<String, dynamic>.from(body);
+        if (message != null) {
+          await LocalMessageStorage.upsertChatMessage(chatId, message);
+        }
+        return message;
       } else {
         throw Exception('Failed to send message: ${response.statusCode}');
       }
@@ -196,12 +225,18 @@ class MongoDBChatService {
       if (response.statusCode == 201 || response.statusCode == 200) {
         final body = json.decode(response.body);
         print('[MONGODB_CHAT_SERVICE] Response decoded successfully');
+        Map<String, dynamic>? message;
         if (body is Map && body['messageData'] is Map) {
           print('[MONGODB_CHAT_SERVICE] Returning messageData from response');
-          return Map<String, dynamic>.from(body['messageData']);
+          message = Map<String, dynamic>.from(body['messageData']);
+        } else if (body is Map) {
+          print('[MONGODB_CHAT_SERVICE] Returning full body as message');
+          message = Map<String, dynamic>.from(body);
         }
-        print('[MONGODB_CHAT_SERVICE] Returning full body as message');
-        return Map<String, dynamic>.from(body);
+        if (message != null) {
+          await LocalMessageStorage.upsertChatMessage(chatId, message);
+        }
+        return message;
       } else {
         print('[MONGODB_CHAT_SERVICE] ERROR: Failed with status ${response.statusCode}');
         throw Exception('Failed to send media message: ${response.statusCode}');

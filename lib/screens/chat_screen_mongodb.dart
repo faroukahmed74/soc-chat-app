@@ -47,6 +47,9 @@ import '../services/webrtc_call_service.dart';
 import '../services/local_auth_service.dart';
 import '../services/contact_picker_service.dart';
 import '../services/scheduled_message_service.dart';
+import '../services/local_message_storage.dart';
+import '../services/connectivity_service.dart';
+import '../services/offline_message_queue_service.dart';
 import '../main.dart'; // For ActiveCallTracker
 
 class ChatScreenMongoDB extends StatefulWidget {
@@ -75,10 +78,12 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   
   List<Map<String, dynamic>> _messages = [];
   bool _isLoading = false;
+  bool _isOffline = false;
   bool _isSending = false;
   String? _currentUserId;
   String? _currentUserName;
   StreamSubscription? _messagesSubscription;
+  StreamSubscription? _offlineQueueSubscription;
   Timer? _statusUpdateTimer;
   Timer? _scheduledMessageCheckTimer;
   late ThemeService _themeService;
@@ -201,6 +206,7 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     _initializeChat();
     _activeChat.setActiveChat(widget.chatId);
     _initializeScheduledMessageChecking();
+    _setupOfflineSupport();
     
     // Determine other user ID for one-to-one chats
     if (!widget.isGroupChat && widget.userIds != null && widget.userIds!.length == 2) {
@@ -251,9 +257,132 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     }
   }
 
+  void _setupOfflineSupport() {
+    _offlineQueueSubscription =
+        OfflineMessageQueueService.instance.onQueueChanged.listen((_) {
+      if (mounted) {
+        _mergeOfflineQueueMessages();
+        setState(() {});
+      }
+    });
+
+    ConnectivityService.instance.addListener(_onConnectivityChanged);
+  }
+
+  void _onConnectivityChanged(bool online) {
+    if (!mounted) return;
+    setState(() => _isOffline = !online);
+    if (online) {
+      OfflineMessageQueueService.instance.syncAll();
+    }
+  }
+
+  /// Merge pending offline queue items into the visible message list.
+  void _mergeOfflineQueueMessages() {
+    final queued =
+        OfflineMessageQueueService.instance.getDisplayMessagesForChat(widget.chatId);
+    if (queued.isEmpty) return;
+
+    final existingIds = _messages
+        .map((m) => _extractMessageId(m))
+        .whereType<String>()
+        .toSet();
+
+    var changed = false;
+    for (final q in queued) {
+      final id = q['localId']?.toString() ?? q['id']?.toString();
+      if (id == null || existingIds.contains(id)) {
+        // Update status on existing pending message
+        final idx = _messages.indexWhere((m) => _extractMessageId(m) == id);
+        if (idx >= 0) {
+          _messages[idx] = {..._messages[idx], ...q};
+          changed = true;
+        }
+        continue;
+      }
+      _messages.add(q);
+      existingIds.add(id);
+      changed = true;
+    }
+
+    if (changed && mounted) {
+      _messages.sort((a, b) {
+        final aTime = _extractTimestamp(a);
+        final bTime = _extractTimestamp(b);
+        if (aTime == null || bTime == null) return 0;
+        return aTime.compareTo(bTime);
+      });
+      setState(() {});
+    }
+  }
+
+  Future<bool> _queueTextMessage(
+    String content, {
+    String? replyToMessageId,
+  }) async {
+    await OfflineMessageQueueService.instance.enqueueText(
+      chatId: widget.chatId,
+      content: content,
+      replyToMessageId: replyToMessageId,
+      senderId: _currentUserId,
+      senderName: _currentUserName,
+    );
+    _messageController.clear();
+    setState(() {
+      _replyingToMessage = null;
+      _isOffline = true;
+    });
+    _mergeOfflineQueueMessages();
+    _scrollToBottom(force: true);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Message queued — will send when back online'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+    return true;
+  }
+
+  Future<bool> _queueMediaMessage(
+    String messageType, {
+    String content = '',
+    String? mediaUrl,
+    Uint8List? mediaBytes,
+    String? mimeType,
+    String? fileName,
+  }) async {
+    await OfflineMessageQueueService.instance.enqueueMedia(
+      chatId: widget.chatId,
+      messageType: messageType,
+      content: content,
+      mediaUrl: mediaUrl,
+      mediaBytes: mediaBytes,
+      mimeType: mimeType,
+      fileName: fileName,
+      senderId: _currentUserId,
+      senderName: _currentUserName,
+    );
+    setState(() => _isOffline = true);
+    _mergeOfflineQueueMessages();
+    _scrollToBottom(force: true);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Media queued — will send when back online'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+    return true;
+  }
+
   @override
   void dispose() {
     _messagesSubscription?.cancel();
+    _offlineQueueSubscription?.cancel();
+    ConnectivityService.instance.removeListener(_onConnectivityChanged);
     _statusUpdateTimer?.cancel();
     _scheduledMessageCheckTimer?.cancel();
     _messageController.dispose();
@@ -396,10 +525,10 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
                 };
               }
             });
-            // Also reload to ensure consistency
-            _loadMessages();
+            // Persist locally — do NOT reload from server (would wipe data when offline)
+            LocalMessageStorage.saveChatMessagesList(widget.chatId, _messages);
           } else {
-            // Fallback to full reload if message ID is missing
+            // Fallback to full reload only if message ID is missing
             _loadMessages();
           }
         }
@@ -516,16 +645,29 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     }
     
     try {
+      // Show cached messages immediately while fetching from server
+      final cached = await LocalMessageStorage.getCachedChatMessages(widget.chatId);
+      if (cached.isNotEmpty && mounted) {
+        setState(() {
+          _messages = cached;
+        });
+        Log.i('📦 Loaded ${cached.length} messages from local cache', 'CHAT_SCREEN_MONGODB');
+      }
+
       Log.i('Loading messages for chat ID: ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
       final messages = await _chatService.getChatMessages(widget.chatId);
       if (mounted) {
         setState(() {
-          _messages = messages;
+          // Keep in-memory messages if network returned empty but we have data
+          if (messages.isNotEmpty || _messages.isEmpty) {
+            _messages = messages;
+          }
+          _isOffline = messages.isEmpty && _messages.isNotEmpty;
         });
         
         // Preload user names for group chats
-        if (widget.isGroupChat && _currentUserId != null) {
-          final userIds = messages
+        if (widget.isGroupChat && _currentUserId != null && _messages.isNotEmpty) {
+          final userIds = _messages
               .map((m) => _extractSenderId(m))
               .whereType<String>()
               .where((id) => id != _currentUserId)
@@ -540,48 +682,42 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         }
         
         // Extract and merge reactions from messages
-        // Server reactions take precedence, but we merge with cached reactions for offline support
-        for (final message in messages) {
+        for (final message in _messages) {
           final messageId = _extractMessageId(message);
           if (messageId != null) {
             final serverReactions = _safeStringMap(message['reactions']);
             if (serverReactions.isNotEmpty) {
-              // Server has reactions, use them
               _messageReactions[messageId] = Map<String, List<String>>.from(
                 serverReactions.map((key, value) => MapEntry(
                   key,
                   List<String>.from(value as List? ?? []),
                 )),
               );
-            } else if (kIsWeb && _messageReactions[messageId] == null) {
-              // No server reactions, but we might have cached reactions
-              // They should already be loaded from _loadCachedReactions
             }
           }
         }
         
-        // Save updated reactions to cache (for offline support on web)
         if (kIsWeb) {
           _saveReactionsToCache();
         }
         
-        // Mark messages as read for those not sent by current user
-        await _markMessagesAsRead(_messages);
-        
-        // Reset unread count for this chat when opened
-        await _resetUnreadCount();
-        
-        _scrollToBottom(force: true); // Force scroll on initial load
+        if (!_isOffline) {
+          await _markMessagesAsRead(_messages);
+          await _resetUnreadCount();
+        }
+
+        _mergeOfflineQueueMessages();
+        _scrollToBottom(force: true);
       }
     } catch (e) {
       Log.e('Error loading messages', 'CHAT_SCREEN_MONGODB', e);
-      // On error, still try to use cached reactions if available (offline mode)
+      if (mounted && _messages.isNotEmpty) {
+        setState(() => _isOffline = true);
+      }
       if (kIsWeb && _messageReactions.isNotEmpty) {
         Log.i('Using cached reactions due to network error', 'CHAT_SCREEN_MONGODB');
         if (mounted) {
-          setState(() {
-            // Reactions are already loaded from cache, just trigger rebuild
-          });
+          setState(() {});
         }
       }
     }
@@ -644,6 +780,14 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     _messagesSubscription = _chatService.watchChatMessages(widget.chatId).listen(
       (messages) {
         if (mounted) {
+          // Don't wipe messages when polling fails offline
+          if (messages.isEmpty && _messages.isNotEmpty) {
+            setState(() => _isOffline = true);
+            return;
+          }
+
+          setState(() => _isOffline = false);
+
           // Check if user is near bottom before updating
           final wasNearBottom = _scrollController.hasClients
               ? (_scrollController.position.maxScrollExtent - 
@@ -802,7 +946,6 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   Future<void> _sendMessage(String content) async {
     if (content.isEmpty || _isSending) return;
     
-    // Validate chat ID before sending message
     if (widget.chatId.isEmpty) {
       Log.e('Cannot send message: chat ID is empty', 'CHAT_SCREEN_MONGODB');
       if (mounted) {
@@ -819,48 +962,43 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
 
     try {
       Log.i('Sending message to chat ID: ${widget.chatId}', 'CHAT_SCREEN_MONGODB');
-      
-      // Check if this is a reply
-      if (_replyingToMessage != null) {
-        final messageId = _extractMessageId(_replyingToMessage!);
-        if (messageId != null) {
-          final result = await _chatService.replyToMessage(messageId, content);
-          if (result != null) {
-            _messageController.clear();
-            setState(() {
-              _replyingToMessage = null;
-            });
-            _scrollToBottom(force: true);
-            await _loadMessages(); // Reload to show the reply
-            return;
-          }
-        }
+
+      final replyId = _replyingToMessage != null
+          ? _extractMessageId(_replyingToMessage!)
+          : null;
+
+      if (!ConnectivityService.instance.isOnline) {
+        await _queueTextMessage(content, replyToMessageId: replyId);
+        return;
       }
       
-      // Regular message
+      if (replyId != null) {
+        final result = await _chatService.replyToMessage(replyId, content);
+        if (result != null) {
+          _messageController.clear();
+          setState(() => _replyingToMessage = null);
+          _scrollToBottom(force: true);
+          await _loadMessages();
+          return;
+        }
+        await _queueTextMessage(content, replyToMessageId: replyId);
+        return;
+      }
+      
       final result = await _chatService.sendTextMessage(widget.chatId, content);
       if (result != null) {
         _messageController.clear();
-        setState(() {
-          _replyingToMessage = null;
-        });
-        // Force scroll to bottom when user sends their own message
+        setState(() => _replyingToMessage = null);
         _scrollToBottom(force: true);
-        // Message will be added via the stream listener
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to send message')),
-          );
-        }
+        await _queueTextMessage(content);
       }
     } catch (e) {
-      Log.e('Error sending message', 'CHAT_SCREEN_MONGODB', e);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sending message: $e')),
-        );
-      }
+      Log.e('Error sending message, queuing offline', 'CHAT_SCREEN_MONGODB', e);
+      final replyId = _replyingToMessage != null
+          ? _extractMessageId(_replyingToMessage!)
+          : null;
+      await _queueTextMessage(content, replyToMessageId: replyId);
     } finally {
       if (mounted) {
         setState(() {
@@ -1721,10 +1859,16 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   Future<void> _sendMediaMessage(String mediaUrl, String messageType, {String? content}) async {
     print('[CHAT_SCREEN_MONGODB] _sendMediaMessage called with mediaUrl: $mediaUrl, type: $messageType');
     
-    // Don't block multiple media sends - allow concurrent sends
-    // The _isSending flag is only for preventing duplicate single sends
-    
     try {
+      if (!ConnectivityService.instance.isOnline) {
+        await _queueMediaMessage(
+          messageType,
+          content: content ?? '',
+          mediaUrl: mediaUrl.isNotEmpty ? mediaUrl : null,
+        );
+        return;
+      }
+
       print('[CHAT_SCREEN_MONGODB] Calling _chatService.sendMediaMessage...');
       final result = await _chatService.sendMediaMessage(
         widget.chatId,
@@ -1735,26 +1879,23 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       print('[CHAT_SCREEN_MONGODB] sendMediaMessage result: ${result != null ? "success" : "null"}');
       if (result != null) {
         print('[CHAT_SCREEN_MONGODB] Media message sent successfully, scrolling to bottom...');
-        // Force scroll to bottom when user sends their own media
         _scrollToBottom(force: true);
-        // Message will be added via the stream listener
       } else {
-        print('[CHAT_SCREEN_MONGODB] ERROR: sendMediaMessage returned null');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Failed to send media')),
-          );
-        }
-      }
-    } catch (e, stackTrace) {
-      Log.e('Error sending media', 'CHAT_SCREEN_MONGODB', e);
-      print('[CHAT_SCREEN_MONGODB] Error sending media: $e');
-      print('[CHAT_SCREEN_MONGODB] Stack trace: $stackTrace');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sending media: $e')),
+        await _queueMediaMessage(
+          messageType,
+          content: content ?? '',
+          mediaUrl: mediaUrl.isNotEmpty ? mediaUrl : null,
         );
       }
+    } catch (e, stackTrace) {
+      Log.e('Error sending media, queuing offline', 'CHAT_SCREEN_MONGODB', e);
+      print('[CHAT_SCREEN_MONGODB] Error sending media: $e');
+      print('[CHAT_SCREEN_MONGODB] Stack trace: $stackTrace');
+      await _queueMediaMessage(
+        messageType,
+        content: content ?? '',
+        mediaUrl: mediaUrl.isNotEmpty ? mediaUrl : null,
+      );
     }
   }
 
@@ -1794,6 +1935,15 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       
       // Encode contact data as JSON string
       final contactJson = jsonEncode(contactContent);
+
+      if (!ConnectivityService.instance.isOnline) {
+        await _queueMediaMessage(
+          'contact',
+          content: displayName,
+          mediaUrl: contactJson,
+        );
+        return;
+      }
       
       // Send contact message via media endpoint with messageType='contact'
       // The contact JSON will be stored in mediaUrl field
@@ -1838,6 +1988,29 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     
     if (_isSending) {
       print('[CHAT_SCREEN_MONGODB] Already sending, returning...');
+      return;
+    }
+
+    String extension = 'm4a';
+    if (mimeType.contains('webm')) {
+      extension = 'webm';
+    } else if (mimeType.contains('wav')) {
+      extension = 'wav';
+    } else if (mimeType.contains('mp3')) {
+      extension = 'mp3';
+    } else if (mimeType.contains('aac')) {
+      extension = 'aac';
+    }
+    final fileName = 'voice_message_${DateTime.now().millisecondsSinceEpoch}.$extension';
+
+    if (!ConnectivityService.instance.isOnline) {
+      await _queueMediaMessage(
+        'voice',
+        content: content,
+        mediaBytes: audioBytes,
+        mimeType: mimeType,
+        fileName: fileName,
+      );
       return;
     }
 
@@ -1935,31 +2108,24 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
         throw Exception('Upload failed: Status ${response.statusCode}, Response: ${response.data}');
       }
     } on DioException catch (e) {
-      Log.e('DioException sending voice message', 'CHAT_SCREEN_MONGODB', e);
-      print('[CHAT_SCREEN_MONGODB] DioException: ${e.message}');
-      if (e.response != null) {
-        print('[CHAT_SCREEN_MONGODB] Response status: ${e.response?.statusCode}, data: ${e.response?.data}');
-      }
-      String errorMessage = 'Error sending voice message';
-      if (e.response != null) {
-        errorMessage += ': ${e.response?.statusCode} - ${e.response?.data}';
-      } else if (e.message != null) {
-        errorMessage += ': ${e.message}';
-      }
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(errorMessage)),
-        );
-      }
+      Log.e('DioException sending voice message, queuing offline', 'CHAT_SCREEN_MONGODB', e);
+      await _queueMediaMessage(
+        'voice',
+        content: content,
+        mediaBytes: audioBytes,
+        mimeType: mimeType,
+        fileName: fileName,
+      );
     } catch (e, stackTrace) {
-      Log.e('Error sending voice message', 'CHAT_SCREEN_MONGODB', e);
-      print('[CHAT_SCREEN_MONGODB] Error: $e');
+      Log.e('Error sending voice message, queuing offline', 'CHAT_SCREEN_MONGODB', e);
       print('[CHAT_SCREEN_MONGODB] Stack trace: $stackTrace');
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error sending voice message: $e')),
-        );
-      }
+      await _queueMediaMessage(
+        'voice',
+        content: content,
+        mediaBytes: audioBytes,
+        mimeType: mimeType,
+        fileName: fileName,
+      );
     }
   }
 
@@ -2036,6 +2202,20 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
   Widget _buildOneToOneStatus(List<dynamic> readBy, String? status, String? recipientId, bool isDark) {
     IconData icon;
     String? tooltip;
+    Color iconColor = Theme.of(context).colorScheme.onPrimary.withOpacity(0.7);
+    
+    if (status == 'pending') {
+      return Tooltip(
+        message: 'Waiting to send',
+        child: Icon(Icons.schedule, size: 14, color: iconColor),
+      );
+    }
+    if (status == 'failed') {
+      return Tooltip(
+        message: 'Failed to send — tap message to retry',
+        child: Icon(Icons.error_outline, size: 14, color: Colors.red.shade300),
+      );
+    }
     
     // Check if recipient has read the message
     final isRead = recipientId != null && 
@@ -2231,6 +2411,24 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     }
   }
 
+  Future<void> _retryFailedMessage(Map<String, dynamic> message) async {
+    final localId = message['localId']?.toString() ??
+        message['id']?.toString() ??
+        message['_id']?.toString();
+    if (localId == null || !localId.startsWith('offline_')) return;
+
+    try {
+      await OfflineMessageQueueService.instance.retry(localId);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Retrying to send message...')),
+        );
+      }
+    } catch (e) {
+      Log.e('Retry failed message error', 'CHAT_SCREEN_MONGODB', e);
+    }
+  }
+
   Widget _buildMessageBubble(Map<String, dynamic> message) {
     final senderId = _extractSenderId(message);
     final isCurrentUser = senderId == _currentUserId;
@@ -2316,6 +2514,11 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
     }
 
     return GestureDetector(
+      onTap: () {
+        if (message['status'] == 'failed' && message['isOfflinePending'] == true) {
+          _retryFailedMessage(message);
+        }
+      },
       onLongPress: () => _showMessageOptions(message),
       child: Container(
         margin: messageMargin,
@@ -3427,6 +3630,41 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
       ),
       body: Column(
         children: [
+          if (_isOffline ||
+              OfflineMessageQueueService.instance
+                  .getQueueForChat(widget.chatId)
+                  .isNotEmpty)
+            MaterialBanner(
+              content: Text(
+                OfflineMessageQueueService.instance.isSyncing
+                    ? 'Sending queued messages...'
+                    : _isOffline
+                        ? 'Offline — ${OfflineMessageQueueService.instance.getQueueForChat(widget.chatId).length} message(s) queued'
+                        : '${OfflineMessageQueueService.instance.getQueueForChat(widget.chatId).length} message(s) waiting to send',
+              ),
+              leading: Icon(
+                OfflineMessageQueueService.instance.isSyncing
+                    ? Icons.sync
+                    : Icons.cloud_off,
+                size: 20,
+              ),
+              backgroundColor: Colors.orange.shade100,
+              actions: [
+                if (!_isOffline &&
+                    OfflineMessageQueueService.instance
+                        .getQueueForChat(widget.chatId)
+                        .isNotEmpty)
+                  TextButton(
+                    onPressed: () =>
+                        OfflineMessageQueueService.instance.syncAll(),
+                    child: const Text('Send now'),
+                  ),
+                TextButton(
+                  onPressed: _loadMessages,
+                  child: const Text('Refresh'),
+                ),
+              ],
+            ),
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
@@ -3524,7 +3762,15 @@ class _ChatScreenMongoDBState extends State<ChatScreenMongoDB> {
             controller: _messageController,
             onSendMessage: _sendMessage,
             onSendMedia: _sendMediaMessage,
-            onSendContact: _sendContactMessage, // New callback for contacts
+            onQueueOfflineMedia: (bytes, type, fileName, mimeType, caption) =>
+                _queueMediaMessage(
+                  type,
+                  content: caption,
+                  mediaBytes: bytes,
+                  mimeType: mimeType,
+                  fileName: fileName,
+                ),
+            onSendContact: _sendContactMessage,
             onSendVoice: _sendVoiceMessage,
             chatId: widget.chatId,
             isEnabled: !_isSending,

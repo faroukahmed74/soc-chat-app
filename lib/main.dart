@@ -26,6 +26,8 @@ import 'services/theme_service.dart';
 import 'services/localization_service.dart';
 // Firebase services removed - using MongoDB/ngrok API only
 import 'services/local_message_storage.dart';
+import 'services/connectivity_service.dart';
+import 'services/offline_message_queue_service.dart';
 import 'services/local_auth_service.dart';
 import 'services/media_cache_service.dart';
 
@@ -164,6 +166,15 @@ Future<void> main() async {
       });
     } else {
       await LocalMessageStorage.initialize();
+    }
+
+    // Connectivity + offline message queue (all platforms)
+    try {
+      await ConnectivityService.instance.initialize();
+      await OfflineMessageQueueService.instance.initialize();
+      Log.i('Connectivity and offline queue initialized', 'MAIN');
+    } catch (e) {
+      Log.e('Offline queue init failed (non-blocking)', 'MAIN', e);
     }
     
     // Initialize media cache service with error handling

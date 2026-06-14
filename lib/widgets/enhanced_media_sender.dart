@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:typed_data';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import '../services/improved_media_service.dart';
@@ -7,12 +8,20 @@ import '../services/enhanced_unified_media_service.dart';
 import '../services/multi_media_upload_service.dart';
 import '../services/logger_service.dart';
 import '../services/contact_picker_service.dart';
+import '../services/connectivity_service.dart';
 import '../utils/responsive_utils.dart';
 
 /// Enhanced media sender widget with progress tracking and media preview
 class EnhancedMediaSender extends StatefulWidget {
   final String chatId;
   final Function(String mediaUrl, String type, String text) onMediaSent;
+  final Future<void> Function(
+    Uint8List bytes,
+    String type,
+    String fileName,
+    String mimeType,
+    String caption,
+  )? onQueueOfflineMedia;
   final Function(Map<String, dynamic> contactData)? onContactSent; // New callback for contacts
   final VoidCallback? onClose;
 
@@ -20,6 +29,7 @@ class EnhancedMediaSender extends StatefulWidget {
     super.key,
     required this.chatId,
     required this.onMediaSent,
+    this.onQueueOfflineMedia,
     this.onContactSent,
     this.onClose,
   });
@@ -1850,6 +1860,30 @@ class _EnhancedMediaSenderState extends State<EnhancedMediaSender> {
         _uploadProgress = 0.0;
         _uploadError = null;
       });
+
+      final caption = _captionController.text.trim();
+
+      // Queue locally when offline (all platforms)
+      if (!ConnectivityService.instance.isOnline &&
+          widget.onQueueOfflineMedia != null) {
+        for (final media in _selectedMedia) {
+          await widget.onQueueOfflineMedia!(
+            media.bytes,
+            media.type,
+            media.fileName,
+            media.mimeType,
+            caption,
+          );
+        }
+        setState(() {
+          _selectedMedia.clear();
+          _captionController.clear();
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+        widget.onClose?.call();
+        return;
+      }
 
       if (_selectedMedia.length == 1) {
         // Single media: use existing upload method

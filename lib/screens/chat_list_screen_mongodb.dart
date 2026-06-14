@@ -41,6 +41,9 @@ import '../config/database_config.dart';
 import '../theme/app_design_system.dart';
 import '../widgets/update_dialog.dart';
 import '../services/ai_chat_service.dart';
+import '../services/local_message_storage.dart';
+import '../services/connectivity_service.dart';
+import '../services/offline_message_queue_service.dart';
 
 class ChatListScreenMongoDB extends StatefulWidget {
   const ChatListScreenMongoDB({Key? key}) : super(key: key);
@@ -57,6 +60,8 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
   List<Map<String, dynamic>> _chats = [];
   List<Map<String, dynamic>> _filteredChats = [];
   bool _isLoading = true;
+  bool _isOffline = false;
+  int _queuedMessageCount = 0;
   String _searchQuery = '';
   String? _currentUserId;
   String? _currentUserName;
@@ -305,7 +310,27 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
     _searchController.dispose();
     _tabController.dispose();
     _aiStatusTimer?.cancel();
+    ConnectivityService.instance.removeListener(_onConnectivityChanged);
     super.dispose();
+  }
+
+  void _onConnectivityChanged(bool online) {
+    if (!mounted) return;
+    setState(() {
+      _isOffline = !online;
+      _queuedMessageCount = OfflineMessageQueueService.instance.pendingCount;
+    });
+    if (online) {
+      OfflineMessageQueueService.instance.syncAll();
+    }
+  }
+
+  void _refreshQueueCount() {
+    if (mounted) {
+      setState(() {
+        _queuedMessageCount = OfflineMessageQueueService.instance.pendingCount;
+      });
+    }
   }
 
   Future<void> _initializeChatList() async {
@@ -319,6 +344,12 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
 
       // Load initial chats
       await _loadChats();
+
+      ConnectivityService.instance.addListener(_onConnectivityChanged);
+      OfflineMessageQueueService.instance.onQueueChanged.listen((_) {
+        _refreshQueueCount();
+      });
+      _refreshQueueCount();
 
       // Ensure chatbot chat exists for this user (works on all platforms including iOS)
       await _ensureChatbotChatExists();
@@ -425,6 +456,9 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
               _chats = sortedChats;
               _filteredChats = _applySearchFilter(_getChatsForCurrentTab());
             });
+            if (_currentUserId != null) {
+              LocalMessageStorage.saveChatsList(_currentUserId!, sortedChats);
+            }
             // Force a rebuild to ensure timestamp display updates
             Log.i('🔄 UI updated for chat $chatId. New timestamp: ${messageTime.toIso8601String()}', 'CHAT_LIST_MONGODB');
           }
@@ -472,18 +506,37 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
 
   Future<void> _loadChats() async {
     try {
+      // Show cached chats immediately (WhatsApp-style offline support)
+      if (_currentUserId != null) {
+        final cached = await LocalMessageStorage.getCachedChats(_currentUserId!);
+        if (cached.isNotEmpty && mounted) {
+          final sortedCached = _sortChatsByNewestMessage(cached);
+          setState(() {
+            _chats = sortedCached;
+            _filteredChats = _applySearchFilter(_getChatsForCurrentTab());
+          });
+          Log.i('📦 Loaded ${sortedCached.length} chats from local cache', 'CHAT_LIST_MONGODB');
+        }
+      }
+
       final chats = await _chatService.getUserChats();
       if (mounted) {
-        // ALWAYS sort chats by newest message first (for both individual and group chats)
         final sortedChats = _sortChatsByNewestMessage(chats);
         setState(() {
-          _chats = sortedChats;
-          _filteredChats = _applySearchFilter(_getChatsForCurrentTab());
+          // Keep existing data if network returned empty but we already have chats
+          if (sortedChats.isNotEmpty || _chats.isEmpty) {
+            _chats = sortedChats;
+            _filteredChats = _applySearchFilter(_getChatsForCurrentTab());
+          }
+          _isOffline = sortedChats.isEmpty && _chats.isNotEmpty;
         });
         Log.i('✅ Loaded and sorted ${sortedChats.length} chats. Top chat: ${sortedChats.isNotEmpty ? sortedChats[0]['name'] : "none"}', 'CHAT_LIST_MONGODB');
       }
     } catch (e) {
       Log.e('Error loading chats', 'CHAT_LIST_MONGODB', e);
+      if (mounted && _chats.isNotEmpty) {
+        setState(() => _isOffline = true);
+      }
     }
   }
 
@@ -519,6 +572,14 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
     _chatsSubscription = _chatService.watchUserChats().listen(
       (chats) {
         if (mounted) {
+          // Don't wipe the list when polling fails offline
+          if (chats.isEmpty && _chats.isNotEmpty) {
+            setState(() => _isOffline = true);
+            return;
+          }
+
+          setState(() => _isOffline = false);
+
           // Check for new messages and play sound
           _checkForNewMessages(chats);
 
@@ -1588,6 +1649,35 @@ class _ChatListScreenMongoDBState extends State<ChatListScreenMongoDB> with Sing
       ),
       body: Column(
         children: [
+          if (_isOffline || _queuedMessageCount > 0)
+            MaterialBanner(
+              content: Text(
+                OfflineMessageQueueService.instance.isSyncing
+                    ? 'Sending $_queuedMessageCount queued message(s)...'
+                    : _isOffline
+                        ? 'Offline — $_queuedMessageCount queued, showing saved chats'
+                        : '$_queuedMessageCount message(s) waiting to send',
+              ),
+              leading: Icon(
+                OfflineMessageQueueService.instance.isSyncing
+                    ? Icons.sync
+                    : Icons.cloud_off,
+                size: 20,
+              ),
+              backgroundColor: Colors.orange.shade100,
+              actions: [
+                if (_queuedMessageCount > 0)
+                  TextButton(
+                    onPressed: () =>
+                        OfflineMessageQueueService.instance.syncAll(),
+                    child: const Text('Send now'),
+                  ),
+                TextButton(
+                  onPressed: _loadChats,
+                  child: const Text('Refresh'),
+                ),
+              ],
+            ),
           // Tab Bar for All Chats / Groups
           Container(
             color: Theme.of(context).colorScheme.surface,

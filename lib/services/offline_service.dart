@@ -1,16 +1,11 @@
 import 'connectivity_service.dart';
 import 'offline_message_queue_service.dart';
-import 'connectivity_stub.dart'
-    if (dart.library.html) 'connectivity_web.dart';
 
-/// Web offline service — browser events + message queue.
+/// Native offline service — delegates to connectivity + message queue.
 class OfflineService {
   static final OfflineService _instance = OfflineService._internal();
   factory OfflineService() => _instance;
   OfflineService._internal();
-
-  bool _listenersAttached = false;
-  final List<Function(bool)> _listeners = [];
 
   bool get isInitialized => ConnectivityService.instance.isInitialized;
   bool get isOnline => ConnectivityService.instance.isOnline;
@@ -18,30 +13,15 @@ class OfflineService {
   Future<void> initialize() async {
     await ConnectivityService.instance.initialize();
     await OfflineMessageQueueService.instance.initialize();
-    if (!_listenersAttached) {
-      attachPlatformConnectivityListeners(_notifyListeners);
-      _listenersAttached = true;
-    }
   }
 
   Future<void> dispose() async {}
 
-  void _notifyListeners(bool online) {
-    for (final listener in List<Function(bool)>.from(_listeners)) {
-      try {
-        listener(online);
-      } catch (_) {}
-    }
-  }
-
   void addConnectivityListener(Function(bool) listener) {
-    _listeners.add(listener);
     ConnectivityService.instance.addListener(listener);
-    listener(isOnline);
   }
 
   void removeConnectivityListener(Function(bool) listener) {
-    _listeners.remove(listener);
     ConnectivityService.instance.removeListener(listener);
   }
 

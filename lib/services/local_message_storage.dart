@@ -1,7 +1,9 @@
 import 'package:hive/hive.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'package:flutter/foundation.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:async';
+import 'dart:convert';
 
 
 class LocalMessageStorage {
@@ -12,6 +14,10 @@ class LocalMessageStorage {
   static Box<dynamic>? _chatsBox;
   static bool _isInitialized = false;
   static bool _isInitializing = false;
+  static bool _usePrefsFallback = false;
+
+  static const String _prefsChatsPrefix = 'offline_chats_';
+  static const String _prefsMessagesPrefix = 'offline_messages_';
   
   /// Initialize local storage
   /// For web, this is non-blocking with timeout to prevent page unresponsive errors
@@ -39,7 +45,8 @@ class LocalMessageStorage {
       print('[LocalStorage] Initialized successfully');
     } catch (e) {
       print('[LocalStorage] Initialization error (non-blocking): $e');
-      // Initialize with empty boxes to prevent crashes
+      // Fall back to SharedPreferences when Hive is unavailable (common on web)
+      _usePrefsFallback = true;
       _isInitialized = true;
     } finally {
       _isInitializing = false;
@@ -135,11 +142,201 @@ class LocalMessageStorage {
       }
       
       final messages = _messagesBox!.get(chatMessagesKey) as List;
-      return messages.cast<Map<String, dynamic>>();
+      return messages
+          .map((m) => Map<String, dynamic>.from(m as Map))
+          .toList();
     } catch (e) {
       print('[LocalStorage] Error retrieving local messages: $e');
       return [];
     }
+  }
+
+  /// Async version — ensures storage is ready before reading.
+  static Future<List<Map<String, dynamic>>> getCachedChatMessages(String chatId) async {
+    await _ensureInitialized();
+    if (_messagesBox != null && !_usePrefsFallback) {
+      return getLocalMessages(chatId);
+    }
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_prefsMessagesPrefix$chatId');
+      if (raw == null) return [];
+      final list = json.decode(raw) as List;
+      return list.map((m) => Map<String, dynamic>.from(m as Map)).toList();
+    } catch (e) {
+      print('[LocalStorage] Error reading cached messages from prefs: $e');
+      return [];
+    }
+  }
+
+  /// Save the full message list for a chat (used after successful API fetch).
+  static Future<void> saveChatMessagesList(
+    String chatId,
+    List<Map<String, dynamic>> messages,
+  ) async {
+    try {
+      await _ensureInitialized();
+
+      final serialized = messages
+          .map((m) => Map<String, dynamic>.from(m))
+          .toList();
+
+      serialized.sort((a, b) {
+        final aTime = _messageTimestamp(a);
+        final bTime = _messageTimestamp(b);
+        return aTime.compareTo(bTime);
+      });
+
+      if (_messagesBox != null && !_usePrefsFallback) {
+        await _messagesBox!.put('${chatId}_messages', serialized);
+      } else {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          '$_prefsMessagesPrefix$chatId',
+          json.encode(serialized),
+        );
+      }
+      print('[LocalStorage] Saved ${serialized.length} messages for chat $chatId');
+    } catch (e) {
+      print('[LocalStorage] Error saving chat messages list: $e');
+    }
+  }
+
+  /// Add or update a single message in the cached chat list.
+  static Future<void> upsertChatMessage(
+    String chatId,
+    Map<String, dynamic> message,
+  ) async {
+    try {
+      await _ensureInitialized();
+      if (_messagesBox == null || chatId.isEmpty) return;
+
+      final messages = getLocalMessages(chatId);
+      final messageId = _extractMessageId(message);
+      if (messageId == null) return;
+
+      final index = messages.indexWhere(
+        (m) => _extractMessageId(m) == messageId,
+      );
+
+      final normalized = Map<String, dynamic>.from(message);
+      if (index >= 0) {
+        messages[index] = {...messages[index], ...normalized};
+      } else {
+        messages.add(normalized);
+      }
+
+      await saveChatMessagesList(chatId, messages);
+    } catch (e) {
+      print('[LocalStorage] Error upserting chat message: $e');
+    }
+  }
+
+  /// Save all chats for a user (used after successful API fetch).
+  static Future<void> saveChatsList(
+    String userId,
+    List<Map<String, dynamic>> chats,
+  ) async {
+    try {
+      await _ensureInitialized();
+      if (userId.isEmpty) return;
+
+      final serialized = chats
+          .map((c) => Map<String, dynamic>.from(c))
+          .toList();
+
+      if (_chatsBox != null && !_usePrefsFallback) {
+        await _chatsBox!.put('chats_$userId', serialized);
+        for (final chat in serialized) {
+          final chatId = (chat['_id'] ?? chat['id'])?.toString();
+          if (chatId != null && chatId.isNotEmpty) {
+            await storeChatLocally(
+              chatId: chatId,
+              chatData: chat,
+              userId: userId,
+            );
+          }
+        }
+      } else {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(
+          '$_prefsChatsPrefix$userId',
+          json.encode(serialized),
+        );
+      }
+
+      print('[LocalStorage] Saved ${serialized.length} chats for user $userId');
+    } catch (e) {
+      print('[LocalStorage] Error saving chats list: $e');
+    }
+  }
+
+  /// Get cached chats for a user.
+  static Future<List<Map<String, dynamic>>> getCachedChats(String userId) async {
+    try {
+      await _ensureInitialized();
+      if (userId.isEmpty) return [];
+
+      if (_chatsBox != null && !_usePrefsFallback) {
+        final data = _chatsBox!.get('chats_$userId');
+        if (data is List) {
+          return data
+              .map((c) => Map<String, dynamic>.from(c as Map))
+              .toList();
+        }
+        return [];
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('$_prefsChatsPrefix$userId');
+      if (raw == null) return [];
+      final list = json.decode(raw) as List;
+      return list.map((c) => Map<String, dynamic>.from(c as Map)).toList();
+    } catch (e) {
+      print('[LocalStorage] Error retrieving cached chats: $e');
+      return [];
+    }
+  }
+
+  /// Update a single chat in the cached list (e.g. after realtime update).
+  static Future<void> upsertChatInList(
+    String userId,
+    Map<String, dynamic> chat,
+  ) async {
+    try {
+      final chatId = (chat['_id'] ?? chat['id'])?.toString();
+      if (userId.isEmpty || chatId == null || chatId.isEmpty) return;
+
+      final chats = await getCachedChats(userId);
+      final index = chats.indexWhere(
+        (c) => (c['_id'] ?? c['id'])?.toString() == chatId,
+      );
+
+      if (index >= 0) {
+        chats[index] = {...chats[index], ...Map<String, dynamic>.from(chat)};
+      } else {
+        chats.add(Map<String, dynamic>.from(chat));
+      }
+
+      await saveChatsList(userId, chats);
+    } catch (e) {
+      print('[LocalStorage] Error upserting chat in list: $e');
+    }
+  }
+
+  static String? _extractMessageId(Map<String, dynamic> message) {
+    final id = message['id'] ?? message['_id'] ?? message['messageId'];
+    if (id == null) return null;
+    final s = id.toString();
+    return s.isEmpty ? null : s;
+  }
+
+  static DateTime _messageTimestamp(Map<String, dynamic> message) {
+    final raw = message['createdAt'] ??
+        message['timestamp'] ??
+        message['created_at'] ??
+        message['time'];
+    return DateTime.tryParse(raw?.toString() ?? '') ?? DateTime.fromMillisecondsSinceEpoch(0);
   }
 
   /// Get a specific local message
