@@ -1,8 +1,8 @@
 {
-  "version": "1.0.38",
-  "build_number": "38",
+  "version": "1.0.39",
+  "build_number": "39",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.38 (Build 38) - iOS Launch Crash Fix:\n- Fixed TestFlight/iOS crash on open (Firebase native double-init + WebRTC dSYM)\n- AppDelegate now uses FlutterFire Dart initialization only\n- Generate WebRTC.framework dSYM during archive for symbol upload and stable launch\n- Added Bonjour service declarations for WebRTC local network\n- Includes Arabic RTL text direction improvements from 1.0.37",
+  "release_notes": "SOC Chat App v1.0.39 (Build 39) - iOS Xcode 27 Launch Fix:\n- Adopt Apple UIScene lifecycle required by Xcode 27 / iOS 27 SDK\n- Use FlutterSceneDelegate so TestFlight builds no longer crash on open\n- Keep WebRTC dSYM generation for App Store symbol upload\n- Includes prior Arabic RTL and Firebase init cleanup",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": true,

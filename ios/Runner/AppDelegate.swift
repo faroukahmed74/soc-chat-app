@@ -10,46 +10,67 @@ import UserNotifications
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    // Do NOT call FirebaseApp.configure() here.
-    // FlutterFire initializes Firebase from Dart via Firebase.initializeApp().
-    // Calling configure() natively as well can crash at launch on newer Firebase SDKs.
+    // Required for Xcode 27 / iOS 27 SDK: UIScene is configured in Info.plist
+    // (FlutterSceneDelegate). Do not access window?.rootViewController here —
+    // it is nil under the scene lifecycle at launch.
 
+    // Firebase is initialized from Dart via Firebase.initializeApp().
     GeneratedPluginRegistrant.register(with: self)
+
     let ok = super.application(application, didFinishLaunchingWithOptions: launchOptions)
 
-    // Register after Flutter engine / window are ready
-    if let controller = window?.rootViewController as? FlutterViewController {
-      let photosChannel = FlutterMethodChannel(
-        name: "soc_chat_app/photos_library",
-        binaryMessenger: controller.binaryMessenger
-      )
-
-      photosChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
-        guard let self = self else {
-          result(FlutterError(code: "UNAVAILABLE", message: "AppDelegate deallocated", details: nil))
-          return
-        }
-
-        if call.method == "saveToPhotos" {
-          guard let args = call.arguments as? [String: Any],
-                let path = args["path"] as? String,
-                let isVideo = args["isVideo"] as? Bool,
-                let albumName = args["albumName"] as? String else {
-            result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments", details: nil))
-            return
-          }
-
-          self.saveToPhotosLibrary(filePath: path, isVideo: isVideo, albumName: albumName, result: result)
-        } else {
-          result(FlutterMethodNotImplemented)
-        }
-      }
+    // Photos method channel after the scene/window exist.
+    DispatchQueue.main.async { [weak self] in
+      self?.setupPhotosChannel()
     }
 
     return ok
   }
 
-  // Save image or video to Photos library
+  private func setupPhotosChannel() {
+    guard let controller = flutterViewController() else { return }
+
+    let photosChannel = FlutterMethodChannel(
+      name: "soc_chat_app/photos_library",
+      binaryMessenger: controller.binaryMessenger
+    )
+
+    photosChannel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
+      guard let self = self else {
+        result(FlutterError(code: "UNAVAILABLE", message: "AppDelegate deallocated", details: nil))
+        return
+      }
+
+      if call.method == "saveToPhotos" {
+        guard let args = call.arguments as? [String: Any],
+              let path = args["path"] as? String,
+              let isVideo = args["isVideo"] as? Bool,
+              let albumName = args["albumName"] as? String else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments", details: nil))
+          return
+        }
+        self.saveToPhotosLibrary(filePath: path, isVideo: isVideo, albumName: albumName, result: result)
+      } else {
+        result(FlutterMethodNotImplemented)
+      }
+    }
+  }
+
+  private func flutterViewController() -> FlutterViewController? {
+    if let controller = window?.rootViewController as? FlutterViewController {
+      return controller
+    }
+    for scene in UIApplication.shared.connectedScenes {
+      guard let windowScene = scene as? UIWindowScene else { continue }
+      for window in windowScene.windows {
+        if let controller = window.rootViewController as? FlutterViewController {
+          return controller
+        }
+      }
+    }
+    return nil
+  }
+
   private func saveToPhotosLibrary(filePath: String, isVideo: Bool, albumName: String, result: @escaping FlutterResult) {
     let fileURL = URL(fileURLWithPath: filePath)
 
@@ -160,7 +181,6 @@ import UserNotifications
     })
   }
 
-  // Foreground presentation - show notification while app is open
   override func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     willPresent notification: UNNotification,
@@ -173,7 +193,6 @@ import UserNotifications
     }
   }
 
-  // Notification tap
   override func userNotificationCenter(
     _ center: UNUserNotificationCenter,
     didReceive response: UNNotificationResponse,
