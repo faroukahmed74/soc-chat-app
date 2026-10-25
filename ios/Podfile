@@ -1,5 +1,5 @@
 # # Uncomment this line to define a global platform for your project
-# platform :ios, '13.0'
+# platform :ios, '15.0'
 
 # # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 # ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -42,7 +42,7 @@
     
 #     # Additional iOS build settings for compatibility
 #     target.build_configurations.each do |config|
-#       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+#       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
 #       config.build_settings['ENABLE_BITCODE'] = 'NO'
 #       config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
 #     end
@@ -50,7 +50,7 @@
 # end
 
 # Uncomment this line to define a global platform for your project
-platform :ios, '13.0'
+platform :ios, '15.0'
 
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
@@ -93,7 +93,7 @@ post_install do |installer|
 
     # Additional iOS build settings for compatibility
     target.build_configurations.each do |config|
-      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '13.0'
+      config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
       config.build_settings['ENABLE_BITCODE'] = 'NO'
       config.build_settings['EXCLUDED_ARCHS[sdk=iphonesimulator*]'] = 'arm64'
 
@@ -108,13 +108,13 @@ post_install do |installer|
         # 'PERMISSION_LOCATION=1',
       ]
       
-      # Ensure dSYM generation for all frameworks (including WebRTC)
-      if config.name == 'Release'
+      # Ensure dSYM generation for pods compiled from source
+      if config.name == 'Release' || config.name == 'Profile'
         config.build_settings['DEBUG_INFORMATION_FORMAT'] = 'dwarf-with-dsym'
         config.build_settings['STRIP_INSTALLED_PRODUCT'] = 'YES'
         config.build_settings['COPY_PHASE_STRIP'] = 'NO'
       end
-      
+
       # Fix for gRPC-C++ version string issue during archive builds
       if target.name == 'gRPC-C++'
         # Ensure version.h is generated and included
@@ -129,5 +129,25 @@ post_install do |installer|
         end
       end
     end
+  end
+
+  # WebRTC-SDK is a prebuilt xcframework without dSYMs. Add a Runner build
+  # phase that runs dsymutil so App Store Connect symbol upload succeeds.
+  require 'xcodeproj'
+  project_path = File.expand_path('Runner.xcodeproj', __dir__)
+  project = Xcodeproj::Project.open(project_path)
+  runner_target = project.targets.find { |t| t.name == 'Runner' }
+  phase_name = 'Generate WebRTC dSYM'
+  if runner_target
+    existing = runner_target.shell_script_build_phases.find { |p| p.name == phase_name }
+    phase = existing || runner_target.new_shell_script_build_phase(phase_name)
+    phase.shell_script = "\"${SRCROOT}/scripts/generate_webrtc_dsym.sh\"\n"
+    phase.shell_path = '/bin/sh'
+    phase.always_out_of_date = '1'
+    phase.show_env_vars_in_log = '0'
+    # Run after frameworks are embedded so WebRTC.framework is present.
+    runner_target.build_phases.delete(phase)
+    runner_target.build_phases << phase
+    project.save
   end
 end

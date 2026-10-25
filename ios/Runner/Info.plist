@@ -65,6 +65,12 @@
 	<string>This app needs HomeKit access to control smart home devices.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>This app needs local network access to discover and connect with nearby devices.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_stun._udp</string>
+		<string>_turn._udp</string>
+		<string>_rtc._udp</string>
+	</array>
 	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
 	<string>This app needs location access to share your location in chat conversations.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>

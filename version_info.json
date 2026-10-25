@@ -1,10 +1,10 @@
 {
-  "version": "1.0.35",
-  "build_number": "35",
+  "version": "1.0.38",
+  "build_number": "38",
   "download_url": "https://dl.dropboxusercontent.com/scl/fi/bsr34voj7mtlyys8egff0/app-release.apk?rlkey=qvx4vuus73b9z4lhzu2g7vltr&st=rko7ld9s&dl=1",
-  "release_notes": "SOC Chat App v1.0.35 (Build 35) - Offline Messaging Update:\n- Chats and messages stay visible when internet drops (WhatsApp-style local cache)\n- Offline message queue: send text, voice, images, video, and contacts while offline\n- Queued messages auto-send when connection returns\n- Pending and failed message indicators with tap-to-retry\n- Offline banners on chat list and chat screen with Send now action\n- Cross-platform support: Android, iOS, and Web",
+  "release_notes": "SOC Chat App v1.0.38 (Build 38) - iOS Launch Crash Fix:\n- Fixed TestFlight/iOS crash on open (Firebase native double-init + WebRTC dSYM)\n- AppDelegate now uses FlutterFire Dart initialization only\n- Generate WebRTC.framework dSYM during archive for symbol upload and stable launch\n- Added Bonjour service declarations for WebRTC local network\n- Includes Arabic RTL text direction improvements from 1.0.37",
   "force_update": false,
   "minimum_version": "1.0.5",
   "update_available": true,
-  "last_updated": "2026-06-14T00:00:00Z"
+  "last_updated": "2026-10-25T00:00:00Z"
 }
